@@ -462,6 +462,7 @@ def cpreprocess_parse(stateStruct, input):
 	cmd = ""
 	arg = ""
 	state = 0
+	statebeforecomment = None
 	for c in input:		
 		breakLoop = False
 		while not breakLoop:
@@ -472,7 +473,9 @@ def cpreprocess_parse(stateStruct, input):
 					cmd = ""
 					arg = None
 					state = 1
-				elif c == "/": state = 20
+				elif c == "/":
+					statebeforecomment = 0
+					state = 20
 				else:
 					if not stateStruct._preprocessIgnoreCurrent: yield c
 			elif state == 1: # start of preprocessor command
@@ -482,56 +485,56 @@ def cpreprocess_parse(stateStruct, input):
 					cmd = c
 					state = 2
 			elif state == 2: # in the middle of the command
-				if c in SpaceChars: state = 3
+				if c in SpaceChars:
+					if arg is None: arg = ""
+					else: arg += c
 				elif c == "(":
-					arg = c
-					state = 4
+					if arg is None: arg = c
+					else: arg += c
+				elif c == "/":
+					state = 20
+					statebeforecomment = 2
+				elif c == "\\": state = 5 # escape next
 				elif c == "\n":
 					for c in handle_cpreprocess_cmd(stateStruct, cmd, arg): yield c
 					state = 0
-				else: cmd += c
-			elif state == 3: # command after space
-				if c in SpaceChars: pass
-				elif c == "(":
-					state = 2
-					breakLoop = False
-				elif c == "\n":
-					state = 2
-					breakLoop = False
 				else:
-					arg = c
-					state = 4
-			elif state == 4: # argument(s) in command
-				if c == "\\": state = 5 # escape next
-				elif c == "\n":
-					state = 2
-					breakLoop = False
-				else: arg += c
+					if arg is None: cmd += c
+					else: arg += c
 			elif state == 5: # after escape in arg in command
-				if c == "\n": state = 4
-				elif c in SpaceChars: pass
-				else:
-					state = 4
-					breakLoop = False				
+				if c == "\n": state = 2
+				else: pass # ignore everything, wait for newline
 			elif state == 20: # after "/", possible start of comment
 				if c == "*": state = 21 # C-style comment
 				elif c == "/": state = 25 # C++-style comment
 				else:
-					state = 0
-					if not stateStruct._preprocessIgnoreCurrent: yield "/"
-					breakLoop = False
+					state = statebeforecomment
+					statebeforecomment = None
+					if state == 0:
+						if not stateStruct._preprocessIgnoreCurrent: yield "/"
+					elif state == 2:
+						if arg is None: arg = ""
+						arg += "/"
+						breakLoop = False
+					else:
+						stateStruct.error("preproc parse: internal error after possible comment. didn't expect state " + str(state))
+						state = 0 # best we can do
 			elif state == 21: # C-style comment
 				if c == "*": state = 22
 				else: pass
 			elif state == 22: # C-style comment after "*"
-				if c == "/": state = 0
+				if c == "/":
+					state = statebeforecomment
+					statebeforecomment = None
 				elif c == "*": pass
 				else: state = 21
 			elif state == 25: # C++-style comment
-				if c == "\n": state = 0
+				if c == "\n":
+					state = statebeforecomment
+					statebeforecomment = None
 				else: pass
 			else:
-				self.error("internal error: invalid state " + str(state))
+				stateStruct.error("internal error: invalid state " + str(state))
 				state = 0 # reset. it's the best we can do
 
 		if c == "\n": stateStruct.incIncludeLineChar(line=1)
