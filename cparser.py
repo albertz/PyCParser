@@ -3,7 +3,9 @@ SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
-OpChars = "&|=!+-<>"
+OpChars = "&|=!+-*/%<>~?:"
+OpeningBrackets = "[({"
+ClosingBrackets = "})]"
 
 def simple_escape_char(c):
 	if c == "n": return "\n"
@@ -763,14 +765,38 @@ def cpreprocess_parse(stateStruct, input):
 		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
 		else: stateStruct.incIncludeLineChar(char=1)
 
-def parse(state, input):
+def cpre2_parse(stateStruct, input):
 	state = 0
-	
+	brackets = []
 	for c in input:
 		if state == 0:
-			if c in SpaceChars: pass
-			else: pass
-
+			if c in SpaceChars + "\n": pass
+			elif c in NumberChars: state = 10
+			elif c == '"': state = 20
+			elif c == "'": state = 25
+			elif c in LetterChars + "_": state = 30
+			elif c in OpeningBrackets: brackets += [c]
+			elif c in ClosingBrackets:
+				if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
+					stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
+				else:
+					brackets = brackets[:-1]
+			elif c in OpChars: state = 40
+			else:
+				stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
+		elif state == 10: # number
+			pass
+		elif state == 20: # "str
+			pass
+		elif state == 25: # 'str
+			pass
+		elif state == 30: # identifier
+			pass
+		elif state == 40: # op
+			pass
+		else:
+			stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
+			
 def test():
 	# Test
 	import better_exchook
