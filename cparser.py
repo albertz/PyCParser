@@ -492,7 +492,17 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 		if state._preprocessIgnoreCurrent: return
 		cpreprocess_handle_undef(state, arg)
 				
-	elif cmd == "pragma": pass # ignore at all right now
+	elif cmd == "pragma":
+		pass # ignore at all right now
+	
+	elif cmd == "error":
+		if state._preprocessIgnoreCurrent: return # we don't really care
+		state.error("preprocessor error command: " + arg)
+
+	elif cmd == "warning":
+		if state._preprocessIgnoreCurrent: return # we don't really care
+		state.error("preprocessor warning command: " + arg)
+
 	else:
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		state.error("preprocessor command " + cmd + " unknown")
