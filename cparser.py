@@ -307,7 +307,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					if opstr == "":
 						if c in SpaceChars: pass
 						else:
-							stateStruct.error("expected op but got '" + c + "'")
+							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in " + condstr)
 							return
 					else:
 						if opstr == "!=": op = lambda x,y: x != y
@@ -316,8 +316,14 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						elif opstr == ">=": op = lambda x,y: x >= y
 						elif opstr == "<": op = lambda x,y: x < y
 						elif opstr == ">": op = lambda x,y: x > y
-						elif opstr == "&&": op = lambda x,y: x and y
-						elif opstr == "||": op = lambda x,y: x or y
+						elif opstr == "&&":
+							op = lambda x,y: x and y
+							# short path check
+							if not lasteval: return lasteval
+						elif opstr == "||":
+							op = lambda x,y: x or y
+							# short path check
+							if lasteval: return lasteval
 						elif opstr == "!":
 							newprefixop = lambda x: not x
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
