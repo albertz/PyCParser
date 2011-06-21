@@ -11,18 +11,19 @@ def simple_escape_char(c):
 	else: return c
 
 class Macro:
-	def __init__(self, args, string):
+	def __init__(self, state, macroname, args, rightside):
+		self.name = macroname
 		self.args = args
-		self.string = string
+		self.rightside = rightside
 		self.func = lambda: "" # TODO...
 	def __str__(self):
-		return "(" + ", ".join(self.args) + ") -> " + self.string
+		return "(" + ", ".join(self.args) + ") -> " + self.rightside
 	def __call__(self, *args):
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
 		
 class State:
-	EmptyMacro = Macro((), "")
+	EmptyMacro = Macro(None, None, (), "")
 	
 	def __init__(self):
 		self.macros = {} # name -> func
@@ -137,7 +138,7 @@ def cpreprocess_evaluate_single(state, arg):
 	except Exception, e:
 		state.error("preprocessor eval single error on '" + arg + "': " + str(e))
 		return 0
-	return cpreprocess_evalute_cond(state, resolved)
+	return cpreprocess_evaluate_cond(state, resolved)
 
 def cpreprocess_evaluate_cond(stateStruct, condstr):
 	state = 0
@@ -376,9 +377,44 @@ def cpreprocess_handle_include(state, arg):
 		return
 	for c in state.preprocess_file(filename=filename, local=local): yield c
 
-def cpreprocess_handle_def(state, arg):
-	# TODO
-	pass
+def cpreprocess_handle_def(stateStruct, arg):
+	state = 0
+	macroname = ""
+	args = []
+	rightside = ""
+	for c in arg:
+		if state == 0:
+			if c in SpaceChars:
+				if macroname != "": state = 1
+			elif c == "(": state = 2
+			else: macroname += c
+		elif state == 1: # after space
+			if c in SpaceChars: pass
+			elif c == "(": state = 2
+			else:
+				rightside = c
+				state = 3
+		elif state == 2: # after "("
+			if c in SpaceChars: pass
+			elif c == ",": args += [""]
+			elif c == ")": state = 3
+			else:
+				if not args: args = [""]
+				args[-1] += c
+		elif state == 3: # rightside
+			rightside += c
+	
+	if not is_valid_defname(macroname):
+		stateStruct.error("preprocessor define: '" + macroname + "' is not a valid macro name")
+		return
+
+	if macroname in stateStruct.macros:
+		stateStruct.error("preprocessor define: '" + macroname + "' already defined")
+		# pass through to use new definition
+	
+	macro = Macro(stateStruct, macroname, args, rightside)
+	stateStruct.macros[macroname] = macro
+	return macro
 
 def cpreprocess_handle_undef(state, arg):
 	arg = arg.strip()
