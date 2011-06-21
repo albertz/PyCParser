@@ -353,7 +353,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 	else:
 		stateStruct.error("preprocessor eval: invalid argument: '" + condstr + "'")
 	
-	print "eval:", condstr, "->", lasteval
+	#print "eval:", condstr, "->", lasteval
 	return lasteval
 
 def cpreprocess_handle_include(state, arg):
@@ -415,9 +415,9 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 			return
 		if state._preprocessIfLevels[-1] >= 1:
 			state._preprocessIfLevels[-1] = 2 # we already had True
-			return
-		check = cpreprocess_evaluate_cond(state, arg)
-		if check: state._preprocessIfLevels[-1] = 1
+		else:
+			check = cpreprocess_evaluate_cond(state, arg)
+			if check: state._preprocessIfLevels[-1] = 1
 
 	elif cmd == "else":
 		if state._preprocessIgnoreCurrent: return # we don't really care
@@ -426,8 +426,8 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 			return
 		if state._preprocessIfLevels[-1] >= 1:
 			state._preprocessIfLevels[-1] = 2 # we already had True
-			return
-		state._preprocessIfLevels[-1] = 1
+		else:
+			state._preprocessIfLevels[-1] = 1
 	
 	elif cmd == "endif":
 		if len(state._preprocessIfLevels) == 0:
