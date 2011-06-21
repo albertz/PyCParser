@@ -676,6 +676,12 @@ def cpreprocess_parse(stateStruct, input):
 				elif c == "/":
 					statebeforecomment = 0
 					state = 20
+				elif c == '"':
+					if not stateStruct._preprocessIgnoreCurrent: yield c
+					state = 10
+				elif c == "'":
+					if not stateStruct._preprocessIgnoreCurrent: yield c
+					state = 12
 				else:
 					if not stateStruct._preprocessIgnoreCurrent: yield c
 			elif state == 1: # start of preprocessor command
@@ -704,6 +710,22 @@ def cpreprocess_parse(stateStruct, input):
 			elif state == 5: # after escape in arg in command
 				if c == "\n": state = 2
 				else: pass # ignore everything, wait for newline
+			elif state == 10: # after '"'
+				if not stateStruct._preprocessIgnoreCurrent: yield c
+				if c == "\\": state = 11
+				elif c == '"': state = 0
+				else: pass
+			elif state == 11: # escape in "str
+				if not stateStruct._preprocessIgnoreCurrent: yield c
+				state = 10
+			elif state == 12: # after "'"
+				if not stateStruct._preprocessIgnoreCurrent: yield c
+				if c == "\\": state = 13
+				elif c == "'": state = 0
+				else: pass
+			elif state == 13: # escape in 'str
+				if not stateStruct._preprocessIgnoreCurrent: yield c
+				state = 12
 			elif state == 20: # after "/", possible start of comment
 				if c == "*": state = 21 # C-style comment
 				elif c == "/": state = 25 # C++-style comment
