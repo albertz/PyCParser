@@ -16,8 +16,11 @@ class Macro:
 		self.args = args
 		self.rightside = rightside
 		self.func = lambda: "" # TODO...
+		self.defPos = state.curPosAsStr() if state else "<unknown>"
 	def __str__(self):
 		return "(" + ", ".join(self.args) + ") -> " + self.rightside
+	def __repr__(self):
+		return "<Macro: " + str(self) + ">"
 	def __call__(self, *args):
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
@@ -35,6 +38,7 @@ class State:
 	
 	def autoSetupSystemMacros(self):
 		import sys
+		self.macros["__GNUC__"] = self.EmptyMacro # most headers just behave more sane with this :)
 		if sys.platform == "darwin":
 			self.macros["__APPLE__"] = self.EmptyMacro
 			self.macros["__MACH__"] = self.EmptyMacro
@@ -409,7 +413,8 @@ def cpreprocess_handle_def(stateStruct, arg):
 		return
 
 	if macroname in stateStruct.macros:
-		stateStruct.error("preprocessor define: '" + macroname + "' already defined")
+		stateStruct.error("preprocessor define: '" + macroname + "' already defined." +
+						  " previously defined at " + stateStruct.macros[macroname].defPos)
 		# pass through to use new definition
 	
 	macro = Macro(stateStruct, macroname, args, rightside)
