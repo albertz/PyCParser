@@ -163,7 +163,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 				if c == "(":
 					if laststr == "":
 						state = 1
-						bracketLevel == 1
+						bracketLevel = 1
 					else:
 						state = 10
 						breakLoop = False
@@ -366,7 +366,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 			stateStruct.error("preprocessor eval: unfinished op: '" + opstr + "'")
 		else: pass
 	else:
-		stateStruct.error("preprocessor eval: invalid argument: '" + condstr + "'")
+		stateStruct.error("preprocessor eval: invalid argument: '" + condstr + "'. unfinished state " + str(state))
 	
 	#print "eval:", condstr, "->", lasteval
 	return lasteval
