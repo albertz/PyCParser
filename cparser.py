@@ -1,6 +1,7 @@
 
 SpaceChars = " \t"
-LowercaseChars = "abcdefghijklmnopqrstuvwxyz"
+LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
+LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
 
 class State:
@@ -76,7 +77,7 @@ class State:
 def is_valid_defname(defname):
 	gotValidPrefix = False
 	for c in defname:
-		if c in LowercaseChars + "_":
+		if c in LetterChars + "_":
 			gotValidPrefix = True
 		elif c in NumberChars:
 			if not gotValidPrefix: return False
@@ -128,8 +129,8 @@ def cpreprocess_handle_undef(state, arg):
 	state.macros.pop(arg)
 	
 def handle_cpreprocess_cmd(state, cmd, arg):
-	if not state._preprocessIgnoreCurrent:
-		print "cmd", cmd, arg
+	#if not state._preprocessIgnoreCurrent:
+	#	print "cmd", cmd, arg
 
 	if cmd == "ifdef":
 		state._preprocessIfLevels += [0]
@@ -137,13 +138,13 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 		check = cpreprocess_evaluate_ifdef(state, arg)
 		if check: state._preprocessIfLevels[-1] = 1
 		
-	if cmd == "ifndef":
+	elif cmd == "ifndef":
 		state._preprocessIfLevels += [0]
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		check = not cpreprocess_evaluate_ifdef(state, arg)
 		if check: state._preprocessIfLevels[-1] = 1
 
-	if cmd == "if":
+	elif cmd == "if":
 		state._preprocessIfLevels += [0]
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		check = cpreprocess_evaluate_cond(state, arg)
