@@ -3,7 +3,7 @@ SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
-OpChars = "&|=!+-*/%<>~?:"
+OpChars = "&|=!+-*/%<>^~?:,"
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
 
@@ -765,38 +765,84 @@ def cpreprocess_parse(stateStruct, input):
 		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
 		else: stateStruct.incIncludeLineChar(char=1)
 
-def cpre2_parse(stateStruct, input):
+def cpre2_parse(stateStruct, input, brackets = None):
 	state = 0
-	brackets = []
-	for c in input:
-		if state == 0:
-			if c in SpaceChars + "\n": pass
-			elif c in NumberChars: state = 10
-			elif c == '"': state = 20
-			elif c == "'": state = 25
-			elif c in LetterChars + "_": state = 30
-			elif c in OpeningBrackets: brackets += [c]
-			elif c in ClosingBrackets:
-				if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
-					stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
+	if brackets is None: brackets = []
+	string = ""
+	import itertools
+	for c in itertools.chain(input, "\n"):
+		breakLoop = False
+		while not breakLoop:
+			breakLoop = True
+			if state == 0:
+				if c in SpaceChars + "\n": pass
+				elif c in NumberChars:
+					laststr = c
+					state = 10
+				elif c == '"':
+					laststr = ""
+					state = 20
+				elif c == "'":
+					laststr = ""
+					state = 25
+				elif c in LetterChars + "_":
+					laststr = c
+					state = 30
+				elif c in OpeningBrackets: brackets += [c]
+				elif c in ClosingBrackets:
+					if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
+						stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
+					else:
+						brackets[:] = brackets[:-1]
+				elif c in OpChars:
+					laststr = c
+					state = 40
+				elif c == ";": pass
 				else:
-					brackets = brackets[:-1]
-			elif c in OpChars: state = 40
+					stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
+			elif state == 10: # number
+				if c in NumberChars: laststr += c
+				elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
+				else:
+					# TODO parse+yield number
+					laststr = ""
+					state = 0
+					breakLoop = False
+			elif state == 20: # "str
+				if c == '"':
+					# TODO yield str
+					state = 0
+				elif c == "\\": state = 21
+				else: laststr += c
+			elif state == 21: # escape in "str
+				laststr += simple_escape_char(c)
+				state = 20
+			elif state == 25: # 'str
+				if c == "'":
+					# TODO yield str
+					state = 0
+				elif c == "\\": state = 26
+				else: laststr += c
+			elif state == 26: # escape in 'str
+				laststr += simple_escape_char(c)
+				state = 25
+			elif state == 30: # identifier
+				if c in NumberChars + LetterChars + "_": laststr += c
+				else:
+					# TODO handle identifier
+					laststr = ""
+					state = 0
+					breakLoop = False
+			elif state == 40: # op
+				if c in OpChars: laststr += c
+				else:
+					# TODO handle op
+					laststr = ""
+					state = 0
+					breakLoop = False
 			else:
-				stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
-		elif state == 10: # number
-			pass
-		elif state == 20: # "str
-			pass
-		elif state == 25: # 'str
-			pass
-		elif state == 30: # identifier
-			pass
-		elif state == 40: # op
-			pass
-		else:
-			stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
-			
+				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
+				
 def test():
 	# Test
 	import better_exchook
@@ -806,7 +852,7 @@ def test():
 	state.autoSetupSystemMacros()
 	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
 
-	parse(state, preprocessed)
+	cpre2_parse(state, preprocessed)
 	
 	return state
 
