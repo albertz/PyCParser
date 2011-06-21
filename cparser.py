@@ -10,12 +10,110 @@ def simple_escape_char(c):
 	elif c == "t": return "\t"
 	else: return c
 
+def escape_cstr(s):
+	return s.replace('"', '\\"')
+
+def parse_macro_def_rightside(stateStruct, argnames, input):
+	assert argnames is not None
+	assert input is not None
+	if stateStruct is None:
+		class Dummy:
+			def error(self, s): pass
+		stateStruct = Dummy()
+
+	def f(*args):
+		args = dict(map(lambda i: (argnames[i], args[i]), range(len(argnames))))
+		
+		ret = ""
+		state = 0
+		lastidentifier = ""
+		for c in input:
+			if state == 0:
+				if c in SpaceChars: ret += c
+				elif c in LetterChars + "_":
+					state = 1
+					lastidentifier = c
+				elif c in NumberChars:
+					state = 2
+					ret += c
+				elif c == '"':
+					state = 4
+					ret += c
+				elif c == "#": state = 6
+				else: ret += c
+			elif state == 1: # identifier
+				if c in LetterChars + NumberChars + "_":
+					lastidentifier += c
+				else:
+					if lastidentifier in args:
+						ret += args[lastidentifier]
+					else:
+						ret += lastidentifier
+					lastidentifier = ""
+					ret += c
+					state = 0
+			elif state == 2: # number
+				ret += c
+				if c in NumberChars: pass
+				elif c == "x": state = 3
+				elif c in LetterChars + "_": pass # even if invalid, stay in this state
+				else: state = 0
+			elif state == 3: # hex number
+				ret += c
+				if c in NumberChars + LetterChars + "_": pass # also ignore invalids
+				else: state = 0
+			elif state == 4: # str
+				ret += c
+				if c == "\\": state = 5
+				elif c == '"': state = 0
+				else: pass
+			elif state == 5: # escape in str
+				state = 4
+				ret += c
+			elif state == 6: # after "#"
+				if c in SpaceChars + LetterChars + "_":
+					lastidentifier = c.strip()
+					state = 7
+				elif c == "#":
+					ret = ret.rstrip()
+					state = 8
+				else:
+					# unexpected, just recover
+					stateStruct.error("unfold macro: unexpected char '" + c + "' after #")
+					state = 0
+			elif state == 7: # after single "#"	with identifier
+				if c in LetterChars + NumberChars + "_":
+					lastidentifier += c
+				else:
+					if lastidentifier not in args:
+						stateStruct.error("unfold macro: cannot stringify " + lastidentifier + ": not found")
+					else:
+						ret += '"' + escape_cstr(args[lastidentifier]) + '"'
+					lastidentifier = ""
+					state = 0
+					ret += c
+			elif state == 8: # after "##"
+				if c in SpaceChars: pass
+				else:
+					lastidentifier = c
+					state = 1
+
+		if state == 1:
+			if lastidentifier in args:
+				ret += args[lastidentifier]
+			else:
+				ret += lastidentifier
+
+		return ret
+
+	return f
+
 class Macro:
 	def __init__(self, state=None, macroname=None, args=None, rightside=None):
 		self.name = macroname
 		self.args = args if (args is not None) else ()
 		self.rightside = rightside if (rightside is not None) else ""
-		self.func = lambda: self.rightside # TODO...
+		self.func = parse_macro_def_rightside(state, self.args, self.rightside)
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
 	def __str__(self):
 		return "(" + ", ".join(self.args) + ") -> " + self.rightside
@@ -644,17 +742,12 @@ def cpreprocess_parse(stateStruct, input):
 		else: stateStruct.incIncludeLineChar(char=1)
 
 def parse(state, input):
-	
-	
 	state = 0
 	
-	while True:
-		c = s.read(1)
-		if len(c) == 0: break
-		
+	for c in input:
 		if state == 0:
-			
-			pass
+			if c in SpaceChars: pass
+			else: pass
 
 def test():
 	# Test
@@ -663,8 +756,10 @@ def test():
 	
 	state = State()
 	state.autoSetupSystemMacros()
-	s = "".join(state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)).encode("utf-8")
+	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
 
+	parse(state, preprocessed)
+	
 	return state
 
 if __name__ == '__main__':
