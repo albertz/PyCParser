@@ -172,7 +172,8 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					stateStruct.error("preprocessor: runaway ')'")
 					return
 				elif c in SpaceChars:
-					if laststr != "": state = 10
+					if laststr == "defined": state = 5 
+					elif laststr != "": state = 10
 					else: pass
 				elif c in OpChars:
 					state = 10
@@ -213,6 +214,32 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 			elif state == 3: # in escape in str in bracket
 				substr += c
 				state = 2
+			elif state == 5: # after "defined" without brackets (yet)
+				if c in SpaceChars: pass
+				elif c == "(": state = 10
+				elif c == ")":
+					stateStruct.error("preprocessor eval: 'defined' invalid in '" + condstr + "'")
+					return
+				else:
+					laststr = c
+					state = 6
+			elif state == 6: # chars after "defined"
+				if c in LetterChars + "_" + NumberChars:
+					laststr += c
+				else:
+					macroname = laststr
+					if not is_valid_defname(macroname):
+						stateStruct.error("preprocessor eval defined-check: '" + macroname + "' is not a valid macro name")
+						return
+					neweval = macroname in stateStruct.macros
+					if prefixOp is not None:
+						neweval = prefixOp(neweval)
+						prefixOp = None
+					oldlast = lasteval
+					if op is not None: lasteval = op(lasteval, neweval)
+					else: lasteval = neweval
+					state = 18
+					breakLoop = False
 			elif state == 10: # after identifier
 				if c in SpaceChars: pass
 				elif c in OpChars:
@@ -362,6 +389,18 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 				prefixOp = None
 			if op is not None: lasteval = op(lasteval, neweval)
 			else: lasteval = neweval
+	elif state == 6:
+		macroname = laststr
+		if not is_valid_defname(macroname):
+			stateStruct.error("preprocessor eval defined-check: '" + macroname + "' is not a valid macro name")
+			return
+		neweval = macroname in stateStruct.macros
+		if prefixOp is not None:
+			neweval = prefixOp(neweval)
+			prefixOp = None
+		oldlast = lasteval
+		if op is not None: lasteval = op(lasteval, neweval)
+		else: lasteval = neweval
 	elif state == 18: # expected op
 		if opstr != "":
 			stateStruct.error("preprocessor eval: unfinished op: '" + opstr + "'")
