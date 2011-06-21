@@ -395,15 +395,9 @@ def cpreprocess_handle_def(stateStruct, arg):
 	for c in arg:
 		if state == 0:
 			if c in SpaceChars:
-				if macroname != "": state = 1
+				if macroname != "": state = 3
 			elif c == "(": state = 2
 			else: macroname += c
-		elif state == 1: # after space
-			if c in SpaceChars: pass
-			elif c == "(": state = 2
-			else:
-				rightside = c
-				state = 3
 		elif state == 2: # after "("
 			if c in SpaceChars: pass
 			elif c == ",": args += [""]
