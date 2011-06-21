@@ -11,11 +11,11 @@ def simple_escape_char(c):
 	else: return c
 
 class Macro:
-	def __init__(self, state, macroname, args, rightside):
+	def __init__(self, state=None, macroname=None, args=None, rightside=None):
 		self.name = macroname
-		self.args = args
-		self.rightside = rightside
-		self.func = lambda: "" # TODO...
+		self.args = args if (args is not None) else ()
+		self.rightside = rightside if (rightside is not None) else ""
+		self.func = lambda: self.rightside # TODO...
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
 	def __str__(self):
 		return "(" + ", ".join(self.args) + ") -> " + self.rightside
@@ -44,6 +44,7 @@ class State:
 			self.macros["__MACH__"] = self.EmptyMacro
 			self.macros["__MACOSX__"] = self.EmptyMacro
 			self.macros["i386"] = self.EmptyMacro
+			self.macros["MAC_OS_X_VERSION_MIN_REQUIRED"] = Macro(rightside="1030")
 			
 	def incIncludeLineChar(self, fullfilename=None, inc=None, line=None, char=None, charMod=None):
 		CharStartIndex = 0
