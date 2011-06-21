@@ -12,15 +12,22 @@ class State:
 		self._preprocessIncludeLevel = []
 		self._errors = []
 	
-	def incIncludeLineChar(self, fullfilename=None, inc=None, line=None, char=None):
+	def incIncludeLineChar(self, fullfilename=None, inc=None, line=None, char=None, charMod=None):
+		CharStartIndex = 0
+		LineStartIndex = 1
 		if inc is not None:
-			self._preprocessIncludeLevel += [[fullfilename, inc, 1, 0]]
+			self._preprocessIncludeLevel += [[fullfilename, inc, LineStartIndex, CharStartIndex]]
 		if len(self._preprocessIncludeLevel) == 0:
-			self._preprocessIncludeLevel += [[None, "<input>", 1, 0]]
+			self._preprocessIncludeLevel += [[None, "<input>", LineStartIndex, CharStartIndex]]
 		if line is not None:
 			self._preprocessIncludeLevel[-1][2] += line
+			self._preprocessIncludeLevel[-1][3] = CharStartIndex
 		if char is not None:
-			self._preprocessIncludeLevel[-1][3] += char
+			c = self._preprocessIncludeLevel[-1][3]
+			c += char
+			if charMod is not None:
+				c = c - (c - CharStartIndex) % charMod + CharStartIndex
+			self._preprocessIncludeLevel[-1][3] = c
 	
 	def curPosAsStr(self):
 		if len(self._preprocessIncludeLevel) == 0: return "<out-of-scope>"
@@ -38,8 +45,9 @@ class State:
 					import os.path
 					dir = os.path.dirname(self._preprocessIncludeLevel[-1][0])
 				if not dir: dir = "."
+				dir += "/"
 		else:
-			dir = "." # foo
+			dir = "./" # foo
 
 		fullfilename = dir + filename
 		return fullfilename
@@ -62,6 +70,8 @@ class State:
 				yield c
 		for c in cpreprocess_parse(self, reader()):
 			yield c
+		
+		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]
 
 def is_valid_defname(defname):
 	gotValidPrefix = False
@@ -83,13 +93,13 @@ def cpreprocess_evaluate_ifdef(state, arg):
 
 def cpreprocess_evaluate_cond(state, condstr):
 	# TODO ...
-	self.error("preprocessor: if-evaluation not yet implemented; cannot check '" + condstr + "'")
+	state.error("preprocessor: if-evaluation not yet implemented; cannot check '" + condstr + "'")
 	return True # may be more often what we want :P
 
 def cpreprocess_handle_include(state, arg):
 	arg = arg.strip()
 	if len(arg) < 2:
-		self.error("invalid include argument: '" + arg + "'")
+		state.error("invalid include argument: '" + arg + "'")
 		return
 	if arg[0] == '"' and arg[-1] == '"':
 		local = True
@@ -98,8 +108,9 @@ def cpreprocess_handle_include(state, arg):
 		local = False
 		filename = arg[1:-1]
 	else:
-		self.error("invalid include argument: '" + arg + "'")
+		state.error("invalid include argument: '" + arg + "'")
 		return
+	print "include", arg
 	for c in state.preprocess_file(filename=filename, local=local): yield c
 
 def cpreprocess_handle_def(state, arg):
@@ -117,50 +128,53 @@ def cpreprocess_handle_undef(state, arg):
 	state.macros.pop(arg)
 	
 def handle_cpreprocess_cmd(state, cmd, arg):
+	if not state._preprocessIgnoreCurrent:
+		print "cmd", cmd, arg
+
 	if cmd == "ifdef":
-		self._preprocessIfLevels += [0]
+		state._preprocessIfLevels += [0]
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		check = cpreprocess_evaluate_ifdef(state, arg)
-		if check: self._preprocessIfLevels[-1] = 1
+		if check: state._preprocessIfLevels[-1] = 1
 		
 	if cmd == "ifndef":
-		self._preprocessIfLevels += [0]
+		state._preprocessIfLevels += [0]
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		check = not cpreprocess_evaluate_ifdef(state, arg)
-		if check: self._preprocessIfLevels[-1] = 1
+		if check: state._preprocessIfLevels[-1] = 1
 
 	if cmd == "if":
-		self._preprocessIfLevels += [0]
+		state._preprocessIfLevels += [0]
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		check = cpreprocess_evaluate_cond(state, arg)
-		if check: self._preprocessIfLevels[-1] = 1
+		if check: state._preprocessIfLevels[-1] = 1
 		
 	elif cmd == "elif":
 		if state._preprocessIgnoreCurrent: return # we don't really care
-		if len(self._preprocessIfLevels) == 0:
+		if len(state._preprocessIfLevels) == 0:
 			state.error("preprocessor: elif without if")
 			return
-		if self._preprocessIfLevels[-1] >= 1:
-			self._preprocessIfLevels[-1] = 2 # we already had True
+		if state._preprocessIfLevels[-1] >= 1:
+			state._preprocessIfLevels[-1] = 2 # we already had True
 			return
 		check = cpreprocess_evaluate_cond(state, arg)
-		if check: self._preprocessIfLevels[-1] = 1
+		if check: state._preprocessIfLevels[-1] = 1
 
 	elif cmd == "else":
 		if state._preprocessIgnoreCurrent: return # we don't really care
-		if len(self._preprocessIfLevels) == 0:
+		if len(state._preprocessIfLevels) == 0:
 			state.error("preprocessor: else without if")
 			return
-		if self._preprocessIfLevels[-1] >= 1:
-			self._preprocessIfLevels[-1] = 2 # we already had True
+		if state._preprocessIfLevels[-1] >= 1:
+			state._preprocessIfLevels[-1] = 2 # we already had True
 			return
-		self._preprocessIfLevels[-1] = 1
+		state._preprocessIfLevels[-1] = 1
 	
 	elif cmd == "endif":
-		if len(self._preprocessIfLevels) == 0:
+		if len(state._preprocessIfLevels) == 0:
 			state.error("preprocessor: endif without if")
 			return
-		self._preprocessIfLevels = self._preprocessIfLevels[0:-1]
+		state._preprocessIfLevels = state._preprocessIfLevels[0:-1]
 	
 	elif cmd == "include":
 		if state._preprocessIgnoreCurrent: return
@@ -179,15 +193,13 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 		if state._preprocessIgnoreCurrent: return # we don't really care
 		state.error("preprocessor command " + cmd + " unknown")
 		
-	state._preprocessIgnoreCurrent = any(map(lambda x: x != 1, self._preprocessIfLevels))
+	state._preprocessIgnoreCurrent = any(map(lambda x: x != 1, state._preprocessIfLevels))
 
 def cpreprocess_parse(stateStruct, input):
 	cmd = ""
 	arg = ""
 	state = 0
-	for c in input:
-		stateStruct.incIncludeLineChar(char=1)
-		
+	for c in input:		
 		breakLoop = False
 		while not breakLoop:
 			breakLoop = True
@@ -198,7 +210,6 @@ def cpreprocess_parse(stateStruct, input):
 					arg = None
 					state = 1
 				elif c == "/": state = 20
-				elif c in SpaceChars + "\n": pass
 				else:
 					if not stateStruct._preprocessIgnoreCurrent: yield c
 			elif state == 1: # start of preprocessor command
@@ -213,7 +224,7 @@ def cpreprocess_parse(stateStruct, input):
 					arg = c
 					state = 4
 				elif c == "\n":
-					handle_cpreprocess_cmd(stateStruct, cmd, arg)
+					for c in handle_cpreprocess_cmd(stateStruct, cmd, arg): yield c
 					state = 0
 				else: cmd += c
 			elif state == 3: # command after space
@@ -256,7 +267,14 @@ def cpreprocess_parse(stateStruct, input):
 			elif state == 25: # C++-style comment
 				if c == "\n": state = 0
 				else: pass
-		
+			else:
+				self.error("internal error: invalid state " + str(state))
+				state = 0 # reset. it's the best we can do
+
+		if c == "\n": stateStruct.incIncludeLineChar(line=1)
+		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
+		else: stateStruct.incIncludeLineChar(char=1)
+
 def parse(state, input):
 	
 	
@@ -270,12 +288,15 @@ def parse(state, input):
 			
 			pass
 
-
-if __name__ == '__main__':
+def test():
 	# Test
 	import better_exchook
 	better_exchook.install()
 	
 	state = State()
-	state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
-	
+	s = "".join(state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)).encode("utf-8")
+
+	return state
+
+if __name__ == '__main__':
+	test()
