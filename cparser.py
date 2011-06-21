@@ -75,36 +75,47 @@ class State:
 		if local:
 			dir = ""
 			if filename[0] != "/":
-				if self._preprocessIncludeLevel:
+				if self._preprocessIncludeLevel and self._preprocessIncludeLevel[-1][0]:
 					import os.path
 					dir = os.path.dirname(self._preprocessIncludeLevel[-1][0])
 				if not dir: dir = "."
 				dir += "/"
 		else:
-			dir = "./" # foo
+			dir = ""
 
 		fullfilename = dir + filename
 		return fullfilename
-		
+	
+	def readGlobalInclude(self, filename):
+		if filename == "abc": return ""
+		else:
+			self.error("no handler for global include-file '" + filename + "'")
+			return ""
+
 	def preprocess_file(self, filename, local):
-		fullfilename = self.findIncludeFullFilename(filename, local)
-		
-		try:
-			import codecs
-			f = codecs.open(fullfilename, "r", "utf-8")
-		except Exception, e:
-			self.error("cannot open include-file '" + filename + "': " + str(e))
-			return
-		
+		if local:
+			fullfilename = self.findIncludeFullFilename(filename, local)
+			
+			try:
+				import codecs
+				f = codecs.open(fullfilename, "r", "utf-8")
+			except Exception, e:
+				self.error("cannot open include-file '" + filename + "': " + str(e))
+				return
+			
+			def reader():
+				while True:
+					c = f.read(1)
+					if len(c) == 0: break
+					yield c
+			reader = reader()
+		else:
+			fullfilename = None
+			reader = self.readGlobalInclude(filename)
+
 		self.incIncludeLineChar(fullfilename=fullfilename, inc=filename)
-		def reader():
-			while True:
-				c = f.read(1)
-				if len(c) == 0: break
-				yield c
-		for c in cpreprocess_parse(self, reader()):
-			yield c
-		
+		for c in cpreprocess_parse(self, reader):
+			yield c		
 		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]
 
 def is_valid_defname(defname):
