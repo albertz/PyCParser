@@ -3,7 +3,7 @@ SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
-OpChars = "&|=!+-"
+OpChars = "&|=!+-<>"
 
 def simple_escape_char(c):
 	if c == "n": return "\n"
@@ -307,6 +307,10 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					else:
 						if opstr == "!=": op = lambda x,y: x != y
 						elif opstr == "==": op = lambda x,y: x == y
+						elif opstr == "<=": op = lambda x,y: x <= y
+						elif opstr == ">=": op = lambda x,y: x >= y
+						elif opstr == "<": op = lambda x,y: x < y
+						elif opstr == ">": op = lambda x,y: x > y
 						elif opstr == "&&": op = lambda x,y: x and y
 						elif opstr == "||": op = lambda x,y: x or y
 						elif opstr == "!":
