@@ -437,24 +437,24 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 
 	if cmd == "ifdef":
 		state._preprocessIfLevels += [0]
-		if state._preprocessIgnoreCurrent: return # we don't really care
+		if any(map(lambda x: x != 1, state._preprocessIfLevels[:-1])): return # we don't really care
 		check = cpreprocess_evaluate_ifdef(state, arg)
 		if check: state._preprocessIfLevels[-1] = 1
 		
 	elif cmd == "ifndef":
 		state._preprocessIfLevels += [0]
-		if state._preprocessIgnoreCurrent: return # we don't really care
+		if any(map(lambda x: x != 1, state._preprocessIfLevels[:-1])): return # we don't really care
 		check = not cpreprocess_evaluate_ifdef(state, arg)
 		if check: state._preprocessIfLevels[-1] = 1
 
 	elif cmd == "if":
 		state._preprocessIfLevels += [0]
-		if state._preprocessIgnoreCurrent: return # we don't really care
+		if any(map(lambda x: x != 1, state._preprocessIfLevels[:-1])): return # we don't really care
 		check = cpreprocess_evaluate_cond(state, arg)
 		if check: state._preprocessIfLevels[-1] = 1
 		
 	elif cmd == "elif":
-		if state._preprocessIgnoreCurrent: return # we don't really care
+		if any(map(lambda x: x != 1, state._preprocessIfLevels[:-1])): return # we don't really care
 		if len(state._preprocessIfLevels) == 0:
 			state.error("preprocessor: elif without if")
 			return
@@ -465,7 +465,7 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 			if check: state._preprocessIfLevels[-1] = 1
 
 	elif cmd == "else":
-		if state._preprocessIgnoreCurrent: return # we don't really care
+		if any(map(lambda x: x != 1, state._preprocessIfLevels[:-1])): return # we don't really care
 		if len(state._preprocessIfLevels) == 0:
 			state.error("preprocessor: else without if")
 			return
