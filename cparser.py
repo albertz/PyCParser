@@ -127,17 +127,6 @@ class Macro:
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
 
-class _CBaseWithOptBody:
-	def __init__(self):
-		self.attribs = []
-		self.body = None
-		self.name = None
-		
-class CStruct: pass
-class CFunc:
-	def __init__(self):
-		pass
-
 class State:
 	EmptyMacro = Macro(None, None, (), "")
 	CBuiltinTypes = {
@@ -166,6 +155,7 @@ class State:
 		"int32_t": ctypes.c_int32,
 		"int64_t": ctypes.c_int64,
 		"byte": ctypes.c_byte,
+		"wchar_t": ctypes.c_wchar,
 		"size_t": ctypes.c_size_t
 	}
 	
@@ -1039,28 +1029,32 @@ def cpre2_tokenstream_asCCode(input):
 		elif isinstance(token, CClosingBracket): pass
 		else: needspace = True
 
+
+
+class _CBaseWithOptBody:
+	def __init__(self):
+		self.attribs = []
+		self.body = None
+		self.name = None
+
+
+class CDecl: pass
+
+class CStruct(_CBaseWithOptBody): pass
+class CFunc(_CBaseWithOptBody):
+	def __init__(self):
+		_CBaseWithOptBody.__init__(self)
+		self.params = []
+
+
 def cpre3_parse(stateStruct, input):
-	args = []
-	lastidentifier = ""
 	state = 0
-	statebeforemacro = None
 	
 	for token in input:
-		if state == 0:
-			if isinstance(token, CIdentifier):
-				if token.content in stateStruct.macros:
-					lastidentifier = token.content
-					statebeforemacro = state
-					state = 10
-		
-		elif state == 10:
-			if token == COpeningBracket("("):
-				state = 20
-			else:
-				pass
+		pass
+
 			
 def test():
-	# Test
 	import better_exchook
 	better_exchook.install()
 	
