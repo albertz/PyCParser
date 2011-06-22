@@ -766,20 +766,26 @@ def cpreprocess_parse(stateStruct, input):
 		else: stateStruct.incIncludeLineChar(char=1)
 
 class _CBase:
-	def __init__(self, data=None):
+	def __init__(self, data=None, rawstr=None):
 		self.content = data
+		self.rawstr = rawstr
 	def __repr__(self):
 		if self.content is None: return "<" + self.__class__.__name__ + ">"
 		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
 	def __eq__(self, other):
 		return self.__class__ is other.__class__ and self.content == other.content
+	def asCCode(self): return self.content
 
-class CStr(_CBase): pass
-class CChar(_CBase): pass
-class CNumber(_CBase): pass
+class CStr(_CBase):
+	def asCCode(self): return '"' + escape_cstr(self.content) + '"'
+class CChar(_CBase):
+	def asCCode(self): return "'" + escape_cstr(self.content) + '"'
+class CNumber(_CBase):
+	def asCCode(self): return self.rawstr
 class CIdentifier(_CBase): pass
 class COp(_CBase): pass
-class CSemicolon(_CBase): pass
+class CSemicolon(_CBase):
+	def asCCode(self): return ";"	
 class COpeningBracket(_CBase): pass
 class CClosingBracket(_CBase): pass
 
@@ -805,7 +811,10 @@ def cpre2_parse_number(stateStruct, s):
 def cpre2_parse(stateStruct, input, brackets = None):
 	state = 0
 	if brackets is None: brackets = []
-	string = ""
+	laststr = ""
+	macroname = ""
+	macroargs = []
+	macrobrackets = []
 	import itertools
 	for c in itertools.chain(input, "\n"):
 		breakLoop = False
@@ -844,7 +853,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				if c in NumberChars: laststr += c
 				elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
 				else:
-					yield CNumber(cpre2_parse_number(stateStruct, laststr))
+					yield CNumber(cpre2_parse_number(stateStruct, laststr), laststr)
 					laststr = ""
 					state = 0
 					breakLoop = False
@@ -871,10 +880,66 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					yield CIdentifier(laststr)
-					laststr = ""
-					state = 0
-					breakLoop = False
+					if laststr in stateStruct.macros:
+						macroname = laststr
+						macroargs = []
+						macrobrackets = []
+						state = 31
+						breakLoop = False
+					else:
+						yield CIdentifier(laststr)
+						laststr = ""
+						state = 0
+						breakLoop = False
+			elif state == 31: # after macro identifier
+				if c in SpaceChars + "\n": pass
+				elif c in OpeningBrackets:
+					if len(macrobrackets) == 0 and c != "(":
+						state = 32
+						breakLoop = False
+					else:
+						if macrobrackets:
+							if len(macroargs) == 0: macroargs = [""]
+							macroargs[-1] += c
+						macrobrackets += [c]
+				elif c in ClosingBrackets:
+					if len(macrobrackets) == 0:
+						state = 32
+						breakLoop = False
+					elif ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(macrobrackets[-1]) - 1] != c:
+						stateStruct.error("cpre2 parse: got '" + c + "' but macro-bracket level was " + str(macrobrackets))
+						# ignore
+					else:
+						macrobrackets[:] = macrobrackets[:-1]
+						if macrobrackets:
+							if len(macroargs) == 0: macroargs = [""]
+							macroargs[-1] += c
+						else:
+							state = 32
+							# break loop, we consumed this char
+				elif c == ",":
+					if macrobrackets:
+						if len(macroargs) == 0: macroargs = ["",""]
+						else: macroargs += [""]
+					else:
+						state = 32
+						breakLoop = False
+				else:
+					if macrobrackets:
+						if len(macroargs) == 0: macroargs = [""]
+						macroargs[-1] += c
+					else:
+						state = 32
+						breakLoop = False
+			elif state == 32: # finalize macro
+				try:
+					resolved = stateStruct.macros[macroname](*macroargs)
+					for t in cpre2_parse(stateStruct, resolved, brackets):
+						yield t
+				except Exception, e:
+					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + str(e))
+				state = 0
+				breakLoop = False
 			elif state == 40: # op
 				if c in OpChars: laststr += c
 				else:
@@ -884,6 +949,47 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					breakLoop = False
 			else:
 				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
+
+def cpre2_tokenstream_asCCode(input):
+	needspace = False
+	wantnewline = False
+	indentLevel = ""
+	needindent = False
+	
+	for token in input:
+		if wantnewline:
+			if isinstance(token, CSemicolon): pass
+			else:
+				yield "\n"
+				needindent = True
+			wantnewline = False
+			needspace = False
+		elif needspace:
+			if isinstance(token, CSemicolon): pass
+			elif token == COpeningBracket("("): pass
+			elif token == CClosingBracket(")"): pass
+			elif token == COpeningBracket("["): pass
+			elif token == CClosingBracket("]"): pass
+			elif token in [COp("++"), COp("--"), COp(",")]: pass
+			else:
+				yield " "
+			needspace = False
+		
+		if token == CClosingBracket("}"): indentLevel = indentLevel[:-1]
+		if needindent:
+			yield indentLevel
+			needindent = False
+			
+		yield token.asCCode()
+		
+		if token == COpeningBracket("{"): indentLevel += "\t"
+		
+		if token == CSemicolon(): wantnewline = True
+		elif token == COpeningBracket("{"): wantnewline = True
+		elif token == CClosingBracket("}"): wantnewline = True
+		elif isinstance(token, COpeningBracket): pass
+		elif isinstance(token, CClosingBracket): pass
+		else: needspace = True
 
 def cpre3_parse(stateStruct, input):
 	args = []
