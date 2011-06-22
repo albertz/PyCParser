@@ -771,6 +771,8 @@ class _CBase:
 	def __repr__(self):
 		if self.content is None: return "<" + self.__class__.__name__ + ">"
 		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
+	def __eq__(self, other):
+		return self.__class__ is other.__class__ and self.content == other.content
 
 class CStr(_CBase): pass
 class CChar(_CBase): pass
@@ -882,7 +884,27 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					breakLoop = False
 			else:
 				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
-				
+
+def cpre3_parse(stateStruct, input):
+	args = []
+	lastidentifier = ""
+	state = 0
+	statebeforemacro = None
+	
+	for token in input:
+		if state == 0:
+			if isinstance(token, CIdentifier):
+				if token.content in stateStruct.macros:
+					lastidentifier = token.content
+					statebeforemacro = state
+					state = 10
+		
+		elif state == 10:
+			if token == COpeningBracket("("):
+				state = 20
+			else:
+				pass
+			
 def test():
 	# Test
 	import better_exchook
