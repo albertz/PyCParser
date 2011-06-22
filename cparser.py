@@ -1126,8 +1126,10 @@ def cpre3_parse(stateStruct, input):
 					curCObj._bracketlevel = list(token.brackets)
 					if token.content == "(":
 						state = 1
+						CFunc.overtake(curCObj)
 					elif token.content == "[":
 						state = 5
+						CVarDecl.overtake(curCObj)
 					elif token.content == "{":
 						parent = curCObj
 						if not curCObj.isDerived():
