@@ -1039,9 +1039,9 @@ def cpre2_tokenstream_asCCode(input):
 
 class _CBaseWithOptBody:
 	def __init__(self, **kwargs):
-		self._builtin_type_tokens = []
 		self._type_tokens = []
 		self._id_tokens = []
+		self._bracketlevel = []
 		self.attribs = []
 		self.name = None
 		self.args = []
@@ -1064,9 +1064,18 @@ class _CBaseWithOptBody:
 		return \
 			self.__class__.__name__ + " " + \
 			str(self.attribs) + " " + \
-			str(self._builtin_type_tokens + self._type_tokens) + " " + \
+			str(self._type_tokens) + " " + \
 			name + " " + str(self.body)
 		
+	def finalize(self, stateStruct):
+		# TODO ...
+		print "finalize", self, "at", stateStruct.curPosAsStr()
+	
+	def copy(self):
+		import copy
+		return copy.deepcopy(self, memo={id(self.parent): self.parent})
+
+class CTypedef(_CBaseWithOptBody): pass
 class CVarDecl(_CBaseWithOptBody): pass
 class CStruct(_CBaseWithOptBody): pass
 class CUnion(_CBaseWithOptBody): pass
@@ -1084,7 +1093,9 @@ def cpre3_parse(stateStruct, input):
 			breakLoop = True
 			if state == 0:
 				if isinstance(token, CIdentifier):
-					if token.content == "typedef": state = 10
+					if token.content == "typedef":
+						state = 10
+						CTypedef.overtake(curCObj)
 					elif token.content in stateStruct.Attribs:
 						curCObj.attribs += [token.content]
 					elif token.content == "struct":
@@ -1094,22 +1105,32 @@ def cpre3_parse(stateStruct, input):
 					elif token.content == "enum":
 						CEnum.overtake(curCObj)
 					elif (token.content,) in stateStruct.CBuiltinTypes:
-						curCObj._builtin_type_tokens += [token.content]
+						curCObj._type_tokens += [token.content]
 					elif token.content in stateStruct.StdIntTypes:
 						curCObj._type_tokens += [token.content]
 					elif token.content in stateStruct.typedefs:
 						curCObj._type_tokens += [token.content]
 					else:
 						curCObj._id_tokens += [token.content]
+				elif isinstance(token, COp):
+					if token.content == "*":
+						curCObj._type_tokens += [token.content]
+					elif token.content == ",":
+						CVarDecl.overtake(curCObj)
+						curCObj.finalize(stateStruct)
+						curCObj = curCObj.copy()
+					else:
+						stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in base state")
 				elif isinstance(token, COpeningBracket):
+					curCObj._bracketlevel = list(token.brackets)
 					if token.content == "(":
 						state = 1
 					elif token.content == "[":
 						state = 5
 					elif token.content == "{":
+						parent = curCObj
 						if not curCObj.isDerived():
-							parent = curCObj
-							curCObj = _CBaseWithOptBody(parent=parent)
+							pass
 						elif isinstance(curCObj, CStruct):
 							state = 30
 						elif isinstance(curCObj, CUnion):
@@ -1120,34 +1141,75 @@ def cpre3_parse(stateStruct, input):
 							state = 60
 						else:
 							stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
-							# handle it like no-content
-							parent = curCObj
-							curCObj = _CBaseWithOptBody(parent=parent)
 					else:
 						stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
+				elif isinstance(token, CClosingBracket):
+					if token.content == "}":
+						if parent is None:
+							stateStruct.error("cpre3 parse: runaway '}' in base state")
+						else:
+							parent = parent.parent
+							curCObj.finalize(stateStruct)
+							curCObj = _CBaseWithOptBody(parent=parent)
+					else:
+						stateStruct.error("cpre3 parse: unexpected closing bracket '" + token.content + "' in base state")
 				elif isinstance(token, CSemicolon):
-					state = 100
-					breakLoop = False
+					curCObj.finalize(stateStruct)
+					curCObj = _CBaseWithOptBody(parent=parent)
 				else:
 					stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
 			elif state == 1: # "(" bracket
-				pass
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
 			elif state == 5: # "[" bracket
-				pass
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
 			elif state == 10: # typedef
-				pass
+				# TODO ...
+				if isinstance(token, COpeningBracket):
+					curCObj._bracketlevel = list(token.brackets)
+					state = 11
+				elif isinstance(token, CSemicolon):
+					state = 0
+					curCObj.finalize(stateStruct)
+					curCObj = _CBaseWithOptBody(parent=parent)
+			elif state == 11: # bracket in typedef
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 10
 			elif state == 30: # struct
-				pass
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
+						curCObj.finalize(stateStruct)
+						curCObj = _CBaseWithOptBody(parent=parent)
 			elif state == 40: # union
-				pass
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
+						curCObj.finalize(stateStruct)
+						curCObj = _CBaseWithOptBody(parent=parent)
 			elif state == 50: # enum
-				pass
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
+						curCObj.finalize(stateStruct)
+						curCObj = _CBaseWithOptBody(parent=parent)
 			elif state == 60: # func
-				pass
-			elif state == 100: # finalize curCObj
-				# TODO finalize
-				print "finalize", str(curCObj)
-				curCObj = _CBaseWithOptBody()
+				# TODO ...
+				if isinstance(token, CClosingBracket):
+					if token.brackets == curCObj._bracketlevel:
+						state = 0
+						curCObj.finalize(stateStruct)
+						curCObj = _CBaseWithOptBody(parent=parent)
 			else:
 				stateStruct.error("cpre3 parse: internal error. unexpected state " + str(state))
 			
@@ -1161,7 +1223,16 @@ def test():
 	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
 	tokens = cpre2_parse(state, preprocessed)
 	
-	return state, list(tokens)
+	token_list = []
+	def copy_hook(input, output):
+		for x in input:
+			output.append(x)
+			yield x
+	tokens = copy_hook(tokens, token_list)
+	
+	cpre3_parse(state, tokens)
+	
+	return state, token_list
 
 if __name__ == '__main__':
 	test()
