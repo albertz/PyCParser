@@ -1038,7 +1038,7 @@ def cpre2_tokenstream_asCCode(input):
 
 
 class _CBaseWithOptBody:
-	def __init__(self):
+	def __init__(self, **kwargs):
 		self._builtin_type_tokens = []
 		self._type_tokens = []
 		self._id_tokens = []
@@ -1047,7 +1047,10 @@ class _CBaseWithOptBody:
 		self.args = []
 		self.arrayargs = []
 		self.body = None
-
+		self.parent = None
+		for k,v in kwargs.iteritems():
+			setattr(self, k, v)
+			
 	@classmethod
 	def overtake(cls, obj):
 		obj.__class__ = cls
@@ -1073,74 +1076,81 @@ class CFunc(_CBaseWithOptBody): pass
 def cpre3_parse(stateStruct, input):
 	state = 0
 	curCObj = _CBaseWithOptBody()
+	parent = None
 	
 	for token in input:
-		if state == 0:
-			if isinstance(token, CIdentifier):
-				if token.content == "typedef": state = 10
-				elif token.content in stateStruct.Attribs:
-					curCObj.attribs += [token.content]
-				elif token.content == "struct":
-					CStruct.overtake(curCObj)
-				elif token.content == "union":
-					CUnion.overtake(curCObj)
-				elif token.content == "enum":
-					CEnum.overtake(curCObj)
-					state = 20
-				elif (token.content,) in stateStruct.CBuiltinTypes:
-					curCObj._builtin_type_tokens += [token.content]
-				elif token.content in stateStruct.StdIntTypes:
-					curCObj._type_tokens += [token.content]
-				elif token.content in stateStruct.typedefs:
-					curCObj._type_tokens += [token.content]
-				else:
-					curCObj._id_tokens += [token.content]
-			elif isinstance(token, COpeningBracket):
-				if token.content == "(":
-					state = 1
-				elif token.content == "[":
-					state = 5
-				elif token.content == "{":
-					if not curCObj.isDerived():
-						state = 20
-					elif isinstance(curCObj, CStruct):
-						state = 30
-					elif isinstance(curCObj, CUnion):
-						state = 40
-					elif isinstance(curCObj, CEnum):
-						state = 50
-					elif isinstance(curCObj, CFunc):
-						state = 60
+		breakLoop = False
+		while not breakLoop:
+			breakLoop = True
+			if state == 0:
+				if isinstance(token, CIdentifier):
+					if token.content == "typedef": state = 10
+					elif token.content in stateStruct.Attribs:
+						curCObj.attribs += [token.content]
+					elif token.content == "struct":
+						CStruct.overtake(curCObj)
+					elif token.content == "union":
+						CUnion.overtake(curCObj)
+					elif token.content == "enum":
+						CEnum.overtake(curCObj)
+					elif (token.content,) in stateStruct.CBuiltinTypes:
+						curCObj._builtin_type_tokens += [token.content]
+					elif token.content in stateStruct.StdIntTypes:
+						curCObj._type_tokens += [token.content]
+					elif token.content in stateStruct.typedefs:
+						curCObj._type_tokens += [token.content]
 					else:
-						stateStruct.error("cpre3 parse: unexpected '{' after " + str(token))
-						state = 20 # well...
+						curCObj._id_tokens += [token.content]
+				elif isinstance(token, COpeningBracket):
+					if token.content == "(":
+						state = 1
+					elif token.content == "[":
+						state = 5
+					elif token.content == "{":
+						if not curCObj.isDerived():
+							parent = curCObj
+							curCObj = _CBaseWithOptBody(parent=parent)
+						elif isinstance(curCObj, CStruct):
+							state = 30
+						elif isinstance(curCObj, CUnion):
+							state = 40
+						elif isinstance(curCObj, CEnum):
+							state = 50
+						elif isinstance(curCObj, CFunc):
+							state = 60
+						else:
+							stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
+							# handle it like no-content
+							parent = curCObj
+							curCObj = _CBaseWithOptBody(parent=parent)
+					else:
+						stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
+				elif isinstance(token, CSemicolon):
+					state = 100
+					breakLoop = False
 				else:
-					stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
-			elif isinstance(token, CSemicolon):
-				# TODO finalize
+					stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
+			elif state == 1: # "(" bracket
 				pass
-			
+			elif state == 5: # "[" bracket
+				pass
+			elif state == 10: # typedef
+				pass
+			elif state == 30: # struct
+				pass
+			elif state == 40: # union
+				pass
+			elif state == 50: # enum
+				pass
+			elif state == 60: # func
+				pass
+			elif state == 100: # finalize curCObj
+				# TODO finalize
+				print "finalize", str(curCObj)
+				curCObj = _CBaseWithOptBody()
 			else:
-				stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
-		elif state == 1: # "(" bracket
-			pass
-		elif state == 5: # "[" bracket
-			pass
-		elif state == 10: # typedef
-			pass
-		elif state == 20: # "{" bracket without content
-			pass
-		elif state == 30: # struct
-			pass
-		elif state == 40: # union
-			pass
-		elif state == 50: # enum
-			pass
-		elif state == 60: # func
-			pass
-		else:
-			stateStruct.error("cpre3 parse: internal error. unexpected state " + str(state))
-		
+				stateStruct.error("cpre3 parse: internal error. unexpected state " + str(state))
+			
 def test():
 	import better_exchook
 	better_exchook.install()
