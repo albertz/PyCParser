@@ -985,7 +985,11 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				state = 0
 				breakLoop = False
 			elif state == 40: # op
-				if c in OpChars: laststr += c
+				if c in OpChars:
+					if c == "*": # this always separates
+						yield COp(laststr)
+						laststr = ""
+					laststr += c
 				else:
 					yield COp(laststr)
 					laststr = ""
@@ -1054,8 +1058,8 @@ class _CBaseWithOptBody:
 	@classmethod
 	def overtake(cls, obj):
 		obj.__class__ = cls
-		cls.__init__(obj)
-
+		# no cls.__init__ because it would overwrite all our attribs!
+		
 	def isDerived(self):
 		return self.__class__ != _CBaseWithOptBody
 
