@@ -1040,12 +1040,17 @@ def cpre2_tokenstream_asCCode(input):
 		else: needspace = True
 
 
+# either some basic type, another typedef or some complex like CStruct/CUnion/...
+class CType:
+	def __repr__(self):
+		return str(self.__dict__)
 
 class _CBaseWithOptBody:
 	def __init__(self, **kwargs):
 		self._type_tokens = []
 		self._id_tokens = []
 		self._bracketlevel = []
+		self.type = None
 		self.attribs = []
 		self.name = None
 		self.args = []
@@ -1070,16 +1075,39 @@ class _CBaseWithOptBody:
 			str(self.attribs) + " " + \
 			str(self._type_tokens) + " " + \
 			name + " " + str(self.body)
-		
+	
+	def make_type_from_typetokens(self, stateStruct):
+		if tuple(self._type_tokens) in stateStruct.CBuiltinTypes:
+			self.type = CType()
+			self.type.builtinType = stateStruct.CBuiltinTypes[tuple(self._type_tokens)]
+		elif len(self._type_tokens) == 1 and self._type_tokens[0] in stateStruct.StdIntTypes:
+			self.type = CType()
+			self.type.stdIntType = self._type_tokens[0]
+		elif len(self._type_tokens) == 1 and self._type_tokens[0] in stateStruct.typedefs:
+			self.type = CType()
+			self.type.typedef = self._type_tokens[0]
+		else:
+			# TODO
+			stateStruct.error("make_type_from_typetokens currently not supported for " + str(self._type_tokens))
+	
 	def finalize(self, stateStruct):
-		# TODO ...
 		print "finalize", self, "at", stateStruct.curPosAsStr()
 	
 	def copy(self):
 		import copy
 		return copy.deepcopy(self, memo={id(self.parent): self.parent})
 
-class CTypedef(_CBaseWithOptBody): pass
+	
+class CTypedef(_CBaseWithOptBody):
+	def finalize(self, stateStruct):
+		if self.type is None:
+			stateStruct.error("finalize typedef: type is unknown")
+			return
+		if self.name is None:
+			stateStruct.error("finalize typedef: name is unset")
+			return
+		stateStruct.typedefs[self.name] = self.type
+
 class CVarDecl(_CBaseWithOptBody): pass
 class CStruct(_CBaseWithOptBody): pass
 class CUnion(_CBaseWithOptBody): pass
@@ -1136,18 +1164,18 @@ def cpre3_parse(stateStruct, input):
 						CVarDecl.overtake(curCObj)
 					elif token.content == "{":
 						parent = curCObj
-						if not curCObj.isDerived():
-							pass
-						elif isinstance(curCObj, CStruct):
-							state = 30
-						elif isinstance(curCObj, CUnion):
-							state = 40
-						elif isinstance(curCObj, CEnum):
-							state = 50
-						elif isinstance(curCObj, CFunc):
-							state = 60
-						else:
-							stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
+						if curCObj.isDerived():
+							curCObj.body = []
+							if isinstance(curCObj, CStruct):
+								state = 30
+							elif isinstance(curCObj, CUnion):
+								state = 40
+							elif isinstance(curCObj, CEnum):
+								state = 50
+							elif isinstance(curCObj, CFunc):
+								state = 60
+							else:
+								stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
 					else:
 						stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
 				elif isinstance(token, CClosingBracket):
@@ -1165,7 +1193,7 @@ def cpre3_parse(stateStruct, input):
 					curCObj = _CBaseWithOptBody(parent=parent)
 				else:
 					stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
-			elif state == 1: # "(" bracket
+			elif state == 1: # "(" bracket, i.e. func args
 				# TODO ...
 				if isinstance(token, CClosingBracket):
 					if token.brackets == curCObj._bracketlevel:
@@ -1176,10 +1204,43 @@ def cpre3_parse(stateStruct, input):
 					if token.brackets == curCObj._bracketlevel:
 						state = 0
 			elif state == 10: # typedef
-				# TODO ...
+				if isinstance(token, CIdentifier):
+					if token.content == "typedef":
+						stateStruct.error("cpre3 parse: typedef not expected twice")
+					elif token.content in stateStruct.Attribs:
+						curCObj.attribs += [token.content]
+					elif token.content == "struct":
+						curCObj.type = CStruct()
+					elif token.content == "union":
+						curCObj.type = CUnion()
+					elif token.content == "enum":
+						curCObj.type = CEnum()
+					elif (token.content,) in stateStruct.CBuiltinTypes:
+						curCObj._type_tokens += [token.content]
+					elif token.content in stateStruct.StdIntTypes:
+						curCObj._type_tokens += [token.content]
+					elif token.content in stateStruct.typedefs:
+						curCObj._type_tokens += [token.content]
+					else:
+						if curCObj._type_tokens and curCObj.type is None:
+							curCObj.make_type_from_typetokens(stateStruct)
+						if curCObj.type is not None:
+							if curCObj.name is None:
+								curCObj.name = token.content
+							else:
+								stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content)
+						else:
+							stateStruct.error("cpre3 parse in typedef: got unknown identifier " + token.content)
 				if isinstance(token, COpeningBracket):
 					curCObj._bracketlevel = list(token.brackets)
-					state = 11
+					if token.content == "{":
+						if isinstance(curCObj.type, (CStruct,CUnion,CEnum)):
+							pass
+						else:
+							stateStruct.error("cpre3 parse in typedef: got unexpected '{'")
+						state = 11
+					else:
+						state = 11
 				elif isinstance(token, CSemicolon):
 					state = 0
 					curCObj.finalize(stateStruct)
@@ -1210,7 +1271,7 @@ def cpre3_parse(stateStruct, input):
 						state = 0
 						curCObj.finalize(stateStruct)
 						curCObj = _CBaseWithOptBody(parent=parent)
-			elif state == 60: # func
+			elif state == 60: # func body
 				# TODO ...
 				if isinstance(token, CClosingBracket):
 					if token.brackets == curCObj._bracketlevel:
