@@ -3,7 +3,7 @@ SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
-OpChars = "&|=!+-*/%<>^~?:,"
+OpChars = "&|=!+-*/%<>^~?:,."
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
 
@@ -765,6 +765,41 @@ def cpreprocess_parse(stateStruct, input):
 		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
 		else: stateStruct.incIncludeLineChar(char=1)
 
+class _CBase:
+	def __init__(self, data=None):
+		self.content = data
+	def __repr__(self):
+		if self.content is None: return "<" + self.__class__.__name__ + ">"
+		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
+
+class CStr(_CBase): pass
+class CChar(_CBase): pass
+class CNumber(_CBase): pass
+class CIdentifier(_CBase): pass
+class COp(_CBase): pass
+class CSemicolon(_CBase): pass
+class COpeningBracket(_CBase): pass
+class CClosingBracket(_CBase): pass
+
+def cpre2_parse_number(stateStruct, s):
+	if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
+		try:
+			return long(s, 8)
+		except Exception, e:
+			stateStruct.error("cpre2_parse_number: " + s + " looks like octal but got error " + str(e))
+			return 0
+	if len(s) > 1 and s[0] == "0" and s[1] in "xX":
+		try:
+			return long(s, 16)
+		except Exception, e:
+			stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
+			return 0
+	try:
+		return long(s)
+	except Exception, e:
+		stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
+		return 0
+
 def cpre2_parse(stateStruct, input, brackets = None):
 	state = 0
 	if brackets is None: brackets = []
@@ -788,29 +823,33 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				elif c in LetterChars + "_":
 					laststr = c
 					state = 30
-				elif c in OpeningBrackets: brackets += [c]
+				elif c in OpeningBrackets:
+					brackets += [c]
+					yield COpeningBracket(c)
 				elif c in ClosingBrackets:
 					if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
 						stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
 					else:
 						brackets[:] = brackets[:-1]
+						yield CClosingBracket(c)
 				elif c in OpChars:
 					laststr = c
 					state = 40
-				elif c == ";": pass
+				elif c == ";": yield CSemicolon()
 				else:
 					stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
 			elif state == 10: # number
 				if c in NumberChars: laststr += c
 				elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
 				else:
-					# TODO parse+yield number
+					yield CNumber(cpre2_parse_number(stateStruct, laststr))
 					laststr = ""
 					state = 0
 					breakLoop = False
 			elif state == 20: # "str
 				if c == '"':
-					# TODO yield str
+					yield CStr(laststr)
+					laststr = ""
 					state = 0
 				elif c == "\\": state = 21
 				else: laststr += c
@@ -819,7 +858,8 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				state = 20
 			elif state == 25: # 'str
 				if c == "'":
-					# TODO yield str
+					yield CChar(laststr)
+					laststr = ""
 					state = 0
 				elif c == "\\": state = 26
 				else: laststr += c
@@ -829,14 +869,14 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					# TODO handle identifier
+					yield CIdentifier(laststr)
 					laststr = ""
 					state = 0
 					breakLoop = False
 			elif state == 40: # op
 				if c in OpChars: laststr += c
 				else:
-					# TODO handle op
+					yield COp(laststr)
 					laststr = ""
 					state = 0
 					breakLoop = False
@@ -850,11 +890,11 @@ def test():
 	
 	state = State()
 	state.autoSetupSystemMacros()
-	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
 
-	cpre2_parse(state, preprocessed)
+	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
+	tokens = cpre2_parse(state, preprocessed)
 	
-	return state
+	return state, list(tokens)
 
 if __name__ == '__main__':
 	test()
