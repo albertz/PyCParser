@@ -850,6 +850,7 @@ def cpre2_parse_number(stateStruct, s):
 			stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
 			return 0
 	try:
+		s = s.rstrip("ULul")
 		return long(s)
 	except Exception, e:
 		stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
