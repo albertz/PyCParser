@@ -1114,12 +1114,61 @@ class CUnion(_CBaseWithOptBody): pass
 class CEnum(_CBaseWithOptBody): pass
 class CFunc(_CBaseWithOptBody): pass
 
+def cpre3_parse_struct(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
+def cpre3_parse_union(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
+def cpre3_parse_enum(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
+def cpre3_parse_funcargs(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
+def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
+def cpre3_parse_arrayarg(stateStruct, curCObj, input_iter):
+	# TODO
+	for token in input_iter:
+		if isinstance(token, CClosingBracket):
+			if token.brackets == curCObj._bracketlevel:
+				curCObj.finalize(stateStruct)
+				return
+
 def cpre3_parse(stateStruct, input):
 	state = 0
 	curCObj = _CBaseWithOptBody()
 	parent = None
 	
-	for token in input:
+	input_iter = iter(input)
+	for token in input_iter:
 		breakLoop = False
 		while not breakLoop:
 			breakLoop = True
@@ -1157,25 +1206,26 @@ def cpre3_parse(stateStruct, input):
 				elif isinstance(token, COpeningBracket):
 					curCObj._bracketlevel = list(token.brackets)
 					if token.content == "(":
-						state = 1
 						CFunc.overtake(curCObj)
+						cpre3_parse_funcargs(stateStruct, curCObj, input_iter)
 					elif token.content == "[":
-						state = 5
 						CVarDecl.overtake(curCObj)
+						cpre3_parse_arrayarg(stateStruct, curCObj, input_iter)
 					elif token.content == "{":
 						parent = curCObj
 						if curCObj.isDerived():
 							curCObj.body = []
 							if isinstance(curCObj, CStruct):
-								state = 30
+								cpre3_parse_struct(stateStruct, curCObj, input_iter)
 							elif isinstance(curCObj, CUnion):
-								state = 40
+								cpre3_parse_union(stateStruct, curCObj, input_iter)
 							elif isinstance(curCObj, CEnum):
-								state = 50
+								cpre3_parse_enum(stateStruct, curCObj, input_iter)
 							elif isinstance(curCObj, CFunc):
-								state = 60
+								cpre3_parse_funcbody(stateStruct, curCObj, input_iter)
 							else:
 								stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
+							curCObj = _CBaseWithOptBody(parent=parent)							
 					else:
 						stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
 				elif isinstance(token, CClosingBracket):
@@ -1193,16 +1243,6 @@ def cpre3_parse(stateStruct, input):
 					curCObj = _CBaseWithOptBody(parent=parent)
 				else:
 					stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
-			elif state == 1: # "(" bracket, i.e. func args
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
-			elif state == 5: # "[" bracket
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
 			elif state == 10: # typedef
 				if isinstance(token, CIdentifier):
 					if token.content == "typedef":
@@ -1234,11 +1274,15 @@ def cpre3_parse(stateStruct, input):
 				if isinstance(token, COpeningBracket):
 					curCObj._bracketlevel = list(token.brackets)
 					if token.content == "{":
-						if isinstance(curCObj.type, (CStruct,CUnion,CEnum)):
-							pass
+						if isinstance(curCObj.type, CStruct):
+							cpre3_parse_struct(stateStruct, curCObj.type, input_iter)
+						elif isinstance(curCObj.type, CUnion):
+							cpre3_parse_union(stateStruct, curCObj.type, input_iter)
+						elif isinstance(curCObj.type, CEnum):
+							cpre3_parse_enum(stateStruct, curCObj.type, input_iter)
 						else:
-							stateStruct.error("cpre3 parse in typedef: got unexpected '{'")
-						state = 11
+							stateStruct.error("cpre3 parse in typedef: got unexpected '{' after type " + str(curCObj.type))
+							state = 11
 					else:
 						state = 11
 				elif isinstance(token, CSemicolon):
@@ -1250,34 +1294,6 @@ def cpre3_parse(stateStruct, input):
 				if isinstance(token, CClosingBracket):
 					if token.brackets == curCObj._bracketlevel:
 						state = 10
-			elif state == 30: # struct
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
-						curCObj.finalize(stateStruct)
-						curCObj = _CBaseWithOptBody(parent=parent)
-			elif state == 40: # union
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
-						curCObj.finalize(stateStruct)
-						curCObj = _CBaseWithOptBody(parent=parent)
-			elif state == 50: # enum
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
-						curCObj.finalize(stateStruct)
-						curCObj = _CBaseWithOptBody(parent=parent)
-			elif state == 60: # func body
-				# TODO ...
-				if isinstance(token, CClosingBracket):
-					if token.brackets == curCObj._bracketlevel:
-						state = 0
-						curCObj.finalize(stateStruct)
-						curCObj = _CBaseWithOptBody(parent=parent)
 			else:
 				stateStruct.error("cpre3 parse: internal error. unexpected state " + str(state))
 			
