@@ -137,6 +137,7 @@ class State:
 		("unsigned", "short"): ctypes.c_ushort,
 		("int",): ctypes.c_int,
 		("unsigned", "int"): ctypes.c_uint,
+		("unsigned",): ctypes.c_uint,
 		("long",): ctypes.c_long,
 		("unsigned", "long"): ctypes.c_ulong,
 		("long","long"): ctypes.c_longlong,
@@ -158,6 +159,11 @@ class State:
 		"wchar_t": ctypes.c_wchar,
 		"size_t": ctypes.c_size_t
 	}
+	Attribs = [
+		"extern",
+		"static",
+		"__inline__",
+	]
 	
 	def __init__(self):
 		self.macros = {} # name -> Macro
@@ -1033,27 +1039,108 @@ def cpre2_tokenstream_asCCode(input):
 
 class _CBaseWithOptBody:
 	def __init__(self):
+		self._builtin_type_tokens = []
+		self._type_tokens = []
+		self._id_tokens = []
 		self.attribs = []
-		self.body = None
 		self.name = None
+		self.args = []
+		self.arrayargs = []
+		self.body = None
 
+	@classmethod
+	def overtake(cls, obj):
+		obj.__class__ = cls
+		cls.__init__(obj)
 
-class CDecl: pass
+	def isDerived(self):
+		return self.__class__ != _CBaseWithOptBody
 
+	def __str__(self):
+		name = self.name if self.name else str(self._id_tokens)
+		return \
+			self.__class__.__name__ + " " + \
+			str(self.attribs) + " " + \
+			str(self._builtin_type_tokens + self._type_tokens) + " " + \
+			name + " " + str(self.body)
+		
+class CVarDecl(_CBaseWithOptBody): pass
 class CStruct(_CBaseWithOptBody): pass
-class CFunc(_CBaseWithOptBody):
-	def __init__(self):
-		_CBaseWithOptBody.__init__(self)
-		self.params = []
-
+class CUnion(_CBaseWithOptBody): pass
+class CEnum(_CBaseWithOptBody): pass
+class CFunc(_CBaseWithOptBody): pass
 
 def cpre3_parse(stateStruct, input):
 	state = 0
+	curCObj = _CBaseWithOptBody()
 	
 	for token in input:
-		pass
-
+		if state == 0:
+			if isinstance(token, CIdentifier):
+				if token.content == "typedef": state = 10
+				elif token.content in stateStruct.Attribs:
+					curCObj.attribs += [token.content]
+				elif token.content == "struct":
+					CStruct.overtake(curCObj)
+				elif token.content == "union":
+					CUnion.overtake(curCObj)
+				elif token.content == "enum":
+					CEnum.overtake(curCObj)
+					state = 20
+				elif (token.content,) in stateStruct.CBuiltinTypes:
+					curCObj._builtin_type_tokens += [token.content]
+				elif token.content in stateStruct.StdIntTypes:
+					curCObj._type_tokens += [token.content]
+				elif token.content in stateStruct.typedefs:
+					curCObj._type_tokens += [token.content]
+				else:
+					curCObj._id_tokens += [token.content]
+			elif isinstance(token, COpeningBracket):
+				if token.content == "(":
+					state = 1
+				elif token.content == "[":
+					state = 5
+				elif token.content == "{":
+					if not curCObj.isDerived():
+						state = 20
+					elif isinstance(curCObj, CStruct):
+						state = 30
+					elif isinstance(curCObj, CUnion):
+						state = 40
+					elif isinstance(curCObj, CEnum):
+						state = 50
+					elif isinstance(curCObj, CFunc):
+						state = 60
+					else:
+						stateStruct.error("cpre3 parse: unexpected '{' after " + str(token))
+						state = 20 # well...
+				else:
+					stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
+			elif isinstance(token, CSemicolon):
+				# TODO finalize
+				pass
 			
+			else:
+				stateStruct.error("cpre3 parse: unexpected token " + str(token) + " in base state")
+		elif state == 1: # "(" bracket
+			pass
+		elif state == 5: # "[" bracket
+			pass
+		elif state == 10: # typedef
+			pass
+		elif state == 20: # "{" bracket without content
+			pass
+		elif state == 30: # struct
+			pass
+		elif state == 40: # union
+			pass
+		elif state == 50: # enum
+			pass
+		elif state == 60: # func
+			pass
+		else:
+			stateStruct.error("cpre3 parse: internal error. unexpected state " + str(state))
+		
 def test():
 	import better_exchook
 	better_exchook.install()
