@@ -1114,6 +1114,7 @@ def cpre3_parse(stateStruct, input):
 						curCObj._id_tokens += [token.content]
 				elif isinstance(token, COp):
 					if token.content == "*":
+						CVarDecl.overtake(curCObj)
 						curCObj._type_tokens += [token.content]
 					elif token.content == ",":
 						CVarDecl.overtake(curCObj)
