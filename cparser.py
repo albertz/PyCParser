@@ -130,6 +130,7 @@ class State:
 	
 	def __init__(self):
 		self.macros = {} # name -> func
+		self.typedefs = {} # name -> type
 		self._preprocessIfLevels = []
 		self._preprocessIgnoreCurrent = False
 		# 0->didnt got true yet, 1->in true part, 2->after true part. and that as a stack
@@ -766,9 +767,11 @@ def cpreprocess_parse(stateStruct, input):
 		else: stateStruct.incIncludeLineChar(char=1)
 
 class _CBase:
-	def __init__(self, data=None, rawstr=None):
+	def __init__(self, data=None, rawstr=None, **kwargs):
 		self.content = data
 		self.rawstr = rawstr
+		for k,v in kwargs.iteritems():
+			setattr(self, k, v)
 	def __repr__(self):
 		if self.content is None: return "<" + self.__class__.__name__ + ">"
 		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
@@ -835,14 +838,14 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					laststr = c
 					state = 30
 				elif c in OpeningBrackets:
+					yield COpeningBracket(c, brackets=list(brackets))
 					brackets += [c]
-					yield COpeningBracket(c)
 				elif c in ClosingBrackets:
 					if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
 						stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
 					else:
 						brackets[:] = brackets[:-1]
-						yield CClosingBracket(c)
+						yield CClosingBracket(c, brackets=list(brackets))
 				elif c in OpChars:
 					laststr = c
 					state = 40
