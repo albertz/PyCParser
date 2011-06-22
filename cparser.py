@@ -1179,6 +1179,7 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse array args: incomplete, missing ']'")
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
+	typeIsComplete = False
 	state = 0
 	for token in input_iter:
 		if state == 0:
@@ -1202,22 +1203,28 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				else:
 					if curCObj._type_tokens and curCObj.type is None:
 						curCObj.make_type_from_typetokens(stateStruct)
-					if curCObj.type is not None:
+						typeIsComplete = True
+					if not typeIsComplete and isinstance(curCObj.type, (CStruct,CUnion,CEnum)) and curCObj.type.name is None:
+						curCObj.type.name = token.content
+					elif curCObj.type is not None:
 						if curCObj.name is None:
 							curCObj.name = token.content
 						else:
 							stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content + " after name " + curCObj.name)
 					else:
-						stateStruct.error("cpre3 parse in typedef: got unknown identifier " + token.content)
+						stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
 			if isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "{":
 					if isinstance(curCObj.type, CStruct):
 						cpre3_parse_struct(stateStruct, curCObj.type, input_iter)
+						typeIsComplete = True
 					elif isinstance(curCObj.type, CUnion):
 						cpre3_parse_union(stateStruct, curCObj.type, input_iter)
+						typeIsComplete = True
 					elif isinstance(curCObj.type, CEnum):
 						cpre3_parse_enum(stateStruct, curCObj.type, input_iter)
+						typeIsComplete = True
 					else:
 						stateStruct.error("cpre3 parse in typedef: got unexpected '{' after type " + str(curCObj.type))
 						state = 11
