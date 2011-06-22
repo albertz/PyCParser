@@ -1,4 +1,6 @@
 
+import ctypes
+
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
@@ -124,13 +126,54 @@ class Macro:
 	def __call__(self, *args):
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
+
+class _CBaseWithOptBody:
+	def __init__(self):
+		self.attribs = []
+		self.body = None
+		self.name = None
 		
+class CStruct: pass
+class CFunc:
+	def __init__(self):
+		pass
+
 class State:
 	EmptyMacro = Macro(None, None, (), "")
+	CBuiltinTypes = {
+		("void",): None,
+		("char",): ctypes.c_char,
+		("unsigned","char"): ctypes.c_ubyte,
+		("short",): ctypes.c_short,
+		("unsigned", "short"): ctypes.c_ushort,
+		("int",): ctypes.c_int,
+		("unsigned", "int"): ctypes.c_uint,
+		("long",): ctypes.c_long,
+		("unsigned", "long"): ctypes.c_ulong,
+		("long","long"): ctypes.c_longlong,
+		("unsigned","long","long"): ctypes.c_ulonglong,
+		("float",): ctypes.c_float,
+		("double",): ctypes.c_double,
+		("long","double"): ctypes.c_longdouble,
+	}
+	StdIntTypes = {
+		"uint8_t": ctypes.c_uint8,
+		"uint16_t": ctypes.c_uint16,
+		"uint32_t": ctypes.c_uint32,
+		"uint64_t": ctypes.c_uint64,
+		"int8_t": ctypes.c_int8,
+		"int16_t": ctypes.c_int16,
+		"int32_t": ctypes.c_int32,
+		"int64_t": ctypes.c_int64,
+		"byte": ctypes.c_byte,
+		"size_t": ctypes.c_size_t
+	}
 	
 	def __init__(self):
-		self.macros = {} # name -> func
+		self.macros = {} # name -> Macro
 		self.typedefs = {} # name -> type
+		self.structs = {} # name -> CStruct
+		self.funcs = {} # name -> CFunc
 		self._preprocessIfLevels = []
 		self._preprocessIgnoreCurrent = False
 		# 0->didnt got true yet, 1->in true part, 2->after true part. and that as a stack
@@ -188,7 +231,8 @@ class State:
 		return fullfilename
 	
 	def readGlobalInclude(self, filename):
-		if filename == "abc": return ""
+		if filename == "inttypes.h": return "" # we define those types as builtin-types
+		elif filename == "stdint.h": return ""
 		else:
 			self.error("no handler for global include-file '" + filename + "'")
 			return ""
