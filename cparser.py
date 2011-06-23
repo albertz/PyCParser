@@ -1217,14 +1217,9 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				elif token.content in stateStruct.typedefs:
 					curCObj._type_tokens += [token.content]
 				else:
-					if curCObj._type_tokens and curCObj.type is None:
-						curCObj.make_type_from_typetokens(stateStruct)
-					if typeObj is not None and not typeObj._finalized:
-						if typeObj.name is None:
-							typeObj.name = token.content
-						else:
-							stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content + " after type name " + typeObj.name)
-					elif curCObj.type is not None:
+					if typeObj is not None and not typeObj._finalized and typeObj.name is None:
+						typeObj.name = token.content
+					elif curCObj._type_tokens:
 						if curCObj.name is None:
 							curCObj.name = token.content
 						else:
@@ -1232,6 +1227,8 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 					else:
 						stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
 			elif token == COp("*"):
+				if typeObj is not None:
+					typeObj.finalize(stateStruct)
 				curCObj._type_tokens += ["*"]
 			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
@@ -1250,6 +1247,9 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				else:
 					state = 11
 			elif isinstance(token, CSemicolon):
+				if typeObj is not None and not typeObj._finalized:
+					typeObj.finalize(stateStruct)
+				curCObj.make_type_from_typetokens(stateStruct)
 				curCObj.finalize(stateStruct)
 				return
 			else:
@@ -1296,10 +1296,26 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj._type_tokens += [token.content]
 			elif token.content == ",":
 				CVarDecl.overtake(curCObj)
-				curCObj.finalize(stateStruct)
+				oldObj = curCObj
 				curCObj = curCObj.copy()
+				oldObj.finalize(stateStruct)
+				if hasattr(curCObj, "bitsize"): delattr(curCObj, "bitsize")
+			elif token.content == ":":
+				if curCObj:
+					CVarDecl.overtake(curCObj)
+					curCObj.bitsize = None
 			else:
-				stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in base state")
+				if not isinstance(parentCObj, CFunc):
+					stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj))
+				else:
+					pass # TODO
+		elif isinstance(token, CNumber):
+			if isinstance(curCObj, CVarDecl) and hasattr(curCObj, "bitsize"):
+				curCObj.bitsize = token.content
+			elif isinstance(parentCObj, CFunc):
+				pass # TODO
+			else:
+				stateStruct.error("cpre3 parse: number '" + token.rawstr + "' not expected in " + str(parentCObj))
 		elif isinstance(token, COpeningBracket):
 			curCObj._bracketlevel = list(token.brackets)
 			if token.content == "(":
@@ -1323,7 +1339,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				else:
 					if not parentObj.body is stateStruct: # not top level
 						cpre3_parse_body(stateStruct, curCObj, input_iter)
-				curCObj.finalize(stateStruct)
+						curCObj.finalize(stateStruct)
 				curCObj = _CBaseWithOptBody(parent=parentCObj)
 			else:
 				stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
