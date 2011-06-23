@@ -1064,6 +1064,7 @@ class _CBaseWithOptBody:
 		self._type_tokens = []
 		self._id_tokens = []
 		self._bracketlevel = None
+		self._finalized = False
 		self.type = None
 		self.attribs = []
 		self.name = None
@@ -1115,8 +1116,14 @@ class _CBaseWithOptBody:
 			stateStruct.error("make_type_from_typetokens currently not supported for " + str(self._type_tokens))
 	
 	def finalize(self, stateStruct):
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return False
+		self._finalized = True
+		
 		print "finalize", self, "at", stateStruct.curPosAsStr()
 		self.parent.body.contentlist += [self]
+		return True
 	
 	def copy(self):
 		import copy
@@ -1125,7 +1132,7 @@ class _CBaseWithOptBody:
 	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
-		_CBaseWithOptBody.finalize(self, stateStruct)
+		if not _CBaseWithOptBody.finalize(self, stateStruct): return
 		if self.type is None:
 			stateStruct.error("finalize typedef: type is unknown")
 			return
@@ -1133,22 +1140,25 @@ class CTypedef(_CBaseWithOptBody):
 			stateStruct.error("finalize typedef: name is unset")
 			return
 		self.parent.body.typedefs[self.name] = self.type
-
+		
 class CVarDecl(_CBaseWithOptBody): pass
 class CStruct(_CBaseWithOptBody): pass
 class CUnion(_CBaseWithOptBody): pass
 class CEnum(_CBaseWithOptBody): pass
 class CFunc(_CBaseWithOptBody): pass
 
-def cpre3_parse_struct(stateStruct, structCObj, input_iter):
+def cpre3_parse_struct(stateStruct, curCObj, input_iter):
+	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
 def cpre3_parse_union(stateStruct, curCObj, input_iter):
+	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
 def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
+	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
@@ -1159,25 +1169,23 @@ def cpre3_parse_enum(stateStruct, curCObj, input_iter):
 			if token.brackets == curCObj._bracketlevel:
 				curCObj.finalize(stateStruct)
 				return
-	stateStruct.error("cpre3 parse enum: incomplete, missing '}'")
+	stateStruct.error("cpre3 parse enum: incomplete, missing '}' on level " + str(curCObj._bracketlevel))
 
 def cpre3_parse_funcargs(stateStruct, curCObj, input_iter):
 	# TODO
 	for token in input_iter:
 		if isinstance(token, CClosingBracket):
 			if token.brackets == curCObj._bracketlevel:
-				curCObj.finalize(stateStruct)
 				return
-	stateStruct.error("cpre3 parse func args: incomplete, missing ')'")
+	stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(curCObj._bracketlevel))
 
 def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 	# TODO
 	for token in input_iter:
 		if isinstance(token, CClosingBracket):
 			if token.brackets == curCObj._bracketlevel:
-				curCObj.finalize(stateStruct)
 				return
-	stateStruct.error("cpre3 parse array args: incomplete, missing ']'")
+	stateStruct.error("cpre3 parse array args: incomplete, missing ']' on level " + str(curCObj._bracketlevel))
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	typeIsComplete = False
@@ -1190,11 +1198,11 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				elif token.content in stateStruct.Attribs:
 					curCObj.attribs += [token.content]
 				elif token.content == "struct":
-					curCObj.type = CStruct()
+					curCObj.type = CStruct(parent=curCObj.parent)
 				elif token.content == "union":
-					curCObj.type = CUnion()
+					curCObj.type = CUnion(parent=curCObj.parent)
 				elif token.content == "enum":
-					curCObj.type = CEnum()
+					curCObj.type = CEnum(parent=curCObj.parent)
 				elif (token.content,) in stateStruct.CBuiltinTypes:
 					curCObj._type_tokens += [token.content]
 				elif token.content in stateStruct.StdIntTypes:
@@ -1214,9 +1222,11 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 							stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content + " after name " + curCObj.name)
 					else:
 						stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
-			if isinstance(token, COpeningBracket):
+			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "{":
+					if curCObj.type is not None: # it must not be None. but error handling already below
+						curCObj.type._bracketlevel = curCObj._bracketlevel
 					if isinstance(curCObj.type, CStruct):
 						cpre3_parse_struct(stateStruct, curCObj.type, input_iter)
 						typeIsComplete = True
@@ -1232,9 +1242,10 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				else:
 					state = 11
 			elif isinstance(token, CSemicolon):
-				state = 0
 				curCObj.finalize(stateStruct)
 				return
+			else:
+				stateStruct.error("cpre3 parse typedef: got unexpected token " + str(token))
 		elif state == 11: # bracket
 			# TODO ...
 			if isinstance(token, CClosingBracket):
@@ -1245,6 +1256,8 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse typedef: incomplete, missing ';'")
 
 def cpre3_parse_body(stateStruct, parentCObj, input_iter):
+	if parentCObj.body is None: parentCObj.body = CBody()
+
 	curCObj = _CBaseWithOptBody(parent=parentCObj)
 
 	for token in input_iter:
@@ -1286,10 +1299,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				cpre3_parse_funcargs(stateStruct, curCObj, input_iter)
 			elif token.content == "[":
 				CVarDecl.overtake(curCObj)
-				cpre3_parse_arrayarg(stateStruct, curCObj, input_iter)
+				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
 			elif token.content == "{":
 				if curCObj.isDerived():
-					curCObj.body = CBody()
 					if isinstance(curCObj, CStruct):
 						cpre3_parse_struct(stateStruct, curCObj, input_iter)
 					elif isinstance(curCObj, CUnion):
@@ -1300,7 +1312,11 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 						cpre3_parse_funcbody(stateStruct, curCObj, input_iter)
 					else:
 						stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
-					curCObj = _CBaseWithOptBody(parent=parentCObj)							
+				else:
+					if not parentObj.body is stateStruct: # not top level
+						cpre3_parse_body(stateStruct, curCObj, input_iter)
+				curCObj.finalize(stateStruct)
+				curCObj = _CBaseWithOptBody(parent=parentCObj)
 			else:
 				stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
 		elif isinstance(token, CClosingBracket):
