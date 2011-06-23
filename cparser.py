@@ -1091,6 +1091,8 @@ class _CBaseWithOptBody:
 			str(self._type_tokens) + " " + \
 			name + " " + str(self.body)
 
+	def __repr__(self): return "<" + str(self) + ">"
+
 	def __nonzero__(self):
 		return \
 			bool(self._type_tokens) or \
