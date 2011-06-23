@@ -1102,7 +1102,9 @@ class _CBaseWithOptBody:
 			bool(self.body)
 	
 	def make_type_from_typetokens(self, stateStruct):
-		if tuple(self._type_tokens) in stateStruct.CBuiltinTypes:
+		if len(self._type_tokens) == 1 and isinstance(self._type_tokens[0], _CBaseWithOptBody):
+			self.type = self._type_tokens[0]
+		elif tuple(self._type_tokens) in stateStruct.CBuiltinTypes:
 			self.type = CType()
 			self.type.builtinType = stateStruct.CBuiltinTypes[tuple(self._type_tokens)]
 		elif len(self._type_tokens) == 1 and self._type_tokens[0] in stateStruct.StdIntTypes:
@@ -1190,6 +1192,8 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	typeIsComplete = False
 	state = 0
+	typeObj = None
+	
 	for token in input_iter:
 		if state == 0:
 			if isinstance(token, CIdentifier):
@@ -1198,11 +1202,14 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				elif token.content in stateStruct.Attribs:
 					curCObj.attribs += [token.content]
 				elif token.content == "struct":
-					curCObj.type = CStruct(parent=curCObj.parent)
+					typeObj = CStruct(parent=curCObj.parent)
+					curCObj._type_tokens += [typeObj]
 				elif token.content == "union":
-					curCObj.type = CUnion(parent=curCObj.parent)
+					typeObj = CUnion(parent=curCObj.parent)
+					curCObj._type_tokens += [typeObj]
 				elif token.content == "enum":
-					curCObj.type = CEnum(parent=curCObj.parent)
+					typeObj = CEnum(parent=curCObj.parent)
+					curCObj._type_tokens += [typeObj]
 				elif (token.content,) in stateStruct.CBuiltinTypes:
 					curCObj._type_tokens += [token.content]
 				elif token.content in stateStruct.StdIntTypes:
@@ -1212,9 +1219,11 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				else:
 					if curCObj._type_tokens and curCObj.type is None:
 						curCObj.make_type_from_typetokens(stateStruct)
-						typeIsComplete = True
-					if not typeIsComplete and isinstance(curCObj.type, (CStruct,CUnion,CEnum)) and curCObj.type.name is None:
-						curCObj.type.name = token.content
+					if typeObj is not None and not typeObj._finalized:
+						if typeObj.name is None:
+							typeObj.name = token.content
+						else:
+							stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content + " after type name " + typeObj.name)
 					elif curCObj.type is not None:
 						if curCObj.name is None:
 							curCObj.name = token.content
@@ -1222,22 +1231,21 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 							stateStruct.error("cpre3 parse in typedef: got second identifier " + token.content + " after name " + curCObj.name)
 					else:
 						stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
+			elif token == COp("*"):
+				curCObj._type_tokens += ["*"]
 			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "{":
-					if curCObj.type is not None: # it must not be None. but error handling already below
-						curCObj.type._bracketlevel = curCObj._bracketlevel
-					if isinstance(curCObj.type, CStruct):
-						cpre3_parse_struct(stateStruct, curCObj.type, input_iter)
-						typeIsComplete = True
-					elif isinstance(curCObj.type, CUnion):
-						cpre3_parse_union(stateStruct, curCObj.type, input_iter)
-						typeIsComplete = True
-					elif isinstance(curCObj.type, CEnum):
-						cpre3_parse_enum(stateStruct, curCObj.type, input_iter)
-						typeIsComplete = True
+					if typeObj is not None: # it must not be None. but error handling already below
+						typeObj._bracketlevel = curCObj._bracketlevel
+					if isinstance(typeObj, CStruct):
+						cpre3_parse_struct(stateStruct, typeObj, input_iter)
+					elif isinstance(typeObj, CUnion):
+						cpre3_parse_union(stateStruct, typeObj, input_iter)
+					elif isinstance(typeObj, CEnum):
+						cpre3_parse_enum(stateStruct, typeObj, input_iter)
 					else:
-						stateStruct.error("cpre3 parse in typedef: got unexpected '{' after type " + str(curCObj.type))
+						stateStruct.error("cpre3 parse in typedef: got unexpected '{' after type " + str(typeObj))
 						state = 11
 				else:
 					state = 11
