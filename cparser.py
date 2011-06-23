@@ -1062,7 +1062,6 @@ class CBody:
 class _CBaseWithOptBody:
 	def __init__(self, **kwargs):
 		self._type_tokens = []
-		self._id_tokens = []
 		self._bracketlevel = None
 		self._finalized = False
 		self.type = None
@@ -1084,7 +1083,7 @@ class _CBaseWithOptBody:
 		return self.__class__ != _CBaseWithOptBody
 
 	def __str__(self):
-		name = self.name if self.name else str(self._id_tokens)
+		name = self.name if self.name else "<noname>"
 		return \
 			self.__class__.__name__ + " " + \
 			str(self.attribs) + " " + \
@@ -1096,7 +1095,6 @@ class _CBaseWithOptBody:
 	def __nonzero__(self):
 		return \
 			bool(self._type_tokens) or \
-			bool(self._id_tokens) or \
 			bool(self.type) or \
 			bool(self.name) or \
 			bool(self.args) or \
@@ -1122,12 +1120,11 @@ class _CBaseWithOptBody:
 	def finalize(self, stateStruct):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
-			return False
+			return
 		self._finalized = True
 		
 		print "finalize", self, "at", stateStruct.curPosAsStr()
 		self.parent.body.contentlist += [self]
-		return True
 	
 	def copy(self):
 		import copy
@@ -1136,16 +1133,40 @@ class _CBaseWithOptBody:
 	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
-		if not _CBaseWithOptBody.finalize(self, stateStruct): return
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return
+		
+		self.make_type_from_typetokens(stateStruct)
+		_CBaseWithOptBody.finalize(self, stateStruct)
+		
 		if self.type is None:
-			stateStruct.error("finalize typedef: type is unknown")
+			stateStruct.error("finalize typedef " + str(self) + ": type is unknown")
 			return
 		if self.name is None:
-			stateStruct.error("finalize typedef: name is unset")
+			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
 			return
+
 		self.parent.body.typedefs[self.name] = self.type
 		
-class CVarDecl(_CBaseWithOptBody): pass
+class CVarDecl(_CBaseWithOptBody):
+	def finalize(self, stateStruct):
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return
+		
+		self.make_type_from_typetokens(stateStruct)
+		_CBaseWithOptBody.finalize(self, stateStruct)
+		
+		if self.type is None:
+			stateStruct.error("finalize var decl " + str(self) + ": type is unknown")
+			return
+		if self.name is None:
+			stateStruct.error("finalize var decl " + str(self) + ": name is unset")
+			return
+
+		self.parent.body.vars[self.name] = self.type
+
 class CStruct(_CBaseWithOptBody): pass
 class CUnion(_CBaseWithOptBody): pass
 class CEnum(_CBaseWithOptBody): pass
@@ -1251,7 +1272,6 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 			elif isinstance(token, CSemicolon):
 				if typeObj is not None and not typeObj._finalized:
 					typeObj.finalize(stateStruct)
-				curCObj.make_type_from_typetokens(stateStruct)
 				curCObj.finalize(stateStruct)
 				return
 			else:
@@ -1291,7 +1311,10 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			elif token.content in stateStruct.typedefs:
 				curCObj._type_tokens += [token.content]
 			else:
-				curCObj._id_tokens += [token.content]
+				if curCObj.name is None:
+					curCObj.name = token.content
+				else:
+					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name)
 		elif isinstance(token, COp):
 			if token.content == "*":
 				CVarDecl.overtake(curCObj)
@@ -1302,6 +1325,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj = curCObj.copy()
 				oldObj.finalize(stateStruct)
 				if hasattr(curCObj, "bitsize"): delattr(curCObj, "bitsize")
+				curCObj.name = None
 			elif token.content == ":":
 				if curCObj:
 					CVarDecl.overtake(curCObj)
