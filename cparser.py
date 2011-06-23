@@ -1116,6 +1116,7 @@ class _CBaseWithOptBody:
 	
 	def finalize(self, stateStruct):
 		print "finalize", self, "at", stateStruct.curPosAsStr()
+		self.parent.body.contentlist += [self]
 	
 	def copy(self):
 		import copy
@@ -1124,6 +1125,7 @@ class _CBaseWithOptBody:
 	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
+		_CBaseWithOptBody.finalize(self, stateStruct)
 		if self.type is None:
 			stateStruct.error("finalize typedef: type is unknown")
 			return
