@@ -131,8 +131,9 @@ class State:
 	EmptyMacro = Macro(None, None, (), "")
 	CBuiltinTypes = {
 		("void",): None,
+		("void", "*"): ctypes.c_void_p,
 		("char",): ctypes.c_char,
-		("unsigned","char"): ctypes.c_ubyte,
+		("unsigned", "char"): ctypes.c_ubyte,
 		("short",): ctypes.c_short,
 		("unsigned", "short"): ctypes.c_ushort,
 		("int",): ctypes.c_int,
@@ -140,11 +141,11 @@ class State:
 		("unsigned",): ctypes.c_uint,
 		("long",): ctypes.c_long,
 		("unsigned", "long"): ctypes.c_ulong,
-		("long","long"): ctypes.c_longlong,
-		("unsigned","long","long"): ctypes.c_ulonglong,
+		("long", "long"): ctypes.c_longlong,
+		("unsigned", "long", "long"): ctypes.c_ulonglong,
 		("float",): ctypes.c_float,
 		("double",): ctypes.c_double,
-		("long","double"): ctypes.c_longdouble,
+		("long", "double"): ctypes.c_longdouble,
 	}
 	StdIntTypes = {
 		"uint8_t": ctypes.c_uint8,
@@ -160,6 +161,7 @@ class State:
 		"size_t": ctypes.c_size_t
 	}
 	Attribs = [
+		"const",
 		"extern",
 		"static",
 		"__inline__",
@@ -1049,6 +1051,11 @@ class CType:
 	def __repr__(self):
 		return str(self.__dict__)
 
+def getPointerType(base):
+	t = CType()
+	t.pointerOf = base
+	return t
+	
 class CBody:
 	def __init__(self):
 		self._bracketlevel = []
@@ -1058,6 +1065,25 @@ class CBody:
 		self.enums = {}
 		self.vars = {}
 		self.contentlist = []
+
+def make_type_from_typetokens(stateStruct, type_tokens):
+	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
+		t = type_tokens[0]
+	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
+		t = CType()
+		t.builtinType = stateStruct.CBuiltinTypes[tuple(type_tokens)]
+	elif len(type_tokens) > 1 and type_tokens[-1] == "*":
+		t = getPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
+	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
+		t = CType()
+		t.stdIntType = type_tokens[0]
+	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.typedefs:
+		t = CType()
+		t.typedef = type_tokens[0]
+	else:
+		stateStruct.error("type tokens " + str(type_tokens) + " are invalid")
+		t = CType() # empty type
+	return t
 
 class _CBaseWithOptBody:
 	def __init__(self, **kwargs):
@@ -1101,22 +1127,6 @@ class _CBaseWithOptBody:
 			bool(self.arrayargs) or \
 			bool(self.body)
 	
-	def make_type_from_typetokens(self, stateStruct):
-		if len(self._type_tokens) == 1 and isinstance(self._type_tokens[0], _CBaseWithOptBody):
-			self.type = self._type_tokens[0]
-		elif tuple(self._type_tokens) in stateStruct.CBuiltinTypes:
-			self.type = CType()
-			self.type.builtinType = stateStruct.CBuiltinTypes[tuple(self._type_tokens)]
-		elif len(self._type_tokens) == 1 and self._type_tokens[0] in stateStruct.StdIntTypes:
-			self.type = CType()
-			self.type.stdIntType = self._type_tokens[0]
-		elif len(self._type_tokens) == 1 and self._type_tokens[0] in stateStruct.typedefs:
-			self.type = CType()
-			self.type.typedef = self._type_tokens[0]
-		else:
-			# TODO
-			stateStruct.error("make_type_from_typetokens currently not supported for " + str(self._type_tokens))
-	
 	def finalize(self, stateStruct):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
@@ -1137,7 +1147,7 @@ class CTypedef(_CBaseWithOptBody):
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		
-		self.make_type_from_typetokens(stateStruct)
+		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct)
 		
 		if self.type is None:
@@ -1155,7 +1165,7 @@ class CVarDecl(_CBaseWithOptBody):
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		
-		self.make_type_from_typetokens(stateStruct)
+		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct)
 		
 		if self.type is None:
