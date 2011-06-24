@@ -1177,6 +1177,20 @@ class CVarDecl(_CBaseWithOptBody):
 
 		self.parent.body.vars[self.name] = self.type
 
+class CFuncPointerDecl(_CBaseWithOptBody):
+	def finalize(self, stateStruct):
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return
+		
+		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+		_CBaseWithOptBody.finalize(self, stateStruct)
+		
+		if self.type is None:
+			stateStruct.error("finalize typedef " + str(self) + ": type is unknown")
+		if self.name is None:
+			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
+
 class CStruct(_CBaseWithOptBody): pass
 class CUnion(_CBaseWithOptBody): pass
 class CEnum(_CBaseWithOptBody): pass
@@ -1196,6 +1210,31 @@ def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
+
+def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
+	CFuncPointerDecl.overtake(curCObj)
+	state = 0
+	for token in input_iter:
+		if state == 0:
+			if token == COp("*"):
+				state = 1
+			else:
+				stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected '*'")
+		elif state == 1:
+			if isinstance(token, CIdentifier):
+				curCObj.name = token.content
+				state = 2
+			else:
+				stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected identifier")
+		elif state == 2:
+			state = 3
+
+		if isinstance(token, CClosingBracket) and token.brackets == curCObj._bracketlevel:
+			return
+		elif state == 3:
+			stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected ')'")
+
+	stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))	
 
 def cpre3_parse_enum(stateStruct, curCObj, input_iter):
 	# TODO
@@ -1265,7 +1304,19 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				curCObj._type_tokens += ["*"]
 			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
-				if token.content == "{":
+				if token.content == "(":
+					if typeObj is None:
+						typeObj = CFuncPointerDecl(parent=curCObj.parent)
+						typeObj._bracketlevel = curCObj._bracketlevel
+						typeObj._type_tokens[:] = curCObj._type_tokens
+						curCObj._type_tokens[:] = [typeObj]
+						cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
+						curCObj.name = typeObj.name
+					else:
+						cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
+				elif token.content == "[":
+					cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
+				elif token.content == "{":
 					if typeObj is not None: # it must not be None. but error handling already below
 						typeObj._bracketlevel = curCObj._bracketlevel
 					if isinstance(typeObj, CStruct):
@@ -1278,6 +1329,7 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 						stateStruct.error("cpre3 parse in typedef: got unexpected '{' after type " + str(typeObj))
 						state = 11
 				else:
+					stateStruct.error("cpre3 parse in typedef: got unexpected opening bracket '" + token.content + "' after type " + str(typeObj))
 					state = 11
 			elif isinstance(token, CSemicolon):
 				if typeObj is not None and not typeObj._finalized:
