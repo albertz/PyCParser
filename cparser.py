@@ -158,7 +158,8 @@ class State:
 		"int64_t": ctypes.c_int64,
 		"byte": ctypes.c_byte,
 		"wchar_t": ctypes.c_wchar,
-		"size_t": ctypes.c_size_t
+		"size_t": ctypes.c_size_t,
+		"FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
 	}
 	Attribs = [
 		"const",
