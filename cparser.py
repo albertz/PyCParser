@@ -1231,6 +1231,7 @@ def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
 
 def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 	CFuncPointerDecl.overtake(curCObj)
+	bracketLevel = list(curCObj._bracketlevel)
 	state = 0
 	for token in input_iter:
 		if state == 0:
@@ -1245,9 +1246,14 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 			else:
 				stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected identifier")
 		elif state == 2:
-			state = 3
+			if token == COpeningBracket("["):
+				curCObj._bracketlevel = list(token.brackets)
+				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
+				curCObj._bracketlevel = bracketLevel
+			else:
+				state = 3
 
-		if isinstance(token, CClosingBracket) and token.brackets == curCObj._bracketlevel:
+		if isinstance(token, CClosingBracket) and token.brackets == bracketLevel:
 			return
 		elif state == 3:
 			stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected ')'")
