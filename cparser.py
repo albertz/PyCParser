@@ -1133,6 +1133,7 @@ class _CBaseWithOptBody:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		self._finalized = True
+		if not self: return
 		
 		print "finalize", self, "at", stateStruct.curPosAsStr()
 		self.parent.body.contentlist += [self]
@@ -1459,6 +1460,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			curCObj = _CBaseWithOptBody(parent=parentCObj)
 		else:
 			stateStruct.error("cpre3 parse: unexpected token " + str(token))
+
+	if curCObj and not curCObj._finalized:
+		stateStruct.error("cpre3 parse: unfinished " + str(curCObj) + " at end")
 
 	if parentCObj._bracketlevel is not None:
 		stateStruct.error("cpre3 parse: read until end without closing brackets " + str(parentCObj._bracketlevel))
