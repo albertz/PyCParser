@@ -127,10 +127,28 @@ class Macro:
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
 
+
+# either some basic type, another typedef or some complex like CStruct/CUnion/...
+class CType:
+	def __init__(self, **kwargs):
+		for k,v in kwargs.iteritems():
+			setattr(self, k, v)
+	def __repr__(self):
+		return self.__class__.__name__ + " " + str(self.__dict__)
+
+class CUnknownType(CType): pass
+class CVoidType(CType):
+	def __repr__(self): return "void"
+
+def getPointerType(base):
+	t = CType()
+	t.pointerOf = base
+	return t
+
 class State:
 	EmptyMacro = Macro(None, None, (), "")
 	CBuiltinTypes = {
-		("void",): None,
+		("void",): CVoidType,
 		("void", "*"): ctypes.c_void_p,
 		("char",): ctypes.c_char,
 		("unsigned", "char"): ctypes.c_ubyte,
@@ -1046,21 +1064,6 @@ def cpre2_tokenstream_asCCode(input):
 		elif isinstance(token, CClosingBracket): pass
 		else: needspace = True
 
-
-# either some basic type, another typedef or some complex like CStruct/CUnion/...
-class CType:
-	def __init__(self, **kwargs):
-		for k,v in kwargs.iteritems():
-			setattr(self, k, v)
-	def __repr__(self):
-		return self.__class__.__name__ + " " + str(self.__dict__)
-
-class CUnknownType(CType): pass
-
-def getPointerType(base):
-	t = CType()
-	t.pointerOf = base
-	return t
 	
 class CBody:
 	def __init__(self):
@@ -1087,7 +1090,6 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 		t = CType()
 		t.typedef = type_tokens[0]
 	else:
-		stateStruct.error("type tokens " + str(type_tokens) + " are invalid")
 		t = CType() # empty type
 	return t
 
@@ -1133,15 +1135,15 @@ class _CBaseWithOptBody:
 			bool(self.arrayargs) or \
 			bool(self.body)
 	
-	def finalize(self, stateStruct):
+	def finalize(self, stateStruct, addToContent = True):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		self._finalized = True
 		if not self: return
 		
-		print "finalize", self, "at", stateStruct.curPosAsStr()
-		self.parent.body.contentlist += [self]
+		#print "finalize", self, "at", stateStruct.curPosAsStr()
+		if addToContent: self.parent.body.contentlist += [self]
 	
 	def copy(self):
 		import copy
@@ -1166,24 +1168,6 @@ class CTypedef(_CBaseWithOptBody):
 
 		self.parent.body.typedefs[self.name] = self.type
 		
-class CVarDecl(_CBaseWithOptBody):
-	def finalize(self, stateStruct):
-		if self._finalized:
-			stateStruct.error("internal error: " + str(self) + " finalized twice")
-			return
-		
-		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
-		_CBaseWithOptBody.finalize(self, stateStruct)
-		
-		if self.type is None:
-			stateStruct.error("finalize var decl " + str(self) + ": type is unknown")
-			return
-		if self.name is None:
-			stateStruct.error("finalize var decl " + str(self) + ": name is unset")
-			return
-
-		self.parent.body.vars[self.name] = self.type
-
 class CFuncPointerDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
@@ -1198,10 +1182,34 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		if self.name is None:
 			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
 
-class CStruct(_CBaseWithOptBody): pass
-class CUnion(_CBaseWithOptBody): pass
-class CEnum(_CBaseWithOptBody): pass
-class CFunc(_CBaseWithOptBody): pass
+def _finalizeBasicType(obj, stateStruct, dictName):
+	if obj._finalized:
+		stateStruct.error("internal error: " + str(obj) + " finalized twice")
+		return
+	
+	obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
+	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent = obj.name is not None)
+
+	if obj.name is None:
+		# might be part of a typedef, so don't error
+		return
+	
+	d = getattr(obj.parent.body, dictName)
+	if obj.name in d:
+		stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+	d[obj.name] = obj
+	#print "added", obj, "to", str(obj.parent) + "." + dictName
+
+class CVarDecl(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")
+class CStruct(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="structs")
+class CUnion(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="unions")
+class CEnum(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="enums")
+class CFunc(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
 
 class CStatement(_CBaseWithOptBody):
 	def _cpre3_handle_token(self, stateStruct, token):
