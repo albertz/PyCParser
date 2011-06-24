@@ -1374,6 +1374,10 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			elif token.content in stateStruct.typedefs:
 				curCObj._type_tokens += [token.content]
 			else:
+				if curCObj._finalized:
+					oldObj = curCObj
+					curCObj = CVarDecl(parent=parentCObj)
+					curCObj._type_tokens[:] = [oldObj]
 				if curCObj.name is None:
 					curCObj.name = token.content
 				else:
@@ -1429,13 +1433,15 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 						cpre3_parse_enum(stateStruct, curCObj, input_iter)
 					elif isinstance(curCObj, CFunc):
 						cpre3_parse_funcbody(stateStruct, curCObj, input_iter)
+						curCObj = _CBaseWithOptBody(parent=parentCObj)
 					else:
 						stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
+						curCObj = _CBaseWithOptBody(parent=parentCObj)
 				else:
 					if not parentObj.body is stateStruct: # not top level
 						cpre3_parse_body(stateStruct, curCObj, input_iter)
 						curCObj.finalize(stateStruct)
-				curCObj = _CBaseWithOptBody(parent=parentCObj)
+					curCObj = _CBaseWithOptBody(parent=parentCObj)
 			else:
 				stateStruct.error("cpre3 parse: unexpected opening bracket '" + token.content + "'")
 		elif isinstance(token, CClosingBracket):
