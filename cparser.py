@@ -1419,8 +1419,21 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 		elif isinstance(token, COpeningBracket):
 			curCObj._bracketlevel = list(token.brackets)
 			if token.content == "(":
-				CFunc.overtake(curCObj)
-				cpre3_parse_funcargs(stateStruct, curCObj, input_iter)
+				if curCObj.name is None:
+					typeObj = CFuncPointerDecl(parent=curCObj.parent)
+					typeObj._bracketlevel = curCObj._bracketlevel
+					typeObj._type_tokens[:] = curCObj._type_tokens
+					CVarDecl.overtake(curCObj)
+					curCObj._type_tokens[:] = [typeObj]
+					cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
+					curCObj.name = typeObj.name
+				elif len(curCObj._type_tokens) == 1 and isinstance(curCObj._type_tokens[0], CFuncPointerDecl):
+					typeObj = curCObj._type_tokens[0]
+					cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
+					typeObj.finalize(stateStruct)
+				else:
+					CFunc.overtake(curCObj)
+					cpre3_parse_funcargs(stateStruct, curCObj, input_iter)
 			elif token.content == "[":
 				CVarDecl.overtake(curCObj)
 				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
