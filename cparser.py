@@ -1379,8 +1379,14 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name)
 		elif isinstance(token, COp):
 			if token.content == "*":
-				CVarDecl.overtake(curCObj)
-				curCObj._type_tokens += [token.content]
+				if isinstance(curCObj, (CStruct,CUnion,CEnum)):
+					curCObj.finalize(stateStruct)
+					oldObj = curCObj
+					curCObj = CVarDecl(parent=parentCObj)
+					curCObj._type_tokens[:] = [oldObj, "*"]
+				else:
+					CVarDecl.overtake(curCObj)
+					curCObj._type_tokens += [token.content]
 			elif token.content == ",":
 				CVarDecl.overtake(curCObj)
 				oldObj = curCObj
