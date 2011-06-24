@@ -1049,8 +1049,13 @@ def cpre2_tokenstream_asCCode(input):
 
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType:
+	def __init__(self, **kwargs):
+		for k,v in kwargs.iteritems():
+			setattr(self, k, v)
 	def __repr__(self):
-		return str(self.__dict__)
+		return self.__class__.__name__ + " " + str(self.__dict__)
+
+class CUnknownType(CType): pass
 
 def getPointerType(base):
 	t = CType()
@@ -1198,6 +1203,17 @@ class CUnion(_CBaseWithOptBody): pass
 class CEnum(_CBaseWithOptBody): pass
 class CFunc(_CBaseWithOptBody): pass
 
+class CStatement(_CBaseWithOptBody):
+	def _cpre3_handle_token(self, stateStruct, token):
+		# TODO ...
+		pass
+	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
+		# TODO ...
+		for token in input_iter:
+			if isinstance(token, CClosingBracket):
+				if token.brackets == openingBracketToken.brackets:
+					return
+
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
@@ -1264,7 +1280,6 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse array args: incomplete, missing ']' on level " + str(curCObj._bracketlevel))
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
-	typeIsComplete = False
 	state = 0
 	typeObj = None
 	
@@ -1340,8 +1355,8 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 				return
 			else:
 				stateStruct.error("cpre3 parse typedef: got unexpected token " + str(token))
-		elif state == 11: # bracket
-			# TODO ...
+		elif state == 11: # unexpected bracket
+			# just ignore everything until we get the closing bracket
 			if isinstance(token, CClosingBracket):
 				if token.brackets == curCObj._bracketlevel:
 					state = 0
@@ -1356,7 +1371,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 
 	for token in input_iter:
 		if isinstance(token, CIdentifier):
-			if token.content == "typedef":
+			if isinstance(curCObj, CStatement):
+				curCObj._cpre3_handle_token(stateStruct, token)
+			elif token.content == "typedef":
 				CTypedef.overtake(curCObj)
 				cpre3_parse_typedef(stateStruct, curCObj, input_iter)
 				curCObj = _CBaseWithOptBody(parent=parentCObj)							
@@ -1376,50 +1393,69 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj._type_tokens += [token.content]
 			else:
 				if curCObj._finalized:
+					# e.g. like "struct {...} X" and we parse "X"
 					oldObj = curCObj
 					curCObj = CVarDecl(parent=parentCObj)
 					curCObj._type_tokens[:] = [oldObj]
+
 				if curCObj.name is None:
 					curCObj.name = token.content
 				else:
-					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name)
+					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
+					# fallback recovery, guess vardecl with the first identifier being an unknown type
+					curCObj._type_tokens += [CUnknownType(name=curCObj.name)]
+					curCObj.name = token.content
+				
+				if len(curCObj._type_tokens) == 0:
+					CStatement.overtake(curCObj)
 		elif isinstance(token, COp):
-			if token.content == "*":
-				if isinstance(curCObj, (CStruct,CUnion,CEnum)):
-					curCObj.finalize(stateStruct)
-					oldObj = curCObj
-					curCObj = CVarDecl(parent=parentCObj)
-					curCObj._type_tokens[:] = [oldObj, "*"]
-				else:
-					CVarDecl.overtake(curCObj)
-					curCObj._type_tokens += [token.content]
-			elif token.content == ",":
-				CVarDecl.overtake(curCObj)
-				oldObj = curCObj
-				curCObj = curCObj.copy()
-				oldObj.finalize(stateStruct)
-				if hasattr(curCObj, "bitsize"): delattr(curCObj, "bitsize")
-				curCObj.name = None
-			elif token.content == ":":
-				if curCObj:
-					CVarDecl.overtake(curCObj)
-					curCObj.bitsize = None
+			if len(curCObj._type_tokens) == 0:
+				CStatement.overtake(curCObj)
+			if isinstance(curCObj, CStatement):
+				curCObj._cpre3_handle_token(stateStruct, token)
 			else:
-				if not isinstance(parentCObj, CFunc):
-					stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj))
+				if token.content == "*":
+					if isinstance(curCObj, (CStruct,CUnion,CEnum)):
+						curCObj.finalize(stateStruct)
+						oldObj = curCObj
+						curCObj = CVarDecl(parent=parentCObj)
+						curCObj._type_tokens[:] = [oldObj, "*"]
+					else:
+						CVarDecl.overtake(curCObj)
+						curCObj._type_tokens += [token.content]
+				elif token.content == ",":
+					CVarDecl.overtake(curCObj)
+					oldObj = curCObj
+					curCObj = curCObj.copy()
+					oldObj.finalize(stateStruct)
+					if hasattr(curCObj, "bitsize"): delattr(curCObj, "bitsize")
+					curCObj.name = None
+				elif token.content == ":":
+					if curCObj:
+						CVarDecl.overtake(curCObj)
+						curCObj.bitsize = None
 				else:
-					pass # TODO
+					stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj) + " after " + str(curCObj))
 		elif isinstance(token, CNumber):
 			if isinstance(curCObj, CVarDecl) and hasattr(curCObj, "bitsize"):
 				curCObj.bitsize = token.content
-			elif isinstance(parentCObj, CFunc):
-				pass # TODO
 			else:
-				stateStruct.error("cpre3 parse: number '" + token.rawstr + "' not expected in " + str(parentCObj))
+				CStatement.overtake(curCObj)
+				curCObj._cpre3_handle_token(stateStruct, token)
 		elif isinstance(token, COpeningBracket):
 			curCObj._bracketlevel = list(token.brackets)
-			if token.content == "(":
-				if curCObj.name is None:
+			if isinstance(curCObj, CStatement):
+				if token.content == "{":
+					cpre3_parse_body(stateStruct, curCObj, input_iter)
+					curCObj.finalize(stateStruct)
+					curCObj = _CBaseWithOptBody(parent=parentCObj)
+				else:
+					curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
+			elif token.content == "(":
+				if len(curCObj._type_tokens) == 0:
+					CStatement.overtake(curCObj)
+					curCObj._cpre3_handle_token(stateStruct, token)
+				elif curCObj.name is None:
 					typeObj = CFuncPointerDecl(parent=curCObj.parent)
 					typeObj._bracketlevel = curCObj._bracketlevel
 					typeObj._type_tokens[:] = curCObj._type_tokens
