@@ -194,6 +194,7 @@ class State:
 		self.enums = {} # name -> CEnum
 		self.funcs = {} # name -> CFunc
 		self.vars = {} # name -> CVarDecl
+		self.enumconsts = {} # name -> CEnumConst
 		self.contentlist = []
 		self._preprocessIfLevels = []
 		self._preprocessIgnoreCurrent = False
@@ -1073,6 +1074,7 @@ class CBody:
 		self.unions = {}
 		self.enums = {}
 		self.vars = {}
+		self.enumconsts = {}
 		self.contentlist = []
 
 def make_type_from_typetokens(stateStruct, type_tokens):
@@ -1237,6 +1239,10 @@ class CEnumConst(_CBaseWithOptBody):
 				self.value = 0
 
 		_CBaseWithOptBody.finalize(self, stateStruct)
+
+		if self.name:
+			# self.parent.parent is the parent of the enum
+			self.parent.parent.body.enumconsts[self.name] = self
 
 class CFuncArgDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
