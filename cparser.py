@@ -1252,16 +1252,34 @@ class CFuncArgDecl(_CBaseWithOptBody):
 class CStatement(_CBaseWithOptBody):
 	def _cpre3_handle_token(self, stateStruct, token):
 		# TODO ...
-		pass
+		if not hasattr(self, "_tokens"): self._tokens = []
+		self._tokens += [token]
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
-		# TODO ...
+		subStatement = CStatement(parent=self)
 		for token in input_iter:
-			if isinstance(token, CClosingBracket):
+			if isinstance(token, COpeningBracket):
+				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
+			elif isinstance(token, CClosingBracket):
 				if token.brackets == openingBracketToken.brackets:
+					subStatement.finalize(stateStruct)
+					if not hasattr(self, "_tokens"): self._tokens = []
+					self._tokens += [subStatement]
 					return
+				else:
+					stateStruct.error("cpre3 statement parse brackets: internal error, closing brackets not expected")
+			else:
+				subStatement._cpre3_handle_token(stateStruct, token)
+		stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
 	def getConstValue(self, stateStruct):
-		# TODO
-		return 0
+		if not hasattr(self, "_tokens"): self._tokens = []
+		if len(self._tokens) == 2 and self._tokens[0] == COp("-") and isinstance(self._tokens[1], CNumber):
+			return -self._tokens[1].content
+		if len(self._tokens) == 1 and isinstance(self._tokens[0], CNumber):
+			return self._tokens[0].content
+		if len(self._tokens) == 1 and isinstance(self._tokens[0], CStatement):
+			return self._tokens[0].getConstValue(stateStruct)
+		stateStruct.error(str(self) + " getConstValue: not completely implemented yet for token list " + str(self._tokens))
+		return None
 	
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody()
