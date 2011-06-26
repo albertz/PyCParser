@@ -1117,12 +1117,18 @@ class _CBaseWithOptBody:
 		return self.__class__ != _CBaseWithOptBody
 
 	def __str__(self):
-		name = self.name if self.name else "<noname>"
+		name = ("'" + self.name + "'") if self.name else "<noname>"
+		t = self.type or self._type_tokens
+		l = []
+		if self.attribs: l += [("attribs", self.attribs)]
+		if t: l += [("type", t)]
+		if self.args: l += [("args", self.args)]
+		if self.arrayargs: l += [("arrayargs", self.arrayargs)]
+		if self.body: l += [("body", self.body)]
 		return \
 			self.__class__.__name__ + " " + \
-			str(self.attribs) + " " + \
-			str(self._type_tokens) + " " + \
-			name + " " + str(self.body)
+			name + " " + \
+			", ".join(map(lambda (a,b): a + ": " + str(b), l))
 
 	def __repr__(self): return "<" + str(self) + ">"
 
@@ -1135,7 +1141,7 @@ class _CBaseWithOptBody:
 			bool(self.arrayargs) or \
 			bool(self.body)
 	
-	def finalize(self, stateStruct, addToContent = True):
+	def finalize(self, stateStruct, addToContent = None):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
@@ -1182,26 +1188,30 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		if self.name is None:
 			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
 
-def _finalizeBasicType(obj, stateStruct, dictName):
+def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
 		return
 	
 	obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
 	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent = obj.name is not None)
-
-	if obj.name is None:
-		# might be part of a typedef, so don't error
-		return
 	
-	d = getattr(obj.parent.body, dictName)
-	if obj.name in d:
-		stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
-	d[obj.name] = obj
-	#print "added", obj, "to", str(obj.parent) + "." + dictName
+	if hasattr(obj.parent, "body"):
+		d = getattr(obj.parent.body, dictName or listName)
+		if dictName:
+			if obj.name is None:
+				# might be part of a typedef, so don't error
+				return
+	
+			if obj.name in d:
+				stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+			d[obj.name] = obj
+		else:
+			assert listName is not None
+			d.append(obj)
 
 class CVarDecl(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
 class CStruct(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="structs")
 class CUnion(_CBaseWithOptBody):
@@ -1211,6 +1221,17 @@ class CEnum(_CBaseWithOptBody):
 class CFunc(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
 
+class CFuncArgDecl(_CBaseWithOptBody):
+	def finalize(self, stateStruct):
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return
+		
+		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+		_CBaseWithOptBody.finalize(self, stateStruct, addToContent = False)
+		
+		self.parent.args += [self]
+	
 class CStatement(_CBaseWithOptBody):
 	def _cpre3_handle_token(self, stateStruct, token):
 		# TODO ...
@@ -1277,13 +1298,85 @@ def cpre3_parse_enum(stateStruct, curCObj, input_iter):
 				return
 	stateStruct.error("cpre3 parse enum: incomplete, missing '}' on level " + str(curCObj._bracketlevel))
 
-def cpre3_parse_funcargs(stateStruct, curCObj, input_iter):
-	# TODO
+def _cpre3_parse_skipbracketcontent(stateStruct, bracketlevel, input_iter):
 	for token in input_iter:
 		if isinstance(token, CClosingBracket):
-			if token.brackets == curCObj._bracketlevel:
+			if token.brackets == bracketlevel:
 				return
-	stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(curCObj._bracketlevel))
+	stateStruct.error("cpre3 parse: incomplete, missing closing bracket on level " + str(curCObj._bracketlevel))
+	
+def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
+	curCObj = CFuncArgDecl(parent=parentCObj)
+	typeObj = None
+	for token in input_iter:
+		if isinstance(token, CIdentifier):
+			if token.content == "typedef":
+				stateStruct.error("cpre3 parse func args: typedef not expected")
+			elif token.content in stateStruct.Attribs:
+				curCObj.attribs += [token.content]
+			elif token.content == "struct":
+				typeObj = CStruct()
+				curCObj._type_tokens += [typeObj]
+			elif token.content == "union":
+				typeObj = CUnion()
+				curCObj._type_tokens += [typeObj]
+			elif token.content == "enum":
+				typeObj = CEnum()
+				curCObj._type_tokens += [typeObj]
+			elif typeObj is not None:
+				if typeObj.name is None:
+					typeObj.name = token.content
+					typeObj = None
+			elif (token.content,) in stateStruct.CBuiltinTypes:
+				curCObj._type_tokens += [token.content]
+			elif token.content in stateStruct.StdIntTypes:
+				curCObj._type_tokens += [token.content]
+			elif len(curCObj._type_tokens) == 0:
+				curCObj._type_tokens += [token.content]
+			else:
+				if curCObj.name is None:
+					curCObj.name = token.content
+				else:
+					stateStruct.error("cpre3 parse func args: second identifier name " + token.content + " for " + str(curCObj))
+		elif isinstance(token, COp):
+			if token.content == ",":
+				curCObj.finalize(stateStruct)
+				curCObj = CFuncArgDecl(parent=parentCObj)
+				typeObj = None
+			else:
+				curCObj._type_tokens += [token.content]
+		elif isinstance(token, COpeningBracket):
+			curCObj._bracketlevel = list(token.brackets)
+			if token.content == "(":
+				if curCObj.name is None:
+					typeObj = CFuncPointerDecl(parent=curCObj.parent)
+					typeObj._bracketlevel = curCObj._bracketlevel
+					typeObj._type_tokens[:] = curCObj._type_tokens
+					curCObj._type_tokens[:] = [typeObj]
+					cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
+					curCObj.name = typeObj.name
+				elif len(curCObj._type_tokens) == 1 and isinstance(curCObj._type_tokens[0], CFuncPointerDecl):
+					typeObj = curCObj._type_tokens[0]
+					cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
+					typeObj.finalize(stateStruct)
+				else:
+					stateStruct.error("cpre3 parse func args: got unexpected '('")
+					_cpre3_parse_skipbracketcontent(stateStruct, curCObj._bracketlevel, input_iter)
+			elif token.content == "[":
+				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
+			else:
+				stateStruct.error("cpre3 parse func args: unexpected opening bracket '" + token.content + "'")
+				_cpre3_parse_skipbracketcontent(stateStruct, curCObj._bracketlevel, input_iter)
+		elif isinstance(token, CClosingBracket):
+			if token.brackets == parentCObj._bracketlevel:
+				if curCObj:
+					curCObj.finalize(stateStruct)
+				return
+			# no error. we already errored on the opening bracket. and the cpre2 parsing ensures the rest
+		else:
+			stateStruct.error("cpre3 parse func args: unexpected token " + str(token))
+
+	stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(parentCObj._bracketlevel))
 
 def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 	# TODO
