@@ -1104,6 +1104,7 @@ class _CBaseWithOptBody:
 		self.args = []
 		self.arrayargs = []
 		self.body = None
+		self.value = None
 		self.parent = None
 		for k,v in kwargs.iteritems():
 			setattr(self, k, v)
@@ -1124,7 +1125,8 @@ class _CBaseWithOptBody:
 		if t: l += [("type", t)]
 		if self.args: l += [("args", self.args)]
 		if self.arrayargs: l += [("arrayargs", self.arrayargs)]
-		if self.body: l += [("body", self.body)]
+		if self.body is not None: l += [("body", self.body)]
+		if self.value is not None: l += [("value", self.value)]
 		return \
 			self.__class__.__name__ + " " + \
 			name + " " + \
@@ -1141,7 +1143,7 @@ class _CBaseWithOptBody:
 			bool(self.arrayargs) or \
 			bool(self.body)
 	
-	def finalize(self, stateStruct, addToContent = None):
+	def finalize(self, stateStruct, addToContent = True):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
@@ -1149,7 +1151,7 @@ class _CBaseWithOptBody:
 		if not self: return
 		
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
-		if addToContent: self.parent.body.contentlist += [self]
+		if addToContent and self.parent.body: self.parent.body.contentlist += [self]
 	
 	def copy(self):
 		import copy
@@ -1210,6 +1212,8 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 			assert listName is not None
 			d.append(obj)
 
+class CFunc(_CBaseWithOptBody):
+	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
 class CStruct(_CBaseWithOptBody):
@@ -1218,8 +1222,21 @@ class CUnion(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="unions")
 class CEnum(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="enums")
-class CFunc(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
+
+class CEnumConst(_CBaseWithOptBody):
+	def finalize(self, stateStruct):
+		if self._finalized:
+			stateStruct.error("internal error: " + str(self) + " finalized twice")
+			return
+
+		if self.value is None:
+			if self.parent.body.contentlist:
+				last = self.parent.body.contentlist[-1]
+				self.value = last.value + 1
+			else:
+				self.value = 0
+
+		_CBaseWithOptBody.finalize(self, stateStruct)
 
 class CFuncArgDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
@@ -1242,7 +1259,10 @@ class CStatement(_CBaseWithOptBody):
 			if isinstance(token, CClosingBracket):
 				if token.brackets == openingBracketToken.brackets:
 					return
-
+	def getConstValue(self, stateStruct):
+		# TODO
+		return 0
+	
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody()
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
@@ -1289,14 +1309,53 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 
 	stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))	
 
-def cpre3_parse_enum(stateStruct, curCObj, input_iter):
-	# TODO
+def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
+	parentCObj.body = CBody()
+	curCObj = CEnumConst(parent=parentCObj)
+	valueStmnt = None
+	state = 0
+	
 	for token in input_iter:
-		if isinstance(token, CClosingBracket):
-			if token.brackets == curCObj._bracketlevel:
+		if isinstance(token, CIdentifier):
+			if state == 0:
+				curCObj.name = token.content
+				state = 1
+			else:
+				stateStruct.error("cpre3 parse enum: unexpected identifier " + token.content + " after " + str(curCObj) + " in state " + str(state))
+		elif token == COp("="):
+			if state == 1:
+				valueStmnt = CStatement(parent=parentCObj)
+				state = 2
+			else:
+				stateStruct.error("cpre3 parse enum: unexpected op '=' after " + str(curCObj) + " in state " + str(state))
+		elif token == COp(","):
+			if state in (1,2):
+				if state == 2:
+					valueStmnt.finalize(stateStruct)
+					curCObj.value = valueStmnt.getConstValue(stateStruct)
 				curCObj.finalize(stateStruct)
+				curCObj = CEnumConst(parent=parentCObj)
+				valueStmnt = None
+				state = 0
+			else:
+				stateStruct.error("cpre3 parse enum: unexpected op ',' after " + str(curCObj) + " in state " + str(state))
+		elif isinstance(token, CClosingBracket):
+			if token.brackets == parentCObj._bracketlevel:
+				if curCObj:
+					if state == 2:
+						valueStmnt.finalize(stateStruct)
+						curCObj.value = valueStmnt.getConstValue(stateStruct)
+					curCObj.finalize(stateStruct)
+				parentCObj.finalize(stateStruct)
 				return
-	stateStruct.error("cpre3 parse enum: incomplete, missing '}' on level " + str(curCObj._bracketlevel))
+		elif state == 2:
+			if isinstance(token, COpeningBracket):
+				valueStmnt._cpre3_parse_brackets(stateStruct, token, input_iter)
+			else:
+				valueStmnt._cpre3_handle_token(stateStruct, token)
+		else:
+			stateStruct.error("cpre3 parse enum: unexpected token " + str(token) + " in state " + str(state))
+	stateStruct.error("cpre3 parse enum: incomplete, missing '}' on level " + str(parentCObj._bracketlevel))
 
 def _cpre3_parse_skipbracketcontent(stateStruct, bracketlevel, input_iter):
 	for token in input_iter:
