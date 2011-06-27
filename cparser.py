@@ -145,23 +145,22 @@ class CVoidType(CType):
 
 class CPointerType(CType):
 	def __init__(self, ptr): self.pointerOf = ptr
-	def __repr__(self): return str(self.pointerOf) + "*"
-	def getCType(self, stateStruct): return ctypes.POINTER(getCType(self.pointerOf, stateStruct))
+	def getCType(self, stateStruct):
+		t = getCType(self.pointerOf, stateStruct)
+		return ctypes.POINTER(t)
 
 class CBuiltinType(CType):
-	def __init__(self, nameTokens): self.nameTokens = nameTokens
-	def __repr__(self): return str(self.nameTokens)
-	def getCType(self, stateStruct): return stateStruct.CBuiltinTypes[tuple(self.nameTokens)]
+	def __init__(self, builtinType): self.builtinType = builtinType
+	def getCType(self, stateStruct): return getCType(self.builtinType, stateStruct)
 
 class CStdIntType(CType):
 	def __init__(self, name): self.name = name
-	def __repr__(self): return self.name
 	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
 
 class CTypedefType(CType):
 	def __init__(self, name): self.name = name
-	def __repr__(self): return self.name
-	def getCType(self, stateStruct): return stateStruct.typedefs[self.name]
+	def getCType(self, stateStruct):
+		return getCType(stateStruct.typedefs[self.name], stateStruct)
 		
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
@@ -314,6 +313,20 @@ class State:
 		for c in cpreprocess_parse(self, reader):
 			yield c		
 		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]
+
+	def getCWrapper(self, clib):
+		class CWrapper:
+			stateStruct = self
+			def __getattr__(self, attrib):
+				stateStruct = self.__class__.stateStruct
+				if attrib in stateStruct.typedefs:
+					return stateStruct.typedefs[attrib].getCType(stateStruct)
+				if attrib in stateStruct.enumconsts:
+					return stateStruct.enumconsts[attrib].value
+				if attrib in stateStruct.funcs:
+					return stateStruct.funcs[attrib].getCType(stateStruct)((attrib, clib))
+				raise AttributeError, attrib + " not found in " + str(stateStruct)
+		return CWrapper()
 
 def is_valid_defname(defname):
 	if not defname: return False
@@ -1256,6 +1269,11 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 
 class CFunc(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
+	def getCType(self, stateStruct):
+		restype = getCType(self.type, stateStruct)
+		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
+		return ctypes.CFUNCTYPE(restype, *argtypes)
+		
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
 
@@ -1333,7 +1351,9 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent = False)
 		
 		self.parent.args += [self]
-	
+	def getCType(self, stateStruct):
+		return getCType(self.type, stateStruct)
+
 class CStatement(_CBaseWithOptBody):
 	def __str__(self):
 		return "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
@@ -1836,6 +1856,7 @@ def test():
 	tokens = copy_hook(tokens, token_list)
 	
 	cpre3_parse(state, tokens)
+	getCType(state.typedefs["SDL_Surface"], state)
 	
 	return state, token_list
 
