@@ -1101,7 +1101,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 		t = CType()
 		t.typedef = type_tokens[0]
 	else:
-		t = CType() # empty type
+		t = None
 	return t
 
 class _CBaseWithOptBody:
