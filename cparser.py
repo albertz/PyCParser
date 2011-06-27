@@ -187,6 +187,7 @@ class State:
 	]
 	
 	def __init__(self):
+		self.parent = None
 		self.macros = {} # name -> Macro
 		self.typedefs = {} # name -> type
 		self.structs = {} # name -> CStruct
@@ -1067,7 +1068,8 @@ def cpre2_tokenstream_asCCode(input):
 
 	
 class CBody:
-	def __init__(self):
+	def __init__(self, parent):
+		self.parent = parent
 		self._bracketlevel = []
 		self.typedefs = {}
 		self.structs = {}
@@ -1076,6 +1078,13 @@ class CBody:
 		self.vars = {}
 		self.enumconsts = {}
 		self.contentlist = []
+
+def findIdentifierInBody(body, name):
+	if name in body.enumconsts:
+		return body.enumconsts[name]
+	if body.parent is not None:
+		return findIdentifierInBody(body.parent, name)
+	return None
 
 def make_type_from_typetokens(stateStruct, type_tokens):
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
@@ -1256,12 +1265,14 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		self.parent.args += [self]
 	
 class CStatement(_CBaseWithOptBody):
+	def __str__(self):
+		return "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
 	def _cpre3_handle_token(self, stateStruct, token):
 		# TODO ...
 		if not hasattr(self, "_tokens"): self._tokens = []
 		self._tokens += [token]
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
-		subStatement = CStatement(parent=self)
+		subStatement = CStatement(parent=self.parent)
 		for token in input_iter:
 			if isinstance(token, COpeningBracket):
 				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
@@ -1276,29 +1287,54 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				subStatement._cpre3_handle_token(stateStruct, token)
 		stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
+	
+	def _tokensToConstValue(obj, tokens, stateStruct):
+		if len(tokens) == 2 and tokens[0] == COp("-"):
+			return - obj._tokensToConstValue(tokens[1:], stateStruct)
+		if len(tokens) == 1:
+			if isinstance(tokens[0], CNumber):
+				return tokens[0].content
+			if isinstance(tokens[0], CIdentifier):
+				name = tokens[0].content
+				idobj = findIdentifierInBody(obj.parent.body, name)
+				if idobj is None:
+					stateStruct.error(str(obj) + " getConstValue: identifier " + name + " unknown in " + str(body))
+					return 0 # this is a useful fallback
+				return idobj.value # expecting CEnumConst right now
+			if isinstance(tokens[0], CStatement):
+				return tokens[0].getConstValue(stateStruct)
+		if len(tokens) >= 3 and isinstance(tokens[1], COp):
+			# warning: expects that first op has always preference. TODO... :P
+			value1 = obj._tokensToConstValue([tokens[0]], stateStruct)
+			value2 = obj._tokensToConstValue(tokens[2:], stateStruct)
+			try:
+				if tokens[1] == COp("+"): return value1 + value2
+				elif tokens[1] == COp("-"): return value1 - value2
+				elif tokens[1] == COp("*"): return value1 * value2
+				elif tokens[1] == COp("/"): return value1 / value2
+				elif tokens[1] == COp("%"): return value1 % value2
+				elif tokens[1] == COp("<<"): return value1 << value2
+				elif tokens[1] == COp("|"): return value1 | value2
+			except Exception, e:
+				stateStruct.error(str(obj) + " getConstValue: cannot handle " + str(value1) + " " + str(tokens[1]) + " " + str(value2))
+				return 0
+		stateStruct.error(str(obj) + " getConstValue: not completely implemented yet for token list " + str(tokens))
+		
 	def getConstValue(self, stateStruct):
-		if not hasattr(self, "_tokens"): self._tokens = []
-		if len(self._tokens) == 2 and self._tokens[0] == COp("-") and isinstance(self._tokens[1], CNumber):
-			return -self._tokens[1].content
-		if len(self._tokens) == 1 and isinstance(self._tokens[0], CNumber):
-			return self._tokens[0].content
-		if len(self._tokens) == 1 and isinstance(self._tokens[0], CStatement):
-			return self._tokens[0].getConstValue(stateStruct)
-		stateStruct.error(str(self) + " getConstValue: not completely implemented yet for token list " + str(self._tokens))
-		return None
+		return self._tokensToConstValue(self._tokens if hasattr(self, "_tokens") else [], stateStruct)
 	
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
-	curCObj.body = CBody()
+	curCObj.body = CBody(parent=curCObj.parent.body)
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
 def cpre3_parse_union(stateStruct, curCObj, input_iter):
-	curCObj.body = CBody()
+	curCObj.body = CBody(parent=curCObj.parent.body)
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
 def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
-	curCObj.body = CBody()
+	curCObj.body = CBody(parent=curCObj.parent.body)
 	cpre3_parse_body(stateStruct, curCObj, input_iter)
 	curCObj.finalize(stateStruct)
 
@@ -1334,7 +1370,7 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))	
 
 def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
-	parentCObj.body = CBody()
+	parentCObj.body = CBody(parent=parentCObj.parent.body)
 	curCObj = CEnumConst(parent=parentCObj)
 	valueStmnt = None
 	state = 0
@@ -1555,7 +1591,7 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse typedef: incomplete, missing ';'")
 
 def cpre3_parse_body(stateStruct, parentCObj, input_iter):
-	if parentCObj.body is None: parentCObj.body = CBody()
+	if parentCObj.body is None: parentCObj.body = CBody(parent=parentCObj.parent.body)
 
 	curCObj = _CBaseWithOptBody(parent=parentCObj)
 
