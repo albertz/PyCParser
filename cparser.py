@@ -1078,6 +1078,8 @@ class CBody:
 		self.vars = {}
 		self.enumconsts = {}
 		self.contentlist = []
+	def __str__(self): return str(self.contentlist)
+	def __repr__(self): return "<CBody " + str(self) + ">"
 
 def findIdentifierInBody(body, name):
 	if name in body.enumconsts:
