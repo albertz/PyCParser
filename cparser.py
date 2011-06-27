@@ -1,5 +1,5 @@
 
-import ctypes
+import ctypes, _ctypes
 
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
@@ -135,20 +135,49 @@ class CType:
 			setattr(self, k, v)
 	def __repr__(self):
 		return self.__class__.__name__ + " " + str(self.__dict__)
+	def getCType(self, stateStruct):
+		raise NotImplementedError, str(self) + " getCType is not implemented"
 
 class CUnknownType(CType): pass
 class CVoidType(CType):
 	def __repr__(self): return "void"
+	def getCType(self, stateStruct): return None
 
-def getPointerType(base):
-	t = CType()
-	t.pointerOf = base
-	return t
+class CPointerType(CType):
+	def __init__(self, ptr): self.pointerOf = ptr
+	def __repr__(self): return str(self.pointerOf) + "*"
+	def getCType(self, stateStruct): return ctypes.POINTER(getCType(self.pointerOf, stateStruct))
+
+class CBuiltinType(CType):
+	def __init__(self, nameTokens): self.nameTokens = nameTokens
+	def __repr__(self): return str(self.nameTokens)
+	def getCType(self, stateStruct): return stateStruct.CBuiltinTypes[tuple(self.nameTokens)]
+
+class CStdIntType(CType):
+	def __init__(self, name): self.name = name
+	def __repr__(self): return self.name
+	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
+
+class CTypedefType(CType):
+	def __init__(self, name): self.name = name
+	def __repr__(self): return self.name
+	def getCType(self, stateStruct): return stateStruct.typedefs[self.name]
+		
+def getCType(t, stateStruct):
+	assert not isinstance(t, CUnknownType)
+	try:
+		if issubclass(t, _ctypes._SimpleCData): return t
+	except: pass # e.g. typeerror or so
+	if isinstance(t, _CBaseWithOptBody):
+		return t.getCType(stateStruct)
+	if isinstance(t, CType):
+		return t.getCType(stateStruct)
+	raise Exception, str(t) + " cannot be converted to a C type"
 
 class State:
 	EmptyMacro = Macro(None, None, (), "")
 	CBuiltinTypes = {
-		("void",): CVoidType,
+		("void",): CVoidType(),
 		("void", "*"): ctypes.c_void_p,
 		("char",): ctypes.c_char,
 		("unsigned", "char"): ctypes.c_ubyte,
@@ -1092,16 +1121,13 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
 		t = type_tokens[0]
 	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
-		t = CType()
-		t.builtinType = stateStruct.CBuiltinTypes[tuple(type_tokens)]
+		t = CBuiltinType(stateStruct.CBuiltinTypes[tuple(type_tokens)])
 	elif len(type_tokens) > 1 and type_tokens[-1] == "*":
-		t = getPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
+		t = CPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
-		t = CType()
-		t.stdIntType = type_tokens[0]
+		t = CStdIntType(type_tokens[0])
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.typedefs:
-		t = CType()
-		t.typedef = type_tokens[0]
+		t = CTypedefType(type_tokens[0])
 	else:
 		t = None
 	return t
@@ -1170,6 +1196,8 @@ class _CBaseWithOptBody:
 		import copy
 		return copy.deepcopy(self, memo={id(self.parent): self.parent})
 
+	def getCType(self, stateStruct):
+		raise Exception, str(self) + " cannot be converted to a C type"
 	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
@@ -1188,7 +1216,8 @@ class CTypedef(_CBaseWithOptBody):
 			return
 
 		self.parent.body.typedefs[self.name] = self.type
-		
+	def getCType(self, stateStruct): return getCType(self.type, stateStruct)
+	
 class CFuncPointerDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
@@ -1229,12 +1258,51 @@ class CFunc(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
+
+def _getCTypeStruct(baseClass, obj, stateStruct):
+	if hasattr(obj, "_ctype"): return obj._ctype
+	class ctype(baseClass):
+		_fields_ = []
+	for c in obj.body.contentlist:
+		if not isinstance(c, CVarDecl): continue
+		t = getCType(c.type, stateStruct)
+		if c.arrayargs:
+			if len(c.arrayargs) != 1: raise Exception, str(c) + " has too many array args"
+			n = c.arrayargs[0].value
+			t = t * n
+		if hasattr(c, "bitsize"):
+			ctype._fields_.append((c.name, t, c.bitsize))
+		else:
+			ctype._fields_.append((c.name, t))
+	obj._ctype = ctype
+	return ctype
+	
 class CStruct(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="structs")
+	def getCType(self, stateStruct):
+		return _getCTypeStruct(ctypes.Structure, self, stateStruct)
+
 class CUnion(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="unions")
+	def getCType(self, stateStruct):
+		return _getCTypeStruct(ctypes.Union, self, stateStruct)
+
 class CEnum(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="enums")
+	def getNumRange(self):
+		a,b = 0,0
+		for c in self.body.contentlist:
+			assert isinstance(c, CEnumConst)
+			if c.value < a: a = c.value
+			if c.value > b: b = c.value
+		return a,b
+	def getCType(self, stateStruct):
+		a,b = self.getNumRange()
+		if a >= 0 and b < (1<<32): return ctypes.c_uint32
+		if a >= -(1<<31) and b < (1<<31): return ctypes.c_int32
+		if a >= 0 and b < (1<<64): return ctypes.c_uint64
+		if a >= -(1<<63) and b < (1<<63): return ctypes.c_int64
+		raise Exception, str(self) + " has a too high number range " + str((a,b))
 
 class CEnumConst(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
