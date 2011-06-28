@@ -1369,6 +1369,11 @@ class CEnum(_CBaseWithOptBody):
 			if c.value < a: a = c.value
 			if c.value > b: b = c.value
 		return a,b
+	def getEnumConst(self, value):
+		for c in self.body.contentlist:
+			if not isinstance(c, CEnumConst): continue
+			if c.value == value: return c
+		return None
 	def getCType(self, stateStruct):
 		a,b = self.getNumRange()
 		if a >= 0 and b < (1<<32): t = ctypes.c_uint32
@@ -1376,7 +1381,14 @@ class CEnum(_CBaseWithOptBody):
 		elif a >= 0 and b < (1<<64): t = ctypes.c_uint64
 		elif a >= -(1<<63) and b < (1<<63): t = ctypes.c_int64
 		else: raise Exception, str(self) + " has a too high number range " + str((a,b))
-		class EnumType(t): pass
+		class EnumType(t):
+			_typeStruct = self
+			def __repr__(self):
+				v = self._typeStruct.getEnumConst(self.value)
+				if v is None: v = self.value
+				return "<" + str(v) + ">"
+			def __cmp__(self, other):
+				return cmp(self.value, other)
 		for c in self.body.contentlist:
 			if not c.name: continue
 			if hasattr(EnumType, c.name): continue
@@ -1401,7 +1413,7 @@ class CEnumConst(_CBaseWithOptBody):
 		if self.name:
 			# self.parent.parent is the parent of the enum
 			self.parent.parent.body.enumconsts[self.name] = self
-
+		
 class CFuncArgDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
