@@ -164,8 +164,13 @@ class CVoidType(CType):
 class CPointerType(CType):
 	def __init__(self, ptr): self.pointerOf = ptr
 	def getCType(self, stateStruct):
-		t = getCType(self.pointerOf, stateStruct)
-		return ctypes.POINTER(t)
+		try:
+			t = getCType(self.pointerOf, stateStruct)
+			ptrType = ctypes.POINTER(t)
+			return ptrType
+		except Exception, e:
+			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
+		return ctypes.c_void_p
 
 class CBuiltinType(CType):
 	def __init__(self, builtinType): self.builtinType = builtinType
@@ -1325,7 +1330,7 @@ class CVarDecl(_CBaseWithOptBody):
 def _getCTypeStruct(baseClass, obj, stateStruct):
 	if hasattr(obj, "_ctype"): return obj._ctype
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
-	assert obj.body is not None, str(obj) + ".body must not be None"
+	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
 	class ctype(baseClass):
 		_fields_ = []
 	for c in obj.body.contentlist:
