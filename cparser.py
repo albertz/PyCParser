@@ -1324,6 +1324,8 @@ class CVarDecl(_CBaseWithOptBody):
 
 def _getCTypeStruct(baseClass, obj, stateStruct):
 	if hasattr(obj, "_ctype"): return obj._ctype
+	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
+	assert obj.body is not None, str(obj) + ".body must not be None"
 	class ctype(baseClass):
 		_fields_ = []
 	for c in obj.body.contentlist:
