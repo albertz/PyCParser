@@ -1331,8 +1331,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 	if hasattr(obj, "_ctype"): return obj._ctype
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
 	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
-	class ctype(baseClass):
-		_fields_ = []
+	fields = []
 	for c in obj.body.contentlist:
 		if not isinstance(c, CVarDecl): continue
 		t = getCType(c.type, stateStruct)
@@ -1341,9 +1340,11 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 			n = c.arrayargs[0].value
 			t = t * n
 		if hasattr(c, "bitsize"):
-			ctype._fields_.append((c.name, t, c.bitsize))
+			fields += [(c.name, t, c.bitsize)]
 		else:
-			ctype._fields_.append((c.name, t))
+			fields += [(c.name, t)]
+	class ctype(baseClass):
+		_fields_ = fields
 	obj._ctype = ctype
 	return ctype
 	
