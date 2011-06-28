@@ -149,6 +149,10 @@ class CType:
 			setattr(self, k, v)
 	def __repr__(self):
 		return self.__class__.__name__ + " " + str(self.__dict__)
+	def __eq__(self, other):
+		if not hasattr(other, "__class__"): return False
+		return self.__class__ is other.__class__ and self.__dict__ == other.__dict__
+	def __ne__(self, other): return not self == other
 	def getCType(self, stateStruct):
 		raise NotImplementedError, str(self) + " getCType is not implemented"
 
@@ -1391,7 +1395,8 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent = False)
 		
-		self.parent.args += [self]
+		if self.type != CBuiltinType(CVoidType()):
+			self.parent.args += [self]
 	def getCType(self, stateStruct):
 		return getCType(self.type, stateStruct)
 
