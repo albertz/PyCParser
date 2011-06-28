@@ -126,7 +126,21 @@ class Macro:
 	def __call__(self, *args):
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
 		return self.func(*args)
-
+	def getConstValue(self, stateStruct):
+		assert len(self.args) == 0
+		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
+		tokens = cpre2_parse(stateStruct, preprocessed)
+		
+		valueStmnt = CStatement()
+		input_iter = iter(tokens)
+		for token in input_iter:
+			if isinstance(token, COpeningBracket):
+				valueStmnt._cpre3_parse_brackets(stateStruct, token, input_iter)
+			else:
+				valueStmnt._cpre3_handle_token(stateStruct, token)
+		valueStmnt.finalize(stateStruct)
+		
+		return valueStmnt.getConstValue(stateStruct)
 
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType:
@@ -309,19 +323,25 @@ class State:
 			fullfilename = None
 			reader = self.readGlobalInclude(filename)
 
+		for c in self.preprocess(reader, fullfilename, filename):
+			yield c
+
+	def preprocess(self, reader, fullfilename, filename):
 		self.incIncludeLineChar(fullfilename=fullfilename, inc=filename)
 		for c in cpreprocess_parse(self, reader):
 			yield c		
-		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]
+		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]		
 
 	def getCWrapper(self, clib):
 		class CWrapper:
 			stateStruct = self
 			def __getattr__(self, attrib):
-				if not hasattr(self, "_cache"): self._cache = {}
+				if not "_cache" in self.__dict__: self._cache = {}
 				if attrib in self._cache: return self._cache[attrib]
 				stateStruct = self.__class__.stateStruct
-				if attrib in stateStruct.typedefs:
+				if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
+					t = stateStruct.macros[attrib].getConstValue(stateStruct)
+				elif attrib in stateStruct.typedefs:
 					t = stateStruct.typedefs[attrib].getCType(stateStruct)
 				elif attrib in stateStruct.enumconsts:
 					t = stateStruct.enumconsts[attrib].value
