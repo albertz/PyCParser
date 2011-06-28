@@ -333,11 +333,14 @@ class State:
 		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]		
 
 	def getCWrapper(self, clib):
-		class CWrapper:
+		class CWrapper(object):
 			stateStruct = self
-			def __getattr__(self, attrib):
+			def __getattribute__(self, attrib):
+				if attrib in ("_cache","__dict__","__class__"):
+					return object.__getattribute__(self, attrib)
 				if not "_cache" in self.__dict__: self._cache = {}
-				if attrib in self._cache: return self._cache[attrib]
+				cache = self._cache
+				if attrib in cache: return cache[attrib]
 				stateStruct = self.__class__.stateStruct
 				if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
 					t = stateStruct.macros[attrib].getConstValue(stateStruct)
@@ -349,9 +352,22 @@ class State:
 					t = stateStruct.funcs[attrib].getCType(stateStruct)((attrib, clib))
 				else:
 					raise AttributeError, attrib + " not found in " + str(stateStruct)
-				self._cache[attrib] = t
+				cache[attrib] = t
 				return t
-		return CWrapper()
+		def iterAllAttribs():
+			for attrib in self.macros:
+				if len(self.macros[attrib].args) > 0: continue
+				yield attrib
+			for attrib in self.typedefs:
+				yield attrib
+			for attrib in self.enumconsts:
+				yield attrib
+			for attrib in self.funcs:
+				yield attrib
+		for attrib in iterAllAttribs():
+			setattr(CWrapper, attrib, None)		
+		wrapper = CWrapper()
+		return wrapper
 
 def is_valid_defname(defname):
 	if not defname: return False
