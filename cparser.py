@@ -318,14 +318,19 @@ class State:
 		class CWrapper:
 			stateStruct = self
 			def __getattr__(self, attrib):
+				if not hasattr(self, "_cache"): self._cache = {}
+				if attrib in self._cache: return self._cache[attrib]
 				stateStruct = self.__class__.stateStruct
 				if attrib in stateStruct.typedefs:
-					return stateStruct.typedefs[attrib].getCType(stateStruct)
-				if attrib in stateStruct.enumconsts:
-					return stateStruct.enumconsts[attrib].value
-				if attrib in stateStruct.funcs:
-					return stateStruct.funcs[attrib].getCType(stateStruct)((attrib, clib))
-				raise AttributeError, attrib + " not found in " + str(stateStruct)
+					t = stateStruct.typedefs[attrib].getCType(stateStruct)
+				elif attrib in stateStruct.enumconsts:
+					t = stateStruct.enumconsts[attrib].value
+				elif attrib in stateStruct.funcs:
+					t = stateStruct.funcs[attrib].getCType(stateStruct)((attrib, clib))
+				else:
+					raise AttributeError, attrib + " not found in " + str(stateStruct)
+				self._cache[attrib] = t
+				return t
 		return CWrapper()
 
 def is_valid_defname(defname):
