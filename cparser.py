@@ -1296,7 +1296,11 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 			stateStruct.error("finalize typedef " + str(self) + ": type is unknown")
 		if self.name is None:
 			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
-
+	def getCType(self, stateStruct):
+		restype = getCType(self.type, stateStruct)
+		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
+		return ctypes.CFUNCTYPE(restype, *argtypes)
+		
 def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
