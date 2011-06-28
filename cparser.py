@@ -344,6 +344,7 @@ class State:
 	def getCWrapper(self, clib):
 		class CWrapper(object):
 			stateStruct = self
+			dll = clib
 			def __getattribute__(self, attrib):
 				if attrib in ("_cache","__dict__","__class__"):
 					return object.__getattribute__(self, attrib)
@@ -374,7 +375,8 @@ class State:
 			for attrib in self.funcs:
 				yield attrib
 		for attrib in iterAllAttribs():
-			setattr(CWrapper, attrib, None)		
+			if not hasattr(CWrapper, attrib):
+				setattr(CWrapper, attrib, None)
 		wrapper = CWrapper()
 		return wrapper
 
@@ -1369,12 +1371,18 @@ class CEnum(_CBaseWithOptBody):
 		return a,b
 	def getCType(self, stateStruct):
 		a,b = self.getNumRange()
-		if a >= 0 and b < (1<<32): return ctypes.c_uint32
-		if a >= -(1<<31) and b < (1<<31): return ctypes.c_int32
-		if a >= 0 and b < (1<<64): return ctypes.c_uint64
-		if a >= -(1<<63) and b < (1<<63): return ctypes.c_int64
-		raise Exception, str(self) + " has a too high number range " + str((a,b))
-
+		if a >= 0 and b < (1<<32): t = ctypes.c_uint32
+		elif a >= -(1<<31) and b < (1<<31): t = ctypes.c_int32
+		elif a >= 0 and b < (1<<64): t = ctypes.c_uint64
+		elif a >= -(1<<63) and b < (1<<63): t = ctypes.c_int64
+		else: raise Exception, str(self) + " has a too high number range " + str((a,b))
+		class EnumType(t): pass
+		for c in self.body.contentlist:
+			if not c.name: continue
+			if hasattr(EnumType, c.name): continue
+			setattr(EnumType, c.name, c.value)
+		return EnumType
+	
 class CEnumConst(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
@@ -1891,7 +1899,17 @@ def cpre3_parse(stateStruct, input):
 	parentObj = _CBaseWithOptBody()
 	parentObj.body = stateStruct
 	cpre3_parse_body(stateStruct, parentObj, input_iter)
-			
+
+def parse(filename):
+	state = State()
+	state.autoSetupSystemMacros()
+
+	preprocessed = state.preprocess_file(filename, local=True)
+	tokens = cpre2_parse(state, preprocessed)
+	cpre3_parse(state, tokens)
+	
+	return state
+	
 def test():
 	import better_exchook
 	better_exchook.install()
@@ -1910,7 +1928,6 @@ def test():
 	tokens = copy_hook(tokens, token_list)
 	
 	cpre3_parse(state, tokens)
-	getCType(state.typedefs["SDL_Surface"], state)
 	
 	return state, token_list
 
