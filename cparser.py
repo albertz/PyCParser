@@ -305,11 +305,11 @@ class State:
 		return fullfilename
 	
 	def readGlobalInclude(self, filename):
-		if filename == "inttypes.h": return "" # we define those types as builtin-types
-		elif filename == "stdint.h": return ""
+		if filename == "inttypes.h": return "", None # we define those types as builtin-types
+		elif filename == "stdint.h": return "", None
 		else:
 			self.error("no handler for global include-file '" + filename + "'")
-			return ""
+			return "", None
 
 	def preprocess_file(self, filename, local):
 		if local:
@@ -329,8 +329,7 @@ class State:
 					yield c
 			reader = reader()
 		else:
-			fullfilename = None
-			reader = self.readGlobalInclude(filename)
+			reader, fullfilename = self.readGlobalInclude(filename)
 
 		for c in self.preprocess(reader, fullfilename, filename):
 			yield c
@@ -1763,7 +1762,15 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 
 	curCObj = _CBaseWithOptBody(parent=parentCObj)
 
-	for token in input_iter:
+	while True:
+		stateStruct._cpre3_atBaseLevel = False
+		if parentCObj._bracketlevel is None:
+			if not curObj:
+				stateStruct._cpre3_atBaseLevel = True
+
+		try: token = input_iter.next()
+		except StopIteration: break
+		
 		if isinstance(token, CIdentifier):
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
