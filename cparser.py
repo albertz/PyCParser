@@ -117,15 +117,17 @@ class Macro:
 		self.name = macroname
 		self.args = args if (args is not None) else ()
 		self.rightside = rightside if (rightside is not None) else ""
-		self.func = parse_macro_def_rightside(state, self.args, self.rightside)
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
 	def __str__(self):
 		return "(" + ", ".join(self.args) + ") -> " + self.rightside
 	def __repr__(self):
 		return "<Macro: " + str(self) + ">"
-	def __call__(self, *args):
+	def eval(self, state, args):
 		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
-		return self.func(*args)
+		func = parse_macro_def_rightside(state, self.args, self.rightside)
+		return func(*args)
+	def __call__(self, *args):
+		return self.eval(None, args)
 	def getConstValue(self, stateStruct):
 		assert len(self.args) == 0
 		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
@@ -560,7 +562,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							return
 						macro = stateStruct.macros[macroname]
 						try:
-							resolved = macro(args)
+							resolved = macro.eval(stateStruct, args)
 						except Exception, e:
 							stateStruct.error("preprocessor eval call on '" + macroname + "': error " + str(e))
 							return
@@ -1097,7 +1099,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 						breakLoop = False
 			elif state == 32: # finalize macro
 				try:
-					resolved = stateStruct.macros[macroname](*macroargs)
+					resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
 					for t in cpre2_parse(stateStruct, resolved, brackets):
 						yield t
 				except Exception, e:
