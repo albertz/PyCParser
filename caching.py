@@ -238,10 +238,12 @@ class StateListWrapper:
 class StateWrapper:
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
 	WrappedLists = ("contentlist",)
+	LocalAttribs = ("_stateStruct", "_cache_stack", "_additions", "_macroAccessSet", "_macroAddSet", "_filenames", "_cpre3_atBaseLevel")
 	def __init__(self, stateStruct):
 		self._stateStruct = stateStruct
 		self._cache_stack = []
 	def __getattr__(self, k):
+		if k in self.LocalAttribs: raise AttributeError # normally we shouldn't get here but just in case
 		if len(self._cache_stack) > 0:
 			if k in self.WrappedDicts:
 				kwattr = {'d': getattr(self._stateStruct, k), 'addList': self._additions[k]}
@@ -259,7 +261,7 @@ class StateWrapper:
 	def __repr__(self):
 		return "<StateWrapper of " + repr(self._stateStruct) + ">"
 	def __setattr__(self, k, v):
-		if k in ("_stateStruct", "_cache_stack", "_additions", "_macroAccessSet", "_macroAddSet", "_filenames", "_cpre3_atBaseLevel"):
+		if k in self.LocalAttribs:
 			self.__dict__[k] = v
 			return
 		if k in self.WrappedLists and isinstance(v, StateListWrapper): return # ignore. probably iadd or so.
