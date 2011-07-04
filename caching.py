@@ -178,6 +178,9 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 				return
 		except Exception, e:
 			print "(Safe to ignore) Error while reading C parser cache for", filename, ":", e
+			# Try to delete old references if possible. Otherwise we might always hit this.
+			try: FileCacheRefs.Delete(full_filename)
+			except: pass
 
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
