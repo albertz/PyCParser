@@ -211,14 +211,15 @@ class StateWrapper:
 		self._stateStruct = stateStruct
 		self._cache_stack = []
 	def __getattr__(self, k):
-		if k in self.WrappedDicts:
-			kwattr = {'d': getattr(self._stateStruct, k), 'addList': self._additions[k]}
-			if k == "macros":
-				kwattr["accessSet"] = self._macroAccessSet
-				kwattr["addSet"] = self._macroAddSet
-			return StateDictWrapper(**kwattr)
-		if k in self.WrappedLists:
-			return StateListWrapper(getattr(self._stateStruct, k), addList=self._additions[k])
+		if len(self._cache_stack) > 0:
+			if k in self.WrappedDicts:
+				kwattr = {'d': getattr(self._stateStruct, k), 'addList': self._additions[k]}
+				if k == "macros":
+					kwattr["accessSet"] = self._macroAccessSet
+					kwattr["addSet"] = self._macroAddSet
+				return StateDictWrapper(**kwattr)
+			if k in self.WrappedLists:
+				return StateListWrapper(getattr(self._stateStruct, k), addList=self._additions[k])
 		attr = getattr(self._stateStruct, k)
 		if isinstance(attr, types.MethodType):
 			# rebound
