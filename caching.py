@@ -123,6 +123,7 @@ def check_cache(stateStruct, full_filename):
 	for filecache in filecaches:
 		if not filecache.match(stateStruct): continue
 		if not filecache.checkFileDepListUpToDate():
+			print "cache match but not up-to-date:", full_filename, filecache
 			FileCache.Delete(filecache)
 			filecaches.remove(filecache)
 			filecaches.save()
@@ -152,9 +153,13 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if stateStruct._cpre3_atBaseLevel:
 		cached_entry = check_cache(stateStruct, full_filename)
 		if cached_entry:
+			print "cache hit on:", full_filename
 			cached_entry.apply(stateStruct)
 			return
-
+		print "cache miss on:", full_filename
+	else:
+		print "State__cached_preprocess not at base level:", stateStruct.curPosAsStr()
+		
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
 	stateStruct._filenames.append(full_filename)
