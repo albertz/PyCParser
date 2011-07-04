@@ -21,10 +21,10 @@ def sha1(obj):
 	h = hashlib.sha1()
 	if isinstance(obj, (str,unicode)):
 		h.update(obj)
-	elif isinstance(obj, MyDict):
+	elif isinstance(obj, dict):
 		h.update("{")
 		for k,v in sorted(obj.iteritems()):
-			h.update(k)
+			h.update(sha1(k))
 			h.update(":")
 			h.update(sha1(v))
 			h.update(",")
@@ -111,6 +111,12 @@ class FileCacheRefs(DbObj, list):
 
 class FileCache(DbObj, MyDict):
 	Namespace = "file-cache"
+	@classmethod
+	def FromCacheData(cls, cache_data, key):
+		obj = cls()
+		obj.__dict__["_key"] = key
+		# TODO
+		return obj
 	def apply(self, stateStruct):
 		# TODO
 		print "filecache apply", self, stateStruct
@@ -121,7 +127,9 @@ def check_cache(stateStruct, full_filename):
 	if filecaches is None: return None
 	
 	for filecacheref in filecaches:
-		if not filecacheref.match(stateStruct): continue
+		if not filecacheref.match(stateStruct):
+			print "cache available but no match:", filecacheref
+			continue
 		if not filecacheref.checkFileDepListUpToDate():
 			print "cache match but not up-to-date:", full_filename, filecacheref
 			FileCache.Delete(filecacheref)
@@ -136,10 +144,11 @@ def check_cache(stateStruct, full_filename):
 
 def save_cache(cache_data, full_filename):
 	filecaches = FileCacheRefs.Load(full_filename, create=True)
-	filecache = FileCacheRef.FromCacheData(cache_data)
-	filecaches.append(filecache)
+	filecacheref = FileCacheRef.FromCacheData(cache_data)
+	filecaches.append(filecacheref)
 	filecaches.save()
-	
+	filecache = FileCache.FromCacheData(cache_data, key=filecacheref)
+	filecache.save()
 
 # Note: This does more than State.preprocess. In case it hits a cache,
 # it applies all effects up to cpre3 and ignores the preprocessing.
@@ -147,6 +156,7 @@ def save_cache(cache_data, full_filename):
 # Otherwise, it doesn't do any further processing and it just yields the rest.
 def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if not full_filename:
+		print "no full filename for", filename
 		# shortcut. we cannot use caching if we don't have the full filename.
 		for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
 			yield c
@@ -154,17 +164,17 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	
 	if stateStruct._cpre3_atBaseLevel:
 		cached_entry = check_cache(stateStruct, full_filename)
-		if cached_entry:
+		if cached_entry is not None:
 			print "cache hit on:", full_filename
 			cached_entry.apply(stateStruct)
 			return
-		print "cache miss on:", full_filename
+		print "cache miss on:", full_filename, cached_entry
 	else:
 		print "State__cached_preprocess not at base level:", stateStruct.curPosAsStr()
 		
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
-	stateStruct._filenames.append(full_filename)
+	stateStruct._filenames.add(full_filename)
 	for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
 		yield c
 	cache_data = stateStruct.cache_popLevel()
@@ -245,7 +255,7 @@ class StateWrapper:
 		for k in self.WrappedDicts + self.WrappedLists: self._additions[k] = []
 		self._macroAccessSet = set()
 		self._macroAddSet = set()
-		self._filenames = []
+		self._filenames = set()
 		self._cache_stack.append(
 			MyDict(
 				oldMacros = dict(self._stateStruct.macros),
@@ -275,7 +285,7 @@ class StateWrapper:
 			for k in cache_data.macroAccessSet:
 				if k not in self._macroAddSet:
 					self._macroAccessSet.add(k)
-			self._filenames.extend(cache_data.filenames)
+			self._filenames.update(cache_data.filenames)
 		return cache_data
 	preprocess = State__cached_preprocess
 
