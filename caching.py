@@ -46,7 +46,9 @@ class MyDict(dict):
 	def __getattr__(self, key):
 		try: return self[key]
 		except KeyError: raise AttributeError
-
+	def __repr__(self): return "MyDict(" + dict.__repr__(self) + ")"
+	def __str__(self): return "MyDict(" + dict.__str__(self) + ")"
+	
 class DbObj:
 	@classmethod
 	def GetFilePath(cls, key):
@@ -115,13 +117,22 @@ class FileCache(DbObj, MyDict):
 	def FromCacheData(cls, cache_data, key):
 		obj = cls()
 		obj.__dict__["_key"] = key
-		# TODO
+		obj.additions = cache_data.additions
 		return obj
 	def apply(self, stateStruct):
-		# TODO
-		pass
+		for k,l in self.additions.iteritems():
+			a = getattr(stateStruct, k)
+			if isinstance(a, list):
+				a.extend(l)
+			elif isinstance(a, dict):
+				for dk,dv in l:
+					if dv is None:
+						a.pop(dk)
+					else:
+						a[dk] = dv
+			else:
+				assert False, "unknown attribute " + k + ": " + str(a)
 
-	
 def check_cache(stateStruct, full_filename):	
 	filecaches = FileCacheRefs.Load(full_filename)
 	if filecaches is None: return None
@@ -202,6 +213,8 @@ class StateDictWrapper:
 		self._addList.append((k,None))
 		if self._addSet is not None:
 			self._addSet.discard(k)
+	def __repr__(self): return "StateDictWrapper(" + repr(self._dict) + ")"
+	def __str__(self): return "StateDictWrapper(" + str(self._dict) + ")"
 		
 class StateListWrapper:
 	def __init__(self, l, addList):
@@ -216,6 +229,8 @@ class StateListWrapper:
 	def append(self, v):
 		self._list.append(v)
 		self._addList.append(v)
+	def __repr__(self): return "StateListWrapper(" + repr(self._list) + ")"
+	def __str__(self): return "StateListWrapper(" + str(self._list) + ")"
 
 class StateWrapper:
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
