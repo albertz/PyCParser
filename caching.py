@@ -10,6 +10,10 @@
 #     of all files and if everything matches, use the cache.
 
 import cparser
+import os, os.path
+
+# TODO: some way to configure this. or some more clever default. or so
+CACHING_DIR = os.path.abspath(os.path.curdir) + "/.cparser_caching/"
 
 def sha1(obj):
 	import hashlib
@@ -43,24 +47,41 @@ class MyDict(dict):
 		except KeyError: raise AttributeError
 
 class DbObj:
-	def __init__(self, key):
-		pass
 	@classmethod
-	def Load(cls, key):
-		# TODO
-		return cls(key)
+	def GetFilePath(cls, key):
+		h = sha1(key)
+		prefix = CACHING_DIR + cls.Namespace
+		return prefix + "/" + h[:2] + "/" + h[2:]
+	@classmethod
+	def Load(cls, key, create=False):
+		fn = cls.GetFilePath(key)
+		try: f = open(fn)
+		except:
+			if create:
+				obj = cls()
+				obj.__dict__["_key"] = key
+				return obj()
+			else:
+				return None
+		import pickle
+		obj = pickle.load(f)
+		f.close()
+		return obj
 	@classmethod
 	def Delete(cls, key):
-		obj = cls.Load(key)
-		obj.delete()
-	# TODO
-	def delete(self): pass
-	def save(self): pass
+		fn = cls.GetFilePath(key)
+		os.remove(fn)
+	def delete(self): self.Delete(self._key)
+	def save(self):
+		fn = cls.GetFilePath(self._key)
+		f = open(fn, "w")
+		import pickle
+		pickle.dump(self, f)
+		f.close()
 	
 def getLastChangeUnixTime(filename):
-	import os
-	s = os.stat(filename)
-	return s.st_mtime
+	import os.path
+	return os.path.getmtime(filename)
 
 class FileCacheRef(MyDict):
 	@classmethod
@@ -87,8 +108,9 @@ class FileCacheRefs(DbObj, list):
 
 class FileCache(DbObj, MyDict):
 	Namespace = "file-cache"
-	# TODO
-	def apply(self, stateStruct): pass
+	def apply(self, stateStruct):
+		# TODO
+		print "filecache apply", self, stateStruct
 
 	
 def check_cache(stateStruct, full_filename):	
@@ -105,7 +127,7 @@ def check_cache(stateStruct, full_filename):
 	return None
 
 def save_cache(cache_data, full_filename):
-	filecaches = FileCacheRefs.Load(full_filename)
+	filecaches = FileCacheRefs.Load(full_filename, create=True)
 	filecache = FileCacheRef.FromCacheData(cache_data)
 	filecaches.append(filecache)
 	filecaches.save()
