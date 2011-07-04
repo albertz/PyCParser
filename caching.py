@@ -304,18 +304,35 @@ class StateWrapper:
 			self._filenames.update(cache_data.filenames)
 		return cache_data
 	preprocess = State__cached_preprocess
-
+	def __getstate__(self):
+		# many C structure objects refer to this as their parent.
+		# when we pickle those objects, it should be safe to ignore to safe this.
+		# we also don't really have any other option because we don't want to
+		# dump this whole object.
+		return None
+		
 def parse(filename, state = None):
 	if state is None:
 		state = cparser.State()
 		state.autoSetupSystemMacros()
 	
-	state = StateWrapper(state)
-	preprocessed = state.preprocess_file(filename, local=True)
-	tokens = cparser.cpre2_parse(state, preprocessed)
-	cparser.cpre3_parse(state, tokens)
+	wrappedState = StateWrapper(state)
+	preprocessed = wrappedState.preprocess_file(filename, local=True)
+	tokens = cparser.cpre2_parse(wrappedState, preprocessed)
+	cparser.cpre3_parse(wrappedState, tokens)
 	
 	return state
 	
 def setupParserCache(state, cachedir):
 	pass
+
+def test():
+	import better_exchook
+	better_exchook.install()
+	
+	state = parse("/Library/Frameworks/SDL.framework/Headers/SDL.h")
+	
+	return state
+
+if __name__ == '__main__':
+	print test()
