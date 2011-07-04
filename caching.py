@@ -13,8 +13,20 @@ import cparser
 import os, os.path
 import types
 
-# TODO: some way to configure this. or some more clever default. or so
-CACHING_DIR = os.path.abspath(os.path.curdir) + "/.cparser_caching/"
+# Note: It might make sense to make this somehow configureable.
+# However, for now, I'd like to keep things as simple as possible.
+# Using /tmp or (a bit better) /var/tmp might have been another
+# possibility. However, it makes sense to keep this more permanent
+# because when compiling a lot, it can be very time-critical if
+# we just remove all the data.
+# If wasted space becomes an issue, it is easy to write a script
+# which would remove all old/obsolete entries from the cache.
+# It makes sense also to keep this global for the whole system
+# because the caching system should be able to handle this
+# and it should thus only improve the performance.
+# It is saved though in the user directory because most probably
+# we wouldn't have write permission otherwise.
+CACHING_DIR = os.path.expanduser("~/.cparser_caching/")
 
 def sha1(obj):
 	import hashlib
