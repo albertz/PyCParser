@@ -29,14 +29,14 @@ def sha1(obj):
 			h.update(sha1(v))
 			h.update(",")
 		h.update("}")
-	elif isinstance(obj, list):
+	elif isinstance(obj, (list,tuple)):
 		h.update("[")
 		for v in sorted(obj):
 			h.update(sha1(v))
 			h.update(",")
 		h.update("]")
 	else:
-		raise TypeError, "sha1 does not support obj " + str(obj)
+		h.update(str(obj))
 	return h.hexdigest()
 
 class MyDict(dict):
@@ -61,7 +61,7 @@ class DbObj:
 			if create:
 				obj = cls()
 				obj.__dict__["_key"] = key
-				return obj()
+				return obj
 			else:
 				return None
 		import pickle
@@ -74,7 +74,9 @@ class DbObj:
 		os.remove(fn)
 	def delete(self): self.Delete(self._key)
 	def save(self):
-		fn = cls.GetFilePath(self._key)
+		fn = self.GetFilePath(self._key)
+		try: os.makedirs(os.path.dirname(fn))
+		except: pass # ignore file-exists or other errors
 		f = open(fn, "w")
 		import pickle
 		pickle.dump(self, f)
@@ -116,6 +118,8 @@ class FileCache(DbObj, MyDict):
 	
 def check_cache(stateStruct, full_filename):	
 	filecaches = FileCacheRefs.Load(full_filename)
+	if filecaches is None: return None
+	
 	for filecache in filecaches:
 		if not filecache.match(stateStruct): continue
 		if not filecache.checkFileDepListUpToDate():
@@ -139,11 +143,9 @@ def save_cache(cache_data, full_filename):
 # Note also: This is a generator. In the cache hit case, it yields nothing.
 # Otherwise, it doesn't do any further processing and it just yields the rest.
 def State__cached_preprocess(stateStruct, reader, full_filename, filename):
-	print "c:", stateStruct, reader, full_filename, filename
-
 	if not full_filename:
 		# shortcut. we cannot use caching if we don't have the full filename.
-		for c in cparser.State.preprocess(stateStruct, reader, full_filename, filename):
+		for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
 			yield c
 		return
 	
@@ -156,7 +158,7 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
 	stateStruct._filenames.append(full_filename)
-	for c in cparser.State.preprocess(stateStruct, full_filename, filename):
+	for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
 		yield c
 	cache_data = stateStruct.cache_popLevel()
 	
@@ -186,7 +188,7 @@ class StateDictWrapper:
 		self._dict.pop(k)
 		self._addList.append((k,None))
 		if self._addSet is not None:
-			self._addSet.remove(k)
+			self._addSet.discard(k)
 		
 class StateListWrapper:
 	def __init__(self, l, addList):
@@ -229,10 +231,10 @@ class StateWrapper:
 			self.__dict__[k] = v
 			return
 		if k in self.WrappedLists and isinstance(v, StateListWrapper): return # ignore. probably iadd or so.
-		raise AttributeError, str(self) + " has attribute '" + k + "' read-only, cannot set to " + repr(v)
+		setattr(self._stateStruct, k, v)
 	def cache_pushLevel(self):
 		self._additions = {} # dict/list attrib -> addition list
-		for k in WrappedDicts + WrappedLists: self._additions[k] = []
+		for k in self.WrappedDicts + self.WrappedLists: self._additions[k] = []
 		self._macroAccessSet = set()
 		self._macroAddSet = set()
 		self._filenames = []
@@ -259,7 +261,7 @@ class StateWrapper:
 			self._macroAddSet = last.macroAddSet
 			self._filenames = last.filenames
 			# merge with popped frame
-			for k in WrappedDicts + WrappedLists:
+			for k in self.WrappedDicts + self.WrappedLists:
 				self._additions[k].extend(cache_data.additions[k])
 			self._macroAddSet.update(cache_data.macroAddSet)
 			for k in cache_data.macroAccessSet:
