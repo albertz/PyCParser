@@ -122,9 +122,9 @@ class FileCache(DbObj, MyDict):
 	def apply(self, stateStruct):
 		for k,l in self.additions.iteritems():
 			a = getattr(stateStruct, k)
-			if isinstance(a, list):
+			if isinstance(a, (list,StateListWrapper)):
 				a.extend(l)
-			elif isinstance(a, dict):
+			elif isinstance(a, (dict,StateDictWrapper)):
 				for dk,dv in l:
 					if dv is None:
 						a.pop(dk)
@@ -175,7 +175,7 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if stateStruct._cpre3_atBaseLevel:
 		cached_entry = check_cache(stateStruct, full_filename)
 		if cached_entry is not None:
-			print "cache hit on:", full_filename, cached_entry
+			print "cache hit on:", full_filename
 			cached_entry.apply(stateStruct)
 			return
 		
@@ -229,6 +229,9 @@ class StateListWrapper:
 	def append(self, v):
 		self._list.append(v)
 		self._addList.append(v)
+	def extend(self, l):
+		self._list.extend(l)
+		self._addList.extend(l)
 	def __repr__(self): return "StateListWrapper(" + repr(self._list) + ")"
 	def __str__(self): return "StateListWrapper(" + str(self._list) + ")"
 
