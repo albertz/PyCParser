@@ -119,7 +119,7 @@ class FileCache(DbObj, MyDict):
 		return obj
 	def apply(self, stateStruct):
 		# TODO
-		print "filecache apply", self, stateStruct
+		pass
 
 	
 def check_cache(stateStruct, full_filename):	
@@ -156,7 +156,6 @@ def save_cache(cache_data, full_filename):
 # Otherwise, it doesn't do any further processing and it just yields the rest.
 def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if not full_filename:
-		print "no full filename for", filename
 		# shortcut. we cannot use caching if we don't have the full filename.
 		for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
 			yield c
@@ -165,12 +164,9 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if stateStruct._cpre3_atBaseLevel:
 		cached_entry = check_cache(stateStruct, full_filename)
 		if cached_entry is not None:
-			print "cache hit on:", full_filename
+			print "cache hit on:", full_filename, cached_entry
 			cached_entry.apply(stateStruct)
 			return
-		print "cache miss on:", full_filename, cached_entry
-	else:
-		print "State__cached_preprocess not at base level:", stateStruct.curPosAsStr()
 		
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
