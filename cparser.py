@@ -128,6 +128,10 @@ class Macro:
 		return func(*args)
 	def __call__(self, *args):
 		return self.eval(None, args)
+	def __eq__(self, other):
+		if not isinstance(other, Macro): return False
+		return self.args == other.args and self.rightside == other.rightside
+	def __ne__(self, other): return not self == other
 	def getConstValue(self, stateStruct):
 		assert len(self.args) == 0
 		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
