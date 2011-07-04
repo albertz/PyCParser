@@ -11,6 +11,7 @@
 
 import cparser
 import os, os.path
+import types
 
 # TODO: some way to configure this. or some more clever default. or so
 CACHING_DIR = os.path.abspath(os.path.curdir) + "/.cparser_caching/"
@@ -133,11 +134,13 @@ def save_cache(cache_data, full_filename):
 	filecaches.save()
 	
 
-# Note: This does more than State.preprocess_file. In case it hits a cache,
+# Note: This does more than State.preprocess. In case it hits a cache,
 # it applies all effects up to cpre3 and ignores the preprocessing.
 # Note also: This is a generator. In the cache hit case, it yields nothing.
 # Otherwise, it doesn't do any further processing and it just yields the rest.
 def State__cached_preprocess(stateStruct, reader, full_filename, filename):
+	print "c:", stateStruct, reader, full_filename, filename
+
 	if not full_filename:
 		# shortcut. we cannot use caching if we don't have the full filename.
 		for c in cparser.State.preprocess(stateStruct, reader, full_filename, filename):
@@ -214,11 +217,15 @@ class StateWrapper:
 			return StateDictWrapper(**kwattr)
 		if k in self.WrappedLists:
 			return StateListWrapper(getattr(self._stateStruct, k), addList=self._additions[k])
-		return getattr(self._stateStruct, k)
+		attr = getattr(self._stateStruct, k)
+		if isinstance(attr, types.MethodType):
+			# rebound
+			attr = types.MethodType(attr.im_func, self, self.__class__)
+		return attr
 	def __repr__(self):
 		return "<StateWrapper of " + repr(self._stateStruct) + ">"
 	def __setattr__(self, k, v):
-		if k in ("_stateStruct", "_additions", "_cpre3_atBaseLevel"):
+		if k in ("_stateStruct", "_cache_stack", "_additions", "_macroAccessSet", "_macroAddSet", "_filenames", "_cpre3_atBaseLevel"):
 			self.__dict__[k] = v
 			return
 		if k in self.WrappedLists and isinstance(v, StateListWrapper): return # ignore. probably iadd or so.
@@ -267,9 +274,10 @@ def parse(filename, state = None):
 		state = cparser.State()
 		state.autoSetupSystemMacros()
 	
+	state = StateWrapper(state)
 	preprocessed = state.preprocess_file(filename, local=True)
-	tokens = cpre2_parse(state, preprocessed)
-	cpre3_parse(state, tokens)
+	tokens = cparser.cpre2_parse(state, preprocessed)
+	cparser.cpre3_parse(state, tokens)
 	
 	return state
 	
