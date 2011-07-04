@@ -146,7 +146,7 @@ def check_cache(stateStruct, full_filename):
 			filecaches.save()
 			return None
 		filecache = FileCache.Load(filecacheref)
-		assert filecache is not None, str(filecacheref) + " not found in " + FileCache.Namespace
+		assert filecache is not None, sha1(filecacheref) + " not found in " + FileCache.Namespace
 		return filecache
 	
 	return None
@@ -171,11 +171,14 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 		return
 	
 	if stateStruct._cpre3_atBaseLevel:
-		cached_entry = check_cache(stateStruct, full_filename)
-		if cached_entry is not None:
-			cached_entry.apply(stateStruct)
-			return
-		
+		try:
+			cached_entry = check_cache(stateStruct, full_filename)
+			if cached_entry is not None:
+				cached_entry.apply(stateStruct)
+				return
+		except Exception, e:
+			print "(Safe to ignore) Error while reading C parser cache for", filename, ":", e
+
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
 	stateStruct._filenames.add(full_filename)
