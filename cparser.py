@@ -1765,7 +1765,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 	while True:
 		stateStruct._cpre3_atBaseLevel = False
 		if parentCObj._bracketlevel is None:
-			if not curObj:
+			if not curCObj:
 				stateStruct._cpre3_atBaseLevel = True
 
 		try: token = input_iter.next()
