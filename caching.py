@@ -120,15 +120,17 @@ def check_cache(stateStruct, full_filename):
 	filecaches = FileCacheRefs.Load(full_filename)
 	if filecaches is None: return None
 	
-	for filecache in filecaches:
-		if not filecache.match(stateStruct): continue
-		if not filecache.checkFileDepListUpToDate():
-			print "cache match but not up-to-date:", full_filename, filecache
-			FileCache.Delete(filecache)
-			filecaches.remove(filecache)
+	for filecacheref in filecaches:
+		if not filecacheref.match(stateStruct): continue
+		if not filecacheref.checkFileDepListUpToDate():
+			print "cache match but not up-to-date:", full_filename, filecacheref
+			FileCache.Delete(filecacheref)
+			filecaches.remove(filecacheref)
 			filecaches.save()
 			return None
-		return FileCache.Load(filecache)
+		filecache = FileCache.Load(filecacheref)
+		assert filecache is not None, str(filecacheref) + " not found in " + FileCache.Namespace
+		return filecache
 	
 	return None
 
