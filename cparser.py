@@ -1350,7 +1350,10 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 				return
 	
 			if obj.name in d:
-				stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+				# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
+				# Otherwise however, it is an error.
+				if d[obj.name].body is not None:
+					stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
 			d[obj.name] = obj
 		else:
 			assert listName is not None
