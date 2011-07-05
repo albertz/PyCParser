@@ -1060,6 +1060,8 @@ def cpre2_parse(stateStruct, input, brackets = None):
 						macroargs = []
 						macrobrackets = []
 						state = 31
+						if len(stateStruct.macros[macroname].args) == 0:
+							state = 32 # finalize macro directly. there can't be any args
 						breakLoop = False
 					else:
 						yield CIdentifier(laststr)
