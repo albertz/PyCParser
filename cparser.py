@@ -521,6 +521,8 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					oldlast = lasteval
 					if op is not None: lasteval = op(lasteval, neweval)
 					else: lasteval = neweval
+					opstr = ""
+					laststr = ""
 					state = 18
 					breakLoop = False
 			elif state == 10: # after identifier
@@ -542,7 +544,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					bracketLevel = 1
 					args = []
 				else:
-					stateStruct.error("preprocessor eval: '" + c + "' not expected after '" + laststr + "'")
+					stateStruct.error("preprocessor eval: '" + c + "' not expected after '" + laststr + "' in state 10 with '" + condstr + "'")
 					return
 			elif state == 11: # after "(" after identifier
 				if c == "(":
@@ -585,6 +587,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					else: lasteval = neweval
 					#print "after ):", laststr, args, neweval, op.func_code.co_firstlineno if op else "no-op", oldlast, "->", lasteval
 					laststr = ""
+					opstr = ""
 					state = 18
 				elif c == '"':
 					if len(args) == 0: args = [""]
@@ -618,7 +621,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					if opstr == "":
 						if c in SpaceChars: pass
 						else:
-							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in " + condstr)
+							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in " + condstr + " in state 18")
 							return
 					else:
 						if opstr == "!=": op = lambda x,y: x != y
@@ -643,6 +646,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							stateStruct.error("invalid op '" + opstr + "' with '" + c + "' following")
 							return
 						opstr = ""
+						laststr = ""
 						state = 0
 						breakLoop = False
 			elif state == 20: # in str
