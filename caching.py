@@ -1,3 +1,7 @@
+# PyCParser caching logic
+# by Albert Zeyer, 2011
+# code under LGPL
+
 # idea:
 #   for each parsed file:
 #     keep list of which macros have been used, i.e.

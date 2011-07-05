@@ -1,3 +1,6 @@
+# PyCParser main file
+# by Albert Zeyer, 2011
+# code under LGPL
 
 import ctypes, _ctypes
 
