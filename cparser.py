@@ -1201,6 +1201,7 @@ class CBody:
 		self.structs = {}
 		self.unions = {}
 		self.enums = {}
+		self.funcs = {}
 		self.vars = {}
 		self.enumconsts = {}
 		self.contentlist = []
