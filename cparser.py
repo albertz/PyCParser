@@ -1732,8 +1732,12 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 						typeObj._bracketlevel = curCObj._bracketlevel
 						typeObj._type_tokens[:] = curCObj._type_tokens
 						curCObj._type_tokens[:] = [typeObj]
-						cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
-						curCObj.name = typeObj.name
+						if curCObj.name is None: # eg.: typedef int (*Function)();
+							cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
+							curCObj.name = typeObj.name
+						else: # eg.: typedef int Function();
+							typeObj.name = curCObj.name
+							cpre3_parse_funcargs(stateStruct, typeObj, input_iter)							
 					else:
 						cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
 				elif token.content == "[":
