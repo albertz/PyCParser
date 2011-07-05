@@ -28,7 +28,7 @@ Why this project?
 Examples
 --------
 
-* [PySDL](https://github.com/albertz/PySDL).
+* [PySDL](https://github.com/albertz/PySDL). Also uses the automatic ctypes wrapper and maps it to a Python module.
 
 Parsed without (fatal) errors but not much checked otherwise:
 
