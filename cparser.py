@@ -1310,9 +1310,8 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		_CBaseWithOptBody.finalize(self, stateStruct)
 		
 		if self.type is None:
-			stateStruct.error("finalize typedef " + str(self) + ": type is unknown")
-		if self.name is None:
-			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
+			stateStruct.error("finalize " + str(self) + ": type is unknown")
+		# Name can be unset. It depends where this is declared.
 	def getCType(self, stateStruct):
 		restype = getCType(self.type, stateStruct)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
@@ -1528,6 +1527,9 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 	bracketLevel = list(curCObj._bracketlevel)
 	state = 0
 	for token in input_iter:
+		if isinstance(token, CClosingBracket) and token.brackets == bracketLevel:
+			return
+
 		if state == 0:
 			if token == COp("*"):
 				state = 1
@@ -1547,9 +1549,7 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 			else:
 				state = 3
 
-		if isinstance(token, CClosingBracket) and token.brackets == bracketLevel:
-			return
-		elif state == 3:
+		if state == 3:
 			stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected ')'")
 
 	stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))	
@@ -1652,17 +1652,17 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 		elif isinstance(token, COpeningBracket):
 			curCObj._bracketlevel = list(token.brackets)
 			if token.content == "(":
-				if curCObj.name is None:
+				if len(curCObj._type_tokens) == 1 and isinstance(curCObj._type_tokens[0], CFuncPointerDecl):
+					typeObj = curCObj._type_tokens[0]
+					cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
+					typeObj.finalize(stateStruct)
+				elif curCObj.name is None:
 					typeObj = CFuncPointerDecl(parent=curCObj.parent)
 					typeObj._bracketlevel = curCObj._bracketlevel
 					typeObj._type_tokens[:] = curCObj._type_tokens
 					curCObj._type_tokens[:] = [typeObj]
 					cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
 					curCObj.name = typeObj.name
-				elif len(curCObj._type_tokens) == 1 and isinstance(curCObj._type_tokens[0], CFuncPointerDecl):
-					typeObj = curCObj._type_tokens[0]
-					cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
-					typeObj.finalize(stateStruct)
 				else:
 					stateStruct.error("cpre3 parse func args: got unexpected '('")
 					_cpre3_parse_skipbracketcontent(stateStruct, curCObj._bracketlevel, input_iter)
