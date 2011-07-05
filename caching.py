@@ -337,9 +337,6 @@ def parse(filename, state = None):
 	cparser.cpre3_parse(wrappedState, tokens)
 	
 	return state
-	
-def setupParserCache(state, cachedir):
-	pass
 
 def test():
 	import better_exchook
