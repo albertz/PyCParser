@@ -30,10 +30,9 @@ Examples
 
 * [PySDL](https://github.com/albertz/PySDL).
 
-Parsed without errors but not much checked otherwise:
+Parsed without (fatal) errors but not much checked otherwise:
 
-* zlib headers
-* readline header
+* `zlib.h`, `readline.h`, `Python.h`
 
 TODOs / further directions
 --------------------------
