@@ -29,6 +29,7 @@ Examples
 Parsed without errors but not much checked otherwise:
 
 * zlib headers
+* readline header
 
 TODOs / further directions
 --------------------------
