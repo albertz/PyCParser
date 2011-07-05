@@ -20,6 +20,7 @@ Why this project?
 -----------------
 
 * Be more flexible. It is much easier now with a hand-written parser to do operations on certain levels of the parsing pipe.
+* I wanted to have some self-contained code which can also easily run on the end-user side. So the end-user can just update the lib and its headers and then some application using this Python lib will automatically use the updated lib. This is not possible if you generated the ctypes interface statically (via some GCC-XML based tool or so).
 * I wanted to implement [PySDL](https://github.com/albertz/PySDL) and didn't wanted to translate the SDL headers by hand. Also, I didn't wanted to use existing tools to do this to avoid further maintaining work at some later time. See the project for further info.
 * This functionality could be used similarly for many other C libraries.
 * A challenge for myself. Just for fun. :)
