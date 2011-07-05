@@ -1927,7 +1927,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 						stateStruct.error("cpre3 parse: unexpected '{' after " + str(curCObj))
 						curCObj = _CBaseWithOptBody(parent=parentCObj)
 				else:
-					if not parentObj.body is stateStruct: # not top level
+					if not parentCObj.body is stateStruct: # not top level
 						cpre3_parse_body(stateStruct, curCObj, input_iter)
 						curCObj.finalize(stateStruct)
 					curCObj = _CBaseWithOptBody(parent=parentCObj)
