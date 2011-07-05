@@ -21,10 +21,14 @@ Why this project?
 * This functionality could be used similarly for many other C libraries.
 * A challenge for myself. Just for fun. :)
 
-Samples
--------
+Examples
+--------
 
 * [PySDL](https://github.com/albertz/PySDL).
+
+Parsed without errors but not much checked otherwise:
+
+* zlib headers
 
 TODOs / further directions
 --------------------------
