@@ -6,6 +6,7 @@ LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
 OpChars = "&|=!+-*/%<>^~?:,."
+LongOps = map(lambda c: c+"=", "&|=+-*/%<>^~") + ["--","++","->"]
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
 
@@ -1017,8 +1018,9 @@ def cpre2_parse(stateStruct, input, brackets = None):
 						brackets[:] = brackets[:-1]
 						yield CClosingBracket(c, brackets=list(brackets))
 				elif c in OpChars:
-					laststr = c
+					laststr = ""
 					state = 40
+					breakLoop = False
 				elif c == ";": yield CSemicolon()
 				else:
 					stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
@@ -1119,7 +1121,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				breakLoop = False
 			elif state == 40: # op
 				if c in OpChars:
-					if c == "*": # this always separates
+					if laststr != "" and laststr + c not in LongOps:
 						yield COp(laststr)
 						laststr = ""
 					laststr += c
