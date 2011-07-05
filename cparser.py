@@ -159,6 +159,7 @@ class CType:
 		if not hasattr(other, "__class__"): return False
 		return self.__class__ is other.__class__ and self.__dict__ == other.__dict__
 	def __ne__(self, other): return not self == other
+	def __hash__(self): return hash(self.__class__) + 31 * hash(tuple(sorted(self.__dict__.iteritems())))
 	def getCType(self, stateStruct):
 		raise NotImplementedError, str(self) + " getCType is not implemented"
 
@@ -1949,14 +1950,15 @@ def parse(filename):
 	
 	return state
 	
-def test():
+def test(*args):
 	import better_exchook
 	better_exchook.install()
 	
 	state = State()
 	state.autoSetupSystemMacros()
 
-	preprocessed = state.preprocess_file("/Library/Frameworks/SDL.framework/Headers/SDL.h", local=True)
+	filename = args[0] if args else "/Library/Frameworks/SDL.framework/Headers/SDL.h"
+	preprocessed = state.preprocess_file(filename, local=True)
 	tokens = cpre2_parse(state, preprocessed)
 	
 	token_list = []
@@ -1971,4 +1973,5 @@ def test():
 	return state, token_list
 
 if __name__ == '__main__':
-	test()
+	import sys
+	test(*sys.argv[1:])
