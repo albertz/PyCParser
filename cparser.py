@@ -1263,7 +1263,7 @@ class _CBaseWithOptBody:
 		if t: l += [("type", t)]
 		if self.args: l += [("args", self.args)]
 		if self.arrayargs: l += [("arrayargs", self.arrayargs)]
-		if self.body is not None: l += [("body", self.body)]
+		if self.body is not None: l += [("body", "<...>")]
 		if self.value is not None: l += [("value", self.value)]
 		return \
 			self.__class__.__name__ + " " + \
@@ -1878,7 +1878,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				elif token.content == ":" and curCObj and curCObj._type_tokens and curCObj.name:
 					CVarDecl.overtake(curCObj)
 					curCObj.bitsize = None
-				elif token.content == "=" and curCObj and isinstance(curCObj, CVarDecl):
+				elif token.content == "=" and curCObj and (isinstance(curCObj, CVarDecl) or not curCObj.isDerived()):
+					if not curCObj.isDerived():
+						CVarDecl.overtake(curCObj)
 					curCObj.body = CStatement(parent=curCObj)
 				else:
 					stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj) + " after " + str(curCObj))
