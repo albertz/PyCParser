@@ -494,7 +494,9 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 				state = 2
 			elif state == 5: # after "defined" without brackets (yet)
 				if c in SpaceChars: pass
-				elif c == "(": state = 10
+				elif c == "(":
+					state = 10
+					breakLoop = False
 				elif c == ")":
 					stateStruct.error("preprocessor eval: 'defined' invalid in '" + condstr + "'")
 					return
@@ -537,7 +539,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					bracketLevel = 1
 					args = []
 				else:
-					stateStruct.error("preprocessor eval: '" + c + "' not expected")
+					stateStruct.error("preprocessor eval: '" + c + "' not expected after '" + laststr + "'")
 					return
 			elif state == 11: # after "(" after identifier
 				if c == "(":
