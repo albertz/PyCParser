@@ -123,7 +123,7 @@ class Macro:
 	def __repr__(self):
 		return "<Macro: " + str(self) + ">"
 	def eval(self, state, args):
-		if len(args) != len(self.args): raise TypeError, "invalid number of args in " + str(self)
+		if len(args) != len(self.args): raise TypeError, "invalid number of args (" + str(args) + ") for " + repr(self)
 		func = parse_macro_def_rightside(state, self.args, self.rightside)
 		return func(*args)
 	def __call__(self, *args):
