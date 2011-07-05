@@ -1664,7 +1664,7 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 					cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
 					curCObj.name = typeObj.name
 				else:
-					stateStruct.error("cpre3 parse func args: got unexpected '('")
+					stateStruct.error("cpre3 parse func args: got unexpected '(' in " + str(curCObj))
 					_cpre3_parse_skipbracketcontent(stateStruct, curCObj._bracketlevel, input_iter)
 			elif token.content == "[":
 				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
@@ -1733,7 +1733,7 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "(":
-					if typeObj is None:
+					if len(curCObj._type_tokens) == 0 or not isinstance(curCObj._type_tokens[0], CFuncPointerDecl):
 						typeObj = CFuncPointerDecl(parent=curCObj.parent)
 						typeObj._bracketlevel = curCObj._bracketlevel
 						typeObj._type_tokens[:] = curCObj._type_tokens
