@@ -631,6 +631,13 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						elif opstr == ">=": op = lambda x,y: x >= y
 						elif opstr == "<": op = lambda x,y: x < y
 						elif opstr == ">": op = lambda x,y: x > y
+						elif opstr == "+": op = lambda x,y: x + y
+						elif opstr == "-": op = lambda x,y: x - y
+						elif opstr == "*": op = lambda x,y: x * y
+						elif opstr == "/": op = lambda x,y: x / y
+						elif opstr == "%": op = lambda x,y: x % y
+						elif opstr == "&": op = lambda x,y: x & y
+						elif opstr == "|": op = lambda x,y: x | y
 						elif opstr == "&&":
 							op = lambda x,y: x and y
 							# short path check
