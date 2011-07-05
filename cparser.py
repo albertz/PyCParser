@@ -480,6 +480,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							prefixOp = None
 						if op is not None: lasteval = op(lasteval, neweval)
 						else: lasteval = neweval
+						substr = ""
 					else: # bracketLevel > 0
 						substr += c
 				elif c == '"':
