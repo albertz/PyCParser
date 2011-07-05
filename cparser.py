@@ -242,6 +242,7 @@ class State:
 		"const",
 		"extern",
 		"static",
+		"register",
 		"__inline__",
 	]
 	
