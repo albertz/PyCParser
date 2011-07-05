@@ -12,6 +12,7 @@ Similar projects
 ----------------
 
 * [pyclibrary](https://launchpad.net/pyclibrary) ([Github fork](https://github.com/albertz/pyclibrary)). Is quite slow and didn't worked that well for me.
+* The equally named [pycparser](http://code.google.com/p/pycparser/). (I didn't really tested it yet.)
 
 Why this project?
 -----------------
