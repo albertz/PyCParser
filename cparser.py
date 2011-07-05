@@ -1091,8 +1091,12 @@ def cpre2_parse(stateStruct, input, brackets = None):
 							# break loop, we consumed this char
 				elif c == ",":
 					if macrobrackets:
-						if len(macroargs) == 0: macroargs = ["",""]
-						else: macroargs += [""]
+						if len(macrobrackets) == 1:
+							if len(macroargs) == 0: macroargs = ["",""]
+							else: macroargs += [""]
+						else:
+							if len(macroargs) == 0: macroargs = [""]
+							macroargs[-1] += c
 					else:
 						state = 32
 						breakLoop = False
