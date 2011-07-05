@@ -966,6 +966,7 @@ class _CBase:
 	def asCCode(self): return self.content
 
 class CStr(_CBase):
+	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self): return '"' + escape_cstr(self.content) + '"'
 class CChar(_CBase):
 	def asCCode(self): return "'" + escape_cstr(self.content) + '"'
