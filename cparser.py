@@ -622,7 +622,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					if opstr == "":
 						if c in SpaceChars: pass
 						else:
-							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in " + condstr + " in state 18")
+							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in '" + condstr + "' in state 18")
 							return
 					else:
 						if opstr == "!=": op = lambda x,y: x != y
@@ -644,7 +644,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
 							else: prefixOp = newprefixop
 						else:
-							stateStruct.error("invalid op '" + opstr + "' with '" + c + "' following")
+							stateStruct.error("invalid op '" + opstr + "' with '" + c + "' following in '" + condstr + "'")
 							return
 						opstr = ""
 						laststr = ""
