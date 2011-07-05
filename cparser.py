@@ -1960,9 +1960,10 @@ def cpre3_parse(stateStruct, input):
 	parentObj.body = stateStruct
 	cpre3_parse_body(stateStruct, parentObj, input_iter)
 
-def parse(filename):
-	state = State()
-	state.autoSetupSystemMacros()
+def parse(filename, state = None):
+	if state is None:
+		state = State()
+		state.autoSetupSystemMacros()
 
 	preprocessed = state.preprocess_file(filename, local=True)
 	tokens = cpre2_parse(state, preprocessed)
