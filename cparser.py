@@ -1949,6 +1949,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 	for token in input_iter:
 		if isinstance(token, COpeningBracket):
 			if token.content == "{":
+				parentCObj._bracketlevel = list(token.brackets)
 				cpre3_parse_body(stateStruct, parentCObj, input_iter)
 				return
 			if curCObj is None:
