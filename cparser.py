@@ -1474,6 +1474,7 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		return getCType(self.type, stateStruct)
 
 def _isBracketLevelOk(parentLevel, curLevel):
+	if parentLevel is None: parentLevel = []
 	if len(parentLevel) > len(curLevel): return False
 	return curLevel[:len(parentLevel)] == parentLevel
 	
@@ -1561,7 +1562,6 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 				return
 			if not _isBracketLevelOk(bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse func pointer name: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
 
 		if state == 0:
 			if token == COp("*"):
@@ -1628,7 +1628,6 @@ def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
 				return
 			if not _isBracketLevelOk(parentCObj._bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse enum: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
 		elif state == 2:
 			if isinstance(token, COpeningBracket):
 				valueStmnt._cpre3_parse_brackets(stateStruct, token, input_iter)
@@ -1645,7 +1644,6 @@ def _cpre3_parse_skipbracketcontent(stateStruct, bracketlevel, input_iter):
 				return
 			if not _isBracketLevelOk(bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse skip brackets: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
 	stateStruct.error("cpre3 parse: incomplete, missing closing bracket on level " + str(curCObj._bracketlevel))
 	
 def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
@@ -1717,7 +1715,6 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 				return
 			if not _isBracketLevelOk(parentCObj._bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse func args: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
 			# no error. we already errored on the opening bracket. and the cpre2 parsing ensures the rest
 		else:
 			stateStruct.error("cpre3 parse func args: unexpected token " + str(token))
@@ -1732,7 +1729,6 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 				return
 			if not _isBracketLevelOk(curCObj._bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse array args: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
 	stateStruct.error("cpre3 parse array args: incomplete, missing ']' on level " + str(curCObj._bracketlevel))
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
@@ -1822,7 +1818,6 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 					state = 0
 				if not _isBracketLevelOk(curCObj._bracketlevel, token.brackets):
 					stateStruct.error("cpre3 parse typedef: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-					return
 		else:
 			stateStruct.error("cpre3 parse typedef: internal error. unexpected state " + str(state))
 	stateStruct.error("cpre3 parse typedef: incomplete, missing ';'")
@@ -2126,6 +2121,8 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj._cpre3_handle_token(stateStruct, token)
 		elif isinstance(token, COpeningBracket):
 			curCObj._bracketlevel = list(token.brackets)
+			if not _isBracketLevelOk(parentCObj._bracketlevel, token.brackets):
+				stateStruct.error("cpre3 parse body: internal error: bracket level messed up with opening bracket: " + str(token.brackets) + " on level " + str(parentCObj._bracketlevel) + " in " + str(parentCObj))
 			if isinstance(curCObj, CStatement):
 				if token.content == "{":
 					cpre3_parse_body(stateStruct, curCObj, input_iter)
@@ -2215,8 +2212,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			if token.brackets == parentCObj._bracketlevel:
 				return
 			if not _isBracketLevelOk(parentCObj._bracketlevel, token.brackets):
-				stateStruct.error("cpre3 parse body: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-				return
+				stateStruct.error("cpre3 parse body: internal error: bracket level messed up with closing bracket: " + str(token.brackets) + " on level " + str(parentCObj._bracketlevel) + " in " + str(parentCObj))
 		elif isinstance(token, CSemicolon):
 			if not curCObj.isDerived() and curCObj:
 				CVarDecl.overtake(curCObj)
