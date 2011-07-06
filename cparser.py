@@ -1346,7 +1346,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 	if hasattr(obj.parent, "body"):
 		d = getattr(obj.parent.body, dictName or listName)
 		if dictName:
-			if obj.name is None:
+			if obj.name is None or obj.body is None:
 				# might be part of a typedef, so don't error
 				return
 	
@@ -1354,7 +1354,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 				# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
 				# Otherwise however, it is an error.
 				if d[obj.name].body is not None:
-					stateStruct.error("finalize " + obj.__class__.__name__ + " " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+					stateStruct.error("finalize " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
 			d[obj.name] = obj
 		else:
 			assert listName is not None
@@ -2183,7 +2183,8 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 		elif isinstance(token, CSemicolon):
 			if not curCObj.isDerived() and curCObj:
 				CVarDecl.overtake(curCObj)
-			curCObj.finalize(stateStruct)
+			if not curCObj._finalized:
+				curCObj.finalize(stateStruct)
 			curCObj = _CBaseWithOptBody(parent=parentCObj)
 		elif isinstance(token, (CStr,CChar)):
 			if isinstance(curCObj, CStatement):
