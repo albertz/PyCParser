@@ -1906,7 +1906,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 			addToList.append(curCObj)
 			curCObj = _CBaseWithOptBody(parent=parentCObj)
 		elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
-			stateStruct.error("cpre3 parse statements in brackets: ';' not expected")
+			stateStruct.error("cpre3 parse statements in brackets: ';' not expected, separator should be " + str(sepToken))
 		elif isinstance(curCObj, CVarDecl) and token == COp("="):
 			curCObj.body = CStatement(parent=curCObj)
 		else:
@@ -2109,7 +2109,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, _CControlStructure):
 				if token.content == "(":
-					cpre3_parse_statements_in_brackets(stateStruct, curCObj, sepToken=COp(";"), addToList=curCObj.args, input_iter=input_iter)
+					cpre3_parse_statements_in_brackets(stateStruct, curCObj, sepToken=CSemicolon(), addToList=curCObj.args, input_iter=input_iter)
 					curCObj._bracketlevel = list(parentCObj._bracketlevel)
 					lasttoken = cpre3_parse_single_next_statement(stateStruct, curCObj, input_iter)
 					curCObj.finalize(stateStruct)
