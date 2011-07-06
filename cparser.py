@@ -1350,16 +1350,16 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 	if hasattr(obj.parent, "body"):
 		d = getattr(obj.parent.body, dictName or listName)
 		if dictName:
-			if obj.name is None or obj.body is None:
+			if obj.name is None:
 				# might be part of a typedef, so don't error
 				return
 	
-			if obj.name in d:
-				# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
-				# Otherwise however, it is an error.
-				if d[obj.name].body is not None:
-					stateStruct.error("finalize " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
-			d[obj.name] = obj
+			# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
+			# Otherwise however, it is an error.
+			if obj.name in d and d[obj.name].body is not None:
+				stateStruct.error("finalize " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+			else:
+				d[obj.name] = obj
 		else:
 			assert listName is not None
 			d.append(obj)
