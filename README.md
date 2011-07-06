@@ -39,7 +39,7 @@ TODOs / further directions
 
 * I'm quite sure that function pointer typedefs are handled incorrectly. E.g. `typedef void f();` and `typedef void (*f)();` are just the same right now. See `cpre3_parse_typedef` and do some testing if you want to fix this.
 * More testing.
-* Complete C support. Right now, most of the stuff in the function body is not really supported, i.e. function calls, expressions, if/while/for/etc control structure, and so on. Only very simple statements can be evaluated so far and it completely ignores operator priority right now. 
+* Complete C support. Right now, most of the stuff in the function body is not really supported, i.e. function calls, expressions, if/while/for/etc control structure, and so on. Only very simple statements can be evaluated so far and it completely ignores operator priority right now. Operator priority is also ignored for C preprocessor expressions. 
 * With complete C support, it is not so difficult anymore to write a C interpreter.
 * Maybe C++ support. :)
 
