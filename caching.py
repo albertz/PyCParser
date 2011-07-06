@@ -227,6 +227,14 @@ class StateDictWrapper:
 			if not k in self._addSet: # we only care about it if we didn't add it ourself
 				self._accessSet.add(k)
 		return self._dict[k]
+	def __contains__(self, k): return self.has_key(k)
+	def has_key(self, k):
+		haskey = self._dict[k].has_key(k)
+		if haskey and self._accessSet is not None:
+			assert self._addSet is not None
+			if not k in self._addSet: # we only care about it if we didn't add it ourself
+				self._accessSet.add(k)
+		return haskey
 	def pop(self, k):
 		self._dict.pop(k)
 		self._addList.append((k,None))
