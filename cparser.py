@@ -136,11 +136,23 @@ class Macro:
 		if not isinstance(other, Macro): return False
 		return self.args == other.args and self.rightside == other.rightside
 	def __ne__(self, other): return not self == other
-	def getConstValue(self, stateStruct):
+	def getSingleIdentifer(self, stateStruct):
 		assert len(self.args) == 0
 		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
-		tokens = cpre2_parse(stateStruct, preprocessed)
+		tokens = list(cpre2_parse(stateStruct, preprocessed))
+		if len(tokens) == 1 and isinstance(tokens[0], CIdentifier):
+			return tokens[0].content
+		return None
+	def getCValue(self, stateStruct):
+		assert len(self.args) == 0
+		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
+		tokens = list(cpre2_parse(stateStruct, preprocessed))
 		
+		if all([isinstance(t, (CIdentifier,COp)) for t in tokens]):
+			t = tuple([t.content for t in tokens])
+			if t in stateStruct.CBuiltinTypes:
+				return stateStruct.CBuiltinTypes[t].getCType(stateStruct)
+			
 		valueStmnt = CStatement()
 		input_iter = iter(tokens)
 		for token in input_iter:
@@ -363,8 +375,12 @@ class State:
 				cache = self._cache
 				if attrib in cache: return cache[attrib]
 				stateStruct = self.__class__.stateStruct
+				while attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
+					resolvedMacro = stateStruct.macros[attrib].getSingleIdentifer(stateStruct)
+					if resolvedMacro is not None: attrib = resolvedMacro
+					else: break
 				if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
-					t = stateStruct.macros[attrib].getConstValue(stateStruct)
+					t = stateStruct.macros[attrib].getCValue(stateStruct)
 				elif attrib in stateStruct.typedefs:
 					t = stateStruct.typedefs[attrib].getCType(stateStruct)
 				elif attrib in stateStruct.enumconsts:
@@ -963,6 +979,7 @@ class _CBase:
 		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
 	def __eq__(self, other):
 		return self.__class__ is other.__class__ and self.content == other.content
+	def __hash__(self): return hash(self.__class__) + 31 * hash(self.content)
 	def asCCode(self): return self.content
 
 class CStr(_CBase):
