@@ -122,6 +122,7 @@ class Macro:
 		self.args = args if (args is not None) else ()
 		self.rightside = rightside if (rightside is not None) else ""
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
+		self._tokens = None
 	def __str__(self):
 		return "(" + ", ".join(self.args) + ") -> " + self.rightside
 	def __repr__(self):
@@ -136,17 +137,18 @@ class Macro:
 		if not isinstance(other, Macro): return False
 		return self.args == other.args and self.rightside == other.rightside
 	def __ne__(self, other): return not self == other
-	def getSingleIdentifer(self, stateStruct):
+	def _parseTokens(self, stateStruct):
 		assert len(self.args) == 0
+		if self._tokens is not None: return
 		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
-		tokens = list(cpre2_parse(stateStruct, preprocessed))
-		if len(tokens) == 1 and isinstance(tokens[0], CIdentifier):
-			return tokens[0].content
+		self._tokens = list(cpre2_parse(stateStruct, preprocessed))		
+	def getSingleIdentifer(self, stateStruct):
+		assert self._tokens is not None
+		if len(self._tokens) == 1 and isinstance(self._tokens[0], CIdentifier):
+			return self._tokens[0].content
 		return None
 	def getCValue(self, stateStruct):
-		assert len(self.args) == 0
-		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
-		tokens = list(cpre2_parse(stateStruct, preprocessed))
+		tokens = self._tokens
 		
 		if all([isinstance(t, (CIdentifier,COp)) for t in tokens]):
 			t = tuple([t.content for t in tokens])
@@ -311,7 +313,7 @@ class State:
 		return ":".join([l[1], str(l[2]), str(l[3])])
 	
 	def error(self, s):
-		self._errors += [self.curPosAsStr() + ": " + s]
+		self._errors.append(self.curPosAsStr() + ": " + s)
 
 	def findIncludeFullFilename(self, filename, local):
 		if local:
@@ -363,49 +365,6 @@ class State:
 		for c in cpreprocess_parse(self, reader):
 			yield c		
 		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]		
-
-	def getCWrapper(self, clib):
-		class CWrapper(object):
-			stateStruct = self
-			dll = clib
-			def __getattribute__(self, attrib):
-				if attrib in ("_cache","__dict__","__class__"):
-					return object.__getattribute__(self, attrib)
-				if not "_cache" in self.__dict__: self._cache = {}
-				cache = self._cache
-				if attrib in cache: return cache[attrib]
-				stateStruct = self.__class__.stateStruct
-				while attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
-					resolvedMacro = stateStruct.macros[attrib].getSingleIdentifer(stateStruct)
-					if resolvedMacro is not None: attrib = resolvedMacro
-					else: break
-				if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
-					t = stateStruct.macros[attrib].getCValue(stateStruct)
-				elif attrib in stateStruct.typedefs:
-					t = stateStruct.typedefs[attrib].getCType(stateStruct)
-				elif attrib in stateStruct.enumconsts:
-					t = stateStruct.enumconsts[attrib].value
-				elif attrib in stateStruct.funcs:
-					t = stateStruct.funcs[attrib].getCType(stateStruct)((attrib, clib))
-				else:
-					raise AttributeError, attrib + " not found in " + str(stateStruct)
-				cache[attrib] = t
-				return t
-		def iterAllAttribs():
-			for attrib in self.macros:
-				if len(self.macros[attrib].args) > 0: continue
-				yield attrib
-			for attrib in self.typedefs:
-				yield attrib
-			for attrib in self.enumconsts:
-				yield attrib
-			for attrib in self.funcs:
-				yield attrib
-		for attrib in iterAllAttribs():
-			if not hasattr(CWrapper, attrib):
-				setattr(CWrapper, attrib, None)
-		wrapper = CWrapper()
-		return wrapper
 
 def is_valid_defname(defname):
 	if not defname: return False
