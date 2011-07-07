@@ -1510,7 +1510,8 @@ class CStatement(_CBaseWithOptBody):
 				return tokens[0].content
 			if isinstance(tokens[0], CIdentifier):
 				name = tokens[0].content
-				idobj = findIdentifierInBody(obj.parent.body, name)
+				body = obj.parent.body if obj.parent is not None else stateStruct
+				idobj = findIdentifierInBody(body, name)
 				if idobj is None:
 					stateStruct.error(str(obj) + " getConstValue: identifier " + name + " unknown in " + str(body))
 					return 0 # this is a useful fallback
