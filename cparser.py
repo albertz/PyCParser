@@ -1461,7 +1461,9 @@ def _isBracketLevelOk(parentLevel, curLevel):
 	
 class CStatement(_CBaseWithOptBody):
 	def __str__(self):
-		return "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
+		s = "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
+		if self.defPos is not None: s += " @: " + self.defPos
+		return s
 	def _cpre3_handle_token(self, stateStruct, token):
 		# TODO ...
 		if not hasattr(self, "_tokens"): self._tokens = []
