@@ -1260,7 +1260,7 @@ class _CBaseWithOptBody:
 			bool(self.arrayargs) or \
 			bool(self.body)
 	
-	def finalize(self, stateStruct, addToContent = True):
+	def finalize(self, stateStruct, addToContent = None):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
@@ -1268,6 +1268,8 @@ class _CBaseWithOptBody:
 		if self.defPos is None:
 			self.defPos = stateStruct.curPosAsStr()
 		if not self: return
+		
+		if addToContent is None: addToContent = True
 		
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
 		if addToContent and self.parent.body: self.parent.body.contentlist += [self]
@@ -1299,13 +1301,13 @@ class CTypedef(_CBaseWithOptBody):
 	def getCType(self, stateStruct): return getCType(self.type, stateStruct)
 	
 class CFuncPointerDecl(_CBaseWithOptBody):
-	def finalize(self, stateStruct):
+	def finalize(self, stateStruct, addToContent=None):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		
 		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
-		_CBaseWithOptBody.finalize(self, stateStruct)
+		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 		
 		if self.type is None:
 			stateStruct.error("finalize " + str(self) + ": type is unknown")
@@ -1315,15 +1317,18 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 		
-def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
+def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToContent=None):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
 		return
 	
+	if addToContent is None:
+		addToContent = obj.name is not None
+
 	obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
-	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent = obj.name is not None)
+	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
 	
-	if hasattr(obj.parent, "body"):
+	if addToContent and hasattr(obj.parent, "body"):
 		d = getattr(obj.parent.body, dictName or listName)
 		if dictName:
 			if obj.name is None:
@@ -1333,7 +1338,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None):
 			# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
 			# Otherwise however, it is an error.
 			if obj.name in d and d[obj.name].body is not None:
-				stateStruct.error("finalize " + str(obj) + ": a previous equally named (" + obj.name + ") declaration exists")
+				stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
 			else:
 				d[obj.name] = obj
 		else:
@@ -1372,17 +1377,17 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 	return ctype
 	
 class CStruct(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="structs")
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Structure, self, stateStruct)
 
 class CUnion(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="unions")
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="unions", **kwargs)
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Union, self, stateStruct)
 
 class CEnum(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="enums")
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="enums", **kwargs)
 	def getNumRange(self):
 		a,b = 0,0
 		for c in self.body.contentlist:
@@ -1417,7 +1422,7 @@ class CEnum(_CBaseWithOptBody):
 		return EnumType
 	
 class CEnumConst(_CBaseWithOptBody):
-	def finalize(self, stateStruct):
+	def finalize(self, stateStruct, addToContent=None):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
@@ -1429,20 +1434,20 @@ class CEnumConst(_CBaseWithOptBody):
 			else:
 				self.value = 0
 
-		_CBaseWithOptBody.finalize(self, stateStruct)
+		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 
 		if self.name:
 			# self.parent.parent is the parent of the enum
 			self.parent.parent.body.enumconsts[self.name] = self
 		
 class CFuncArgDecl(_CBaseWithOptBody):
-	def finalize(self, stateStruct):
+	def finalize(self, stateStruct, addToContent=False):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
-		
+			
 		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
-		_CBaseWithOptBody.finalize(self, stateStruct, addToContent = False)
+		_CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 		
 		if self.type != CBuiltinType(CVoidType()):
 			self.parent.args += [self]
@@ -1745,8 +1750,6 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 					else:
 						stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
 			elif token == COp("*"):
-				if typeObj is not None:
-					typeObj.finalize(stateStruct)
 				curCObj._type_tokens += ["*"]
 			elif isinstance(token, COpeningBracket):
 				curCObj._bracketlevel = list(token.brackets)
@@ -1783,7 +1786,7 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 					state = 11
 			elif isinstance(token, CSemicolon):
 				if typeObj is not None and not typeObj._finalized:
-					typeObj.finalize(stateStruct)
+					typeObj.finalize(stateStruct, addToContent = typeObj.body is not None)
 				curCObj.finalize(stateStruct)
 				return
 			else:
