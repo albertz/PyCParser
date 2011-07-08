@@ -1209,6 +1209,8 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	return t
 
 class _CBaseWithOptBody:
+	NameIsRelevant = True
+	
 	def __init__(self, **kwargs):
 		self._type_tokens = []
 		self._bracketlevel = None
@@ -1234,7 +1236,10 @@ class _CBaseWithOptBody:
 		return self.__class__ != _CBaseWithOptBody
 
 	def __str__(self):
-		name = ("'" + self.name + "'") if self.name else "<noname>"
+		if self.NameIsRelevant:
+			name = ("'" + self.name + "' ") if self.name else "<noname> "
+		else:
+			name = ("name: '" + self.name + "' ") if self.name else ""
 		t = self.type or self._type_tokens
 		l = []
 		if self.attribs: l += [("attribs", self.attribs)]
@@ -1246,7 +1251,7 @@ class _CBaseWithOptBody:
 		if self.defPos is not None: l += [("@", self.defPos)]
 		return \
 			self.__class__.__name__ + " " + \
-			name + " " + \
+			name + \
 			", ".join(map(lambda (a,b): a + ": " + str(b), l))
 
 	def __repr__(self): return "<" + str(self) + ">"
@@ -1461,6 +1466,7 @@ def _isBracketLevelOk(parentLevel, curLevel):
 	return curLevel[:len(parentLevel)] == parentLevel
 	
 class CStatement(_CBaseWithOptBody):
+	NameIsRelevant = False
 	def __nonzero__(self): return hasattr(self, "_tokens") and bool(self._tokens)
 	def __str__(self):
 		s = "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
@@ -1807,10 +1813,12 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse typedef: incomplete, missing ';'")
 
 
-class CCodeBlock(_CBaseWithOptBody): pass
+class CCodeBlock(_CBaseWithOptBody):
+	NameIsRelevant = False
 class CGotoLabel(_CBaseWithOptBody): pass
 
-class _CControlStructure(_CBaseWithOptBody): pass
+class _CControlStructure(_CBaseWithOptBody):
+	NameIsRelevant = False
 class CForStatement(_CControlStructure):
 	Keyword = "for"
 class CDoStatement(_CControlStructure):
