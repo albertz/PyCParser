@@ -1809,7 +1809,7 @@ class CGotoLabel(_CBaseWithOptBody): pass
 class _CControlStructure(_CBaseWithOptBody): pass
 class CForStatement(_CControlStructure):
 	Keyword = "for"
-class CDoWhileStatement(_CControlStructure):
+class CDoStatement(_CControlStructure):
 	Keyword = "do"
 class CWhileStatement(_CControlStructure):
 	Keyword = "while"
@@ -1830,7 +1830,7 @@ class CGotoStatement(_CControlStructure):
 
 CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 	CForStatement,
-	CDoWhileStatement,
+	CDoStatement,
 	CWhileStatement,
 	CContinueStatement,
 	CBreakStatement,
@@ -2011,6 +2011,15 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					curCObj = _CBaseWithOptBody(parent=parentCObj)
 				CControlStructures[token.content].overtake(curCObj)
 				curCObj.defPos = stateStruct.curPosAsStr()
+				if isinstance(curCObj, (CElseStatement,CDoStatement)):
+					curCObj._bracketlevel = list(parentCObj._bracketlevel)
+					lasttoken = cpre3_parse_single_next_statement(stateStruct, curCObj, input_iter)
+					# We finalize in any way, also for 'do'. We don't do any semantic checks here
+					# if there is a correct 'while' following or neither if the 'else' has a previous 'if'.
+					curCObj.finalize(stateStruct)
+					if isinstance(lasttoken, CClosingBracket) and lasttoken.brackets == parentCObj._bracketlevel:
+						return
+					curCObj = _CBaseWithOptBody(parent=parentCObj)					
 			elif (token.content,) in stateStruct.CBuiltinTypes:
 				curCObj._type_tokens += [token.content]
 			elif token.content in stateStruct.StdIntTypes:
