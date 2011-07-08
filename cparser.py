@@ -13,9 +13,11 @@ LongOps = map(lambda c: c+"=", "&|=+-*/%<>^~!") + ["--","++","->","<<",">>","&&"
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
 
+# WARNING: this isn't really complete
 def simple_escape_char(c):
 	if c == "n": return "\n"
 	elif c == "t": return "\t"
+	elif c == "0": return "\0"
 	else: return c
 
 def escape_cstr(s):
