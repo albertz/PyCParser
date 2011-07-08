@@ -18,7 +18,11 @@ def simple_escape_char(c):
 	if c == "n": return "\n"
 	elif c == "t": return "\t"
 	elif c == "0": return "\0"
-	else: return c
+	elif c == "\n": return "\n"
+	else:
+		# Just to be sure so that users don't run into trouble.
+		assert False, "simple_escape_char: cannot handle " + repr(c) + " yet"
+		return c
 
 def escape_cstr(s):
 	return s.replace('"', '\\"')
