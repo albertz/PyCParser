@@ -1272,7 +1272,8 @@ class _CBaseWithOptBody:
 		if addToContent is None: addToContent = True
 		
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
-		if addToContent and self.parent.body: self.parent.body.contentlist += [self]
+		if addToContent and self.parent.body and hasattr(self.parent.body, "contentlist"):
+			self.parent.body.contentlist.append(self)
 	
 	def copy(self):
 		import copy
@@ -1460,6 +1461,7 @@ def _isBracketLevelOk(parentLevel, curLevel):
 	return curLevel[:len(parentLevel)] == parentLevel
 	
 class CStatement(_CBaseWithOptBody):
+	def __nonzero__(self): return hasattr(self, "_tokens") and bool(self._tokens)
 	def __str__(self):
 		s = "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
 		if self.defPos is not None: s += " @: " + self.defPos
@@ -2045,7 +2047,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				
 				if not curCObj.isDerived():
 					if len(curCObj._type_tokens) == 0:
+						curCObj.name = None
 						CStatement.overtake(curCObj)
+						curCObj._cpre3_handle_token(stateStruct, token)
 					else:
 						CVarDecl.overtake(curCObj)					
 		elif isinstance(token, COp):
