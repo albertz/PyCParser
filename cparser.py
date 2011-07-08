@@ -1893,7 +1893,9 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 
 				if not curCObj.isDerived():
 					if len(curCObj._type_tokens) == 0:
+						curCObj.name = None
 						CStatement.overtake(curCObj)
+						curCObj._cpre3_handle_token(stateStruct, token)
 					else:
 						CVarDecl.overtake(curCObj)
 		elif isinstance(token, COpeningBracket):
