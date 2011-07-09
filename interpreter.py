@@ -33,7 +33,8 @@ class Interpreter:
 		for c in func.body.contentlist:
 			# TODO :)
 			pass
-		
+		return lambda *args: None # dummy return
+	
 	def runFunc(self, funcname, *args):
 		if funcname in self._func_cache:
 			func = self._func_cache[funcname]

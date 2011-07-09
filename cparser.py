@@ -1470,7 +1470,35 @@ def _isBracketLevelOk(parentLevel, curLevel):
 	if parentLevel is None: parentLevel = []
 	if len(parentLevel) > len(curLevel): return False
 	return curLevel[:len(parentLevel)] == parentLevel
+
+def _body_parent_chain(stateStruct, parentCObj):
+	body = None
+	parent = parentCObj
+	while not isinstance(body, CBody) and parent is not None:
+		assert isinstance(parent, _CBaseWithOptBody)
+		body = parent.body
+		parent = parent.parent
 	
+	yieldedStateStruct = False
+	while body is not None:
+		yieldedStateStruct |= body is stateStruct
+		yield body
+		body = body.parent
+		
+	if not yieldedStateStruct: yield stateStruct
+	
+
+def getObjInBody(body, name):
+	if name in body.funcs:
+		return body.funcs[name]
+	elif name in body.typedefs:
+		return body.typedefs[name]
+	elif name in body.vars:
+		return body.vars[name]
+	elif name in body.enumconsts:
+		return body.enumconsts[name]
+	return None
+
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
 	def __nonzero__(self): return hasattr(self, "_tokens") and bool(self._tokens)
@@ -1478,19 +1506,90 @@ class CStatement(_CBaseWithOptBody):
 		s = "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
 		if self.defPos is not None: s += " @: " + self.defPos
 		return s
+	def _initStatement(self):
+		self._state = 0
+		self._tokens = []
+		self._leftexpr = []
+		self._op = None
+		self._prefixOps = []
+	def __init__(self, **kwargs):
+		_CBaseWithOptBody.__init__(self, **kwargs)
+		self._initStatement()
+	@classmethod
+	def overtake(cls, obj):
+		obj.__class__ = cls
+		obj._initStatement()
 	def _cpre3_handle_token(self, stateStruct, token):
-		# TODO ...
-		if not hasattr(self, "_tokens"): self._tokens = []
 		self._tokens += [token]
+		
+		obj = None
+		if self._state == 0:
+			if isinstance(token, (CIdentifier,CNumber,CStr,CChar)):
+				if isinstance(token, CIdentifier):
+					if token.content == "struct":
+						self._state = 1
+						return
+					elif token.content == "union":
+						self._state = 2
+						return
+					elif token.content == "enum":
+						self._state = 3
+						return
+					else:
+						for body in _body_parent_chain(stateStruct, self.parent):
+							obj = getObjInBody(body, token.content)
+							if obj is not None: break
+						if obj is None:
+							stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
+							obj = CUnknownType(name=token.content)
+				else:
+					obj = token
+				self._leftexpr += [obj]
+				self._state = 5
+			elif isinstance(token, COp):
+				self._prefixOps += [token]
+			else:
+				stateStruct.error("statement parsing: didn't expected token " + str(token))
+		elif self._state in (1,2,3): # struct,union,enum
+			TName = {1:"struct", 2:"union", 3:"enum"}[self._state]
+			DictName = TName + "s"
+			if isinstance(token, CIdentifier):
+				for body in _body_parent_chain(stateStruct, self.parent):
+					d = getattr(body, DictName)
+					if token.content in d:
+						obj = d[token.content]
+						break
+				if obj is None:
+					stateStruct.error("statement parsing: " + TName + " '" + token.content + "' unknown")
+					obj = CUnknownType(name=token.content)
+				self._leftexpr += [obj]
+				self._state = 10
+			else:
+				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
+		elif self._state == 5: # after expr
+			if isinstance(token, COp):
+				self._op = token
+				self._state = 6
+			else:
+				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
+		elif self._state == 6: # after expr + op
+			pass
+		# TODO ...
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
-		subStatement = CStatement(parent=self.parent)
+		if openingBracketToken.content == "(":
+			subStatement = CStatement(parent=self.parent)
+		elif openingBracketToken.content == "[":
+			subStatement = CArrayStatement(parent=self.parent)
+		else:
+			stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "'")
+			# fallback. handle just like '('
+			subStatement = CStatement(parent=self.parent)			
 		for token in input_iter:
 			if isinstance(token, COpeningBracket):
 				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif isinstance(token, CClosingBracket):
 				if token.brackets == openingBracketToken.brackets:
 					subStatement.finalize(stateStruct)
-					if not hasattr(self, "_tokens"): self._tokens = []
 					self._tokens += [subStatement]
 					return
 				else:
@@ -1534,6 +1633,9 @@ class CStatement(_CBaseWithOptBody):
 		
 	def getConstValue(self, stateStruct):
 		return self._tokensToConstValue(self._tokens if hasattr(self, "_tokens") else [], stateStruct)
+
+# only real difference is that this is inside of '[]'
+class CArrayStatement(CStatement): pass
 	
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody(parent=curCObj.parent.body)
