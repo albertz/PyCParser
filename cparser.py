@@ -237,6 +237,7 @@ class State:
 		("short",): ctypes.c_short,
 		("unsigned", "short"): ctypes.c_ushort,
 		("int",): ctypes.c_int,
+		("signed",): ctypes.c_int,
 		("unsigned", "int"): ctypes.c_uint,
 		("unsigned",): ctypes.c_uint,
 		("long",): ctypes.c_long,
@@ -1069,7 +1070,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 						state = 0
 						breakLoop = False
 			elif state == 31: # after macro identifier
-				if c in SpaceChars + "\n": pass
+				if not macrobrackets and c in SpaceChars + "\n": pass
 				elif c in OpeningBrackets:
 					if len(macrobrackets) == 0 and c != "(":
 						state = 32
