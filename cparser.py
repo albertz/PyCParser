@@ -19,6 +19,8 @@ def simple_escape_char(c):
 	elif c == "t": return "\t"
 	elif c == "0": return "\0"
 	elif c == "\n": return "\n"
+	elif c == '"': return '"'
+	elif c == "'": return "'"
 	else:
 		# Just to be sure so that users don't run into trouble.
 		assert False, "simple_escape_char: cannot handle " + repr(c) + " yet"
@@ -83,7 +85,7 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 				else: pass
 			elif state == 5: # escape in str
 				state = 4
-				ret += c
+				ret += simple_escape_char(c)
 			elif state == 6: # after "#"
 				if c in SpaceChars + LetterChars + "_":
 					lastidentifier = c.strip()
@@ -871,6 +873,14 @@ def cpreprocess_parse(stateStruct, input):
 				elif c == "/":
 					state = 20
 					statebeforecomment = 2
+				elif c == '"':
+					state = 3
+					if arg is None: arg = ""
+					arg += c
+				elif c == "'":
+					state = 4
+					if arg is None: arg = ""
+					arg += c
 				elif c == "\\": state = 5 # escape next
 				elif c == "\n":
 					for c in handle_cpreprocess_cmd(stateStruct, cmd, arg): yield c
@@ -878,6 +888,26 @@ def cpreprocess_parse(stateStruct, input):
 				else:
 					if arg is None: cmd += c
 					else: arg += c
+			elif state == 3: # in '"' in arg in command
+				arg += c
+				if c == "\n":
+					stateStruct.error("preproc parse: unfinished str")
+					state = 0
+				elif c == "\\": state = 35
+				elif c == '"': state = 2
+			elif state == 35: # in esp in '"' in arg in command
+				arg += c
+				state = 3
+			elif state == 4: # in "'" in arg in command
+				arg += c
+				if c == "\n":
+					stateStruct.error("preproc parse: unfinished char str")
+					state = 0
+				elif c == "\\": state = 45
+				elif c == "'": state = 2
+			elif state == 45: # in esp in "'" in arg in command
+				arg += c
+				state = 4
 			elif state == 5: # after escape in arg in command
 				if c == "\n": state = 2
 				else: pass # ignore everything, wait for newline
