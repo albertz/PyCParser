@@ -1519,9 +1519,15 @@ def findObjInNamespace(stateStruct, curCObj, name):
 
 class CFuncCall(_CBaseWithOptBody):
 	AutoAddToContent = False
-	func = None
-	def __nonzero__(self): return self.func is not None
-	def __str__(self): return self.__class__.__name__ + " " + str(self.func) + " " + str(self.args)
+	base = None
+	def __nonzero__(self): return self.base is not None
+	def __str__(self): return self.__class__.__name__ + " " + str(self.base) + " " + str(self.args)
+
+class CArrayIndexRef(_CBaseWithOptBody):
+	AutoAddToContent = False
+	base = None
+	def __nonzero__(self): return self.base is not None
+	def __str__(self): return self.__class__.__name__ + " " + str(self.base) + " " + str(self.args)	
 
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
@@ -1600,13 +1606,21 @@ class CStatement(_CBaseWithOptBody):
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
 		if self._state == 5: # after expr
 			ref = self._leftexpr
-			funcCall = CFuncCall(parent=self)
-			funcCall.func = ref
+			if openingBracketToken.content == "(":
+				funcCall = CFuncCall(parent=self)
+			elif openingBracketToken.content == "[":
+				funcCall = CArrayIndexRef(parent=self)
+			else:
+				stateStruct.error("cpre3 statement parse brackets after expr: didn't expected opening bracket '" + openingBracketToken.content + "'")
+				# fallback. handle just like '('
+				funcCall = CStatement(parent=self.parent)
+			funcCall.base = ref
 			funcCall._bracketlevel = list(openingBracketToken.brackets)
 			self._leftexpr = funcCall
 			cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
 			funcCall.finalize(stateStruct)
 			return
+
 		if openingBracketToken.content == "(":
 			subStatement = CStatement(parent=self.parent)
 		elif openingBracketToken.content == "[":
