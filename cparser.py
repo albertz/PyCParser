@@ -1622,6 +1622,12 @@ def findObjInNamespace(stateStruct, curCObj, name):
 					return arg
 	return None
 
+def findCObjTypeInNamespace(stateStruct, curCObj, DictName, name):
+	for body in _body_parent_chain(stateStruct, curCObj):
+		d = getattr(body, DictName)
+		if name in d: return d[name]
+	return None
+
 class _CStatementCall(_CBaseWithOptBody):
 	AutoAddToContent = False
 	base = None
@@ -1725,11 +1731,7 @@ class CStatement(_CBaseWithOptBody):
 			TName = {1:"struct", 2:"union", 3:"enum"}[self._state]
 			DictName = TName + "s"
 			if isinstance(token, CIdentifier):
-				for body in _body_parent_chain(stateStruct, self.parent):
-					d = getattr(body, DictName)
-					if token.content in d:
-						obj = d[token.content]
-						break
+				obj = findCObjTypeInNamespace(stateStruct, self.parent, DictName, token.content)
 				if obj is None:
 					stateStruct.error("statement parsing: " + TName + " '" + token.content + "' unknown")
 					obj = CUnknownType(name=token.content)
@@ -2501,9 +2503,23 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				if curCObj.name is None:
 					curCObj.name = token.content
 				else:
-					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
+					typeObj = None
+					DictName = None
+					if isinstance(curCObj, CStruct): DictName = "structs"
+					elif isinstance(curCObj, CUnion): DictName = "unions"
+					elif isinstance(curCObj, CEnum): DictName = "enums"
+					if DictName is not None:
+						typeObj = findCObjTypeInNamespace(stateStruct, parentCObj, DictName, curCObj.name)
+						if typeObj is None:
+							stateStruct.error("cpre3 parse: unknown " + DictName + " " + curCObj.name)
+							typeObj = curCObj # fallback
+							typeObj.finalize(stateStruct, addToContent=False)
+					else:
+						stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
+					if typeObj is None: typeObj = CUnknownType(name=curCObj.name)
 					# fallback recovery, guess vardecl with the first identifier being an unknown type
-					curCObj._type_tokens += [CUnknownType(name=curCObj.name)]
+					curCObj = CVarDecl(parent=parentCObj)
+					curCObj._type_tokens += [typeObj]
 					curCObj.name = token.content
 				
 				if not curCObj.isDerived():
