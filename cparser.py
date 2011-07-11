@@ -269,6 +269,7 @@ class State:
 		"extern",
 		"static",
 		"register",
+		"volatile",
 		"__inline__",
 	]
 	
