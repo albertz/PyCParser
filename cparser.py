@@ -1217,6 +1217,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 
 class _CBaseWithOptBody:
 	NameIsRelevant = True
+	AutoAddToContent = True
 	
 	def __init__(self, **kwargs):
 		self._type_tokens = []
@@ -1281,7 +1282,7 @@ class _CBaseWithOptBody:
 			self.defPos = stateStruct.curPosAsStr()
 		if not self: return
 		
-		if addToContent is None: addToContent = True
+		if addToContent is None: addToContent = self.AutoAddToContent
 		
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
 		if addToContent and self.parent.body and hasattr(self.parent.body, "contentlist"):
@@ -1454,6 +1455,7 @@ class CEnumConst(_CBaseWithOptBody):
 			self.parent.parent.body.enumconsts[self.name] = self
 		
 class CFuncArgDecl(_CBaseWithOptBody):
+	AutoAddToContent = False	
 	def finalize(self, stateStruct, addToContent=False):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
@@ -1473,22 +1475,21 @@ def _isBracketLevelOk(parentLevel, curLevel):
 	return curLevel[:len(parentLevel)] == parentLevel
 
 def _body_parent_chain(stateStruct, parentCObj):
-	body = None
-	parent = parentCObj
-	while not isinstance(body, CBody) and parent is not None:
-		assert isinstance(parent, _CBaseWithOptBody)
-		body = parent.body
-		parent = parent.parent
-	
 	yieldedStateStruct = False
-	while body is not None:
-		yieldedStateStruct |= body is stateStruct
-		yield body
-		body = body.parent
-		
-	if not yieldedStateStruct: yield stateStruct
-	
 
+	for cobj in _obj_parent_chain(stateStruct, parentCObj):
+		body = cobj.body
+		if isinstance(body, CBody):
+			yieldedStateStruct |= body is stateStruct
+			yield body
+
+	if not yieldedStateStruct: yield stateStruct
+
+def _obj_parent_chain(stateStruct, parentCObj):
+	while parentCObj is not None:
+		yield parentCObj
+		parentCObj = parentCObj.parent
+		
 def getObjInBody(body, name):
 	if name in body.funcs:
 		return body.funcs[name]
@@ -1498,13 +1499,35 @@ def getObjInBody(body, name):
 		return body.vars[name]
 	elif name in body.enumconsts:
 		return body.enumconsts[name]
+	elif (name,) in getattr(body, "CBuiltinTypes", {}):
+		return body.CBuiltinTypes[(name,)]
+	elif name in getattr(body, "StdIntTypes", {}):
+		return body.StdIntTypes[name]
 	return None
+
+def findObjInNamespace(stateStruct, curCObj, name):
+	for cobj in _obj_parent_chain(stateStruct, curCObj):
+		if isinstance(cobj.body, (CBody,State)):
+			obj = getObjInBody(cobj.body, name)
+			if obj is not None: return obj
+		if isinstance(cobj, CFunc):
+			for arg in cobj.args:
+				assert isinstance(arg, CFuncArgDecl)
+				if arg.name is not None and arg.name == name:
+					return arg
+	return None
+
+class CFuncCall(_CBaseWithOptBody):
+	AutoAddToContent = False
+	func = None
+	def __nonzero__(self): return self.func is not None
+	def __str__(self): return self.__class__.__name__ + " " + str(self.func) + " " + str(self.args)
 
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
 	def __nonzero__(self): return hasattr(self, "_tokens") and bool(self._tokens)
 	def __str__(self):
-		s = "CStatement " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
+		s = self.__class__.__name__ + " " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
 		if self.defPos is not None: s += " @: " + self.defPos
 		return s
 	def _initStatement(self):
@@ -1537,15 +1560,13 @@ class CStatement(_CBaseWithOptBody):
 						self._state = 3
 						return
 					else:
-						for body in _body_parent_chain(stateStruct, self.parent):
-							obj = getObjInBody(body, token.content)
-							if obj is not None: break
+						obj = findObjInNamespace(stateStruct, self.parent, token.content)
 						if obj is None:
 							stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
 							obj = CUnknownType(name=token.content)
 				else:
 					obj = token
-				self._leftexpr += [obj]
+				self._leftexpr = obj
 				self._state = 5
 			elif isinstance(token, COp):
 				self._prefixOps += [token]
@@ -1563,7 +1584,7 @@ class CStatement(_CBaseWithOptBody):
 				if obj is None:
 					stateStruct.error("statement parsing: " + TName + " '" + token.content + "' unknown")
 					obj = CUnknownType(name=token.content)
-				self._leftexpr += [obj]
+				self._leftexpr = obj
 				self._state = 10
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
@@ -1577,6 +1598,15 @@ class CStatement(_CBaseWithOptBody):
 			pass
 		# TODO ...
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
+		if self._state == 5: # after expr
+			ref = self._leftexpr
+			funcCall = CFuncCall(parent=self)
+			funcCall.func = ref
+			funcCall._bracketlevel = list(openingBracketToken.brackets)
+			self._leftexpr = funcCall
+			cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
+			funcCall.finalize(stateStruct)
+			return
 		if openingBracketToken.content == "(":
 			subStatement = CStatement(parent=self.parent)
 		elif openingBracketToken.content == "[":
@@ -1590,7 +1620,7 @@ class CStatement(_CBaseWithOptBody):
 				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif isinstance(token, CClosingBracket):
 				if token.brackets == openingBracketToken.brackets:
-					subStatement.finalize(stateStruct)
+					subStatement.finalize(stateStruct, addToContent=False)
 					self._tokens += [subStatement]
 					return
 				else:
