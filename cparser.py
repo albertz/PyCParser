@@ -2267,16 +2267,20 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					else:
 						CVarDecl.overtake(curCObj)					
 		elif isinstance(token, COp):
-			if len(curCObj._type_tokens) == 0:
+			if (not curCObj.isDerived() or isinstance(curCObj, CVarDecl)) and len(curCObj._type_tokens) == 0:
 				CStatement.overtake(curCObj)
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj.body, CStatement) and token.content != ",":
 				curCObj.body._cpre3_handle_token(stateStruct, token)
-			elif token.content != ":" and isinstance(curCObj, CCaseStatement):
-				if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
-					curCObj.args.append(CStatement(parent=parentCObj))
-				curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
+			elif isinstance(curCObj, CCaseStatement):
+				if token.content == ":":
+					curCObj.finalize(stateStruct)
+					curCObj = _CBaseWithOptBody(parent=parentCObj)
+				else:
+					if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
+						curCObj.args.append(CStatement(parent=parentCObj))
+					curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, _CControlStructure):
 				stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected op '" + token.content + "'")
 			else:
@@ -2297,9 +2301,6 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					if hasattr(curCObj, "bitsize"): delattr(curCObj, "bitsize")
 					curCObj.name = None
 					curCObj.body = None
-				elif token.content == ":" and isinstance(curCObj, CCaseStatement):
-					curCObj.finalize(stateStruct)
-					curCObj = _CBaseWithOptBody(parent=parentCObj)					
 				elif token.content == ":" and curCObj and curCObj._type_tokens and curCObj.name:
 					CVarDecl.overtake(curCObj)
 					curCObj.bitsize = None
