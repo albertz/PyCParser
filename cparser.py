@@ -2502,21 +2502,18 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 
 				if curCObj.name is None:
 					curCObj.name = token.content
-				else:
-					typeObj = None
 					DictName = None
 					if isinstance(curCObj, CStruct): DictName = "structs"
 					elif isinstance(curCObj, CUnion): DictName = "unions"
 					elif isinstance(curCObj, CEnum): DictName = "enums"
 					if DictName is not None:
 						typeObj = findCObjTypeInNamespace(stateStruct, parentCObj, DictName, curCObj.name)
-						if typeObj is None:
-							stateStruct.error("cpre3 parse: unknown " + DictName + " " + curCObj.name)
-							typeObj = curCObj # fallback
-							typeObj.finalize(stateStruct, addToContent=False)
-					else:
-						stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
-					if typeObj is None: typeObj = CUnknownType(name=curCObj.name)
+						if typeObj is not None:
+							curCObj = CVarDecl(parent=parentCObj)
+							curCObj._type_tokens += [typeObj]
+				else:
+					stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
+					typeObj = CUnknownType(name=curCObj.name)
 					# fallback recovery, guess vardecl with the first identifier being an unknown type
 					curCObj = CVarDecl(parent=parentCObj)
 					curCObj._type_tokens += [typeObj]
