@@ -290,6 +290,10 @@ def getCType(t, stateStruct):
 		return t.getCType(stateStruct)
 	raise Exception, str(t) + " cannot be converted to a C type"
 
+def getSizeOf(t, stateStruct):
+	t = getCType(t, stateStruct)
+	return ctypes.sizeof(t)
+
 class State:
 	EmptyMacro = Macro(None, None, (), "")
 	CBuiltinTypes = {
@@ -401,6 +405,25 @@ class State:
 		fullfilename = dir + filename
 		return fullfilename
 	
+	def readLocalInclude(self, filename):
+		fullfilename = self.findIncludeFullFilename(filename, True)
+		
+		try:
+			import codecs
+			f = codecs.open(fullfilename, "r", "utf-8")
+		except Exception, e:
+			self.error("cannot open local include-file '" + filename + "': " + str(e))
+			return "", None
+		
+		def reader():
+			while True:
+				c = f.read(1)
+				if len(c) == 0: break
+				yield c
+		reader = reader()
+		
+		return reader, fullfilename
+
 	def readGlobalInclude(self, filename):
 		if filename == "inttypes.h": return "", None # we define those types as builtin-types
 		elif filename == "stdint.h": return "", None
@@ -410,21 +433,7 @@ class State:
 
 	def preprocess_file(self, filename, local):
 		if local:
-			fullfilename = self.findIncludeFullFilename(filename, local)
-			
-			try:
-				import codecs
-				f = codecs.open(fullfilename, "r", "utf-8")
-			except Exception, e:
-				self.error("cannot open include-file '" + filename + "': " + str(e))
-				return
-			
-			def reader():
-				while True:
-					c = f.read(1)
-					if len(c) == 0: break
-					yield c
-			reader = reader()
+			reader, fullfilename = self.readLocalInclude(filename)
 		else:
 			reader, fullfilename = self.readGlobalInclude(filename)
 
@@ -811,7 +820,7 @@ def cpreprocess_handle_undef(state, arg):
 		state.error("preprocessor: '" + arg + "' is not a valid macro name")
 		return
 	if not arg in state.macros:
-		state.error("preprocessor: macro " + arg + " is not defined")
+		# This is not an error. Just ignore.
 		return
 	state.macros.pop(arg)
 	
