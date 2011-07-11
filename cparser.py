@@ -74,6 +74,51 @@ OpsRightToLeft = set([
 	"&=", "^=", "|="
 ])
 
+OpPrefixFuncs = {
+	"+": (lambda x: +x),
+	"-": (lambda x: +x),
+	"&": (lambda x: ctypes.pointer(x)),
+	"*": (lambda x: x.content),
+	"++": (lambda x: ++x),
+	"--": (lambda x: --x),
+	"!": (lambda x: not x),
+	"~": (lambda x: ~x),
+}
+
+OpBinFuncs = {
+	"+": (lambda a,b: a + b),
+	"-": (lambda a,b: a - b),
+	"*": (lambda a,b: a * b),
+	"/": (lambda a,b: a / b),
+	"%": (lambda a,b: a % b),
+	"<<": (lambda a,b: a << b),
+	">>": (lambda a,b: a >> b),
+	"<": (lambda a,b: a < b),
+	"<=": (lambda a,b: a <= b),
+	">": (lambda a,b: a > b),
+	">=": (lambda a,b: a >= b),
+	"==": (lambda a,b: a == b),
+	"!=": (lambda a,b: a != b),
+	"&": (lambda a,b: a & b),
+	"^": (lambda a,b: a ^ b),
+	"|": (lambda a,b: a | b),
+	"&&": (lambda a,b: a and b),
+	"||": (lambda a,b: a or b),
+	# NOTE: These assignment ops don't really behave like maybe expected
+	# but they return the somewhat expected.
+	"=": (lambda a,b: b),
+	"+=": (lambda a,b: a + b),
+	"-=": (lambda a,b: a - b),
+	"*=": (lambda a,b: a * b),
+	"/=": (lambda a,b: a / b),
+	"%=": (lambda a,b: a % b),
+	"<<=": (lambda a,b: a << b),
+	">>=": (lambda a,b: a >> b),
+	"&=": (lambda a,b: a & b),
+	"^=": (lambda a,b: a ^ b),
+	"|=": (lambda a,b: a | b),
+}
+
 # WARNING: this isn't really complete
 def simple_escape_char(c):
 	if c == "n": return "\n"
@@ -218,6 +263,7 @@ class Macro:
 		return None
 	def getCValue(self, stateStruct):
 		tokens = self._tokens
+		assert tokens is not None
 		
 		if all([isinstance(t, (CIdentifier,COp)) for t in tokens]):
 			t = tuple([t.content for t in tokens])
@@ -687,20 +733,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							stateStruct.error("preprocessor eval: expected op but got '" + c + "' in '" + condstr + "' in state 18")
 							return
 					else:
-						if opstr == "!=": op = lambda x,y: x != y
-						elif opstr == "==": op = lambda x,y: x == y
-						elif opstr == "<=": op = lambda x,y: x <= y
-						elif opstr == ">=": op = lambda x,y: x >= y
-						elif opstr == "<": op = lambda x,y: x < y
-						elif opstr == ">": op = lambda x,y: x > y
-						elif opstr == "+": op = lambda x,y: x + y
-						elif opstr == "-": op = lambda x,y: x - y
-						elif opstr == "*": op = lambda x,y: x * y
-						elif opstr == "/": op = lambda x,y: x / y
-						elif opstr == "%": op = lambda x,y: x % y
-						elif opstr == "&": op = lambda x,y: x & y
-						elif opstr == "|": op = lambda x,y: x | y
-						elif opstr == "&&":
+						if opstr == "&&":
 							op = lambda x,y: x and y
 							# short path check
 							if not lasteval: return lasteval
@@ -708,8 +741,10 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							op = lambda x,y: x or y
 							# short path check
 							if lasteval: return lasteval
-						elif opstr == "!":
-							newprefixop = lambda x: not x
+						elif opstr in OpBinFuncs:
+							op = OpBinFuncs[opstr]
+						elif opstr in OpPrefixFuncs:
+							newprefixop = OpPrefixFuncs[opstr]
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
 							else: prefixOp = newprefixop
 						else:
@@ -1667,6 +1702,11 @@ def opsDoLeftToRight(stateStruct, op1, op2):
 		return False
 	return True
 
+def getConstValue(stateStruct, obj):
+	if hasattr(obj, "getConstValue"): return obj.getConstValue(stateStruct)
+	stateStruct.error("don't know how to get const value from " + str(obj))
+	return None
+
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
 	def __nonzero__(self): return bool(self._leftexpr) or bool(self._rightexpr)
@@ -1888,43 +1928,19 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				subStatement._cpre3_handle_token(stateStruct, token)
 		stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
-	
-	def _tokensToConstValue(obj, tokens, stateStruct):
-		if len(tokens) == 2 and tokens[0] == COp("-"):
-			return - obj._tokensToConstValue(tokens[1:], stateStruct)
-		if len(tokens) == 1:
-			if isinstance(tokens[0], CNumber):
-				return tokens[0].content
-			if isinstance(tokens[0], CIdentifier):
-				name = tokens[0].content
-				body = obj.parent.body if obj.parent is not None else stateStruct
-				idobj = findIdentifierInBody(body, name)
-				if idobj is None:
-					stateStruct.error(str(obj) + " getConstValue: identifier " + name + " unknown in " + str(body))
-					return 0 # this is a useful fallback
-				return idobj.value # expecting CEnumConst right now
-			if isinstance(tokens[0], CStatement):
-				return tokens[0].getConstValue(stateStruct)
-		if len(tokens) >= 3 and isinstance(tokens[1], COp):
-			# warning: expects that first op has always preference. TODO... :P
-			value1 = obj._tokensToConstValue([tokens[0]], stateStruct)
-			value2 = obj._tokensToConstValue(tokens[2:], stateStruct)
-			try:
-				if tokens[1] == COp("+"): return value1 + value2
-				elif tokens[1] == COp("-"): return value1 - value2
-				elif tokens[1] == COp("*"): return value1 * value2
-				elif tokens[1] == COp("/"): return value1 / value2
-				elif tokens[1] == COp("%"): return value1 % value2
-				elif tokens[1] == COp("<<"): return value1 << value2
-				elif tokens[1] == COp("|"): return value1 | value2
-			except Exception, e:
-				stateStruct.error(str(obj) + " getConstValue: cannot handle " + str(value1) + " " + str(tokens[1]) + " " + str(value2))
-				return 0
-		stateStruct.error(str(obj) + " getConstValue: not completely implemented yet for token list " + str(tokens))
 		
 	def getConstValue(self, stateStruct):
-		return self._tokensToConstValue(self._tokens if hasattr(self, "_tokens") else [], stateStruct)
-
+		if self._leftexpr is None: # prefixed only
+			func = OpPrefixFuncs[self._op.content]
+			v = getConstValue(self._rightexpr)
+			return func(v)
+		if self._op is None or self._rightexpr is None:
+			return getConstValue(self._leftexpr)
+		func = OpBinFuncs[self._op.content]
+		v1 = getConstValue(self._leftexpr)
+		v2 = getConstValue(self._rightexpr)
+		return func(v1, v2)
+			
 # only real difference is that this is inside of '[]'
 class CArrayStatement(CStatement): pass
 	
