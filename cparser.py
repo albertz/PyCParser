@@ -9,9 +9,70 @@ LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
 OpChars = "&|=!+-*/%<>^~?:,."
-LongOps = map(lambda c: c+"=", "&|=+-*/%<>^~!") + ["--","++","->","<<",">>","&&","||","<<=",">>=","::"]
+LongOps = map(lambda c: c+"=", "&|=+-*/%<>^~!") + ["--","++","->","<<",">>","&&","||","<<=",">>=","::",".*","->*"]
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
+
+# NOTE: most of the C++ stuff is not really supported yet
+OpPrecedences = {
+	"::": 1,
+	"++": 2, # as postfix; 3 as prefix
+	"--": 2, # as postfix; 3 as prefix
+	".": 2,
+	"->": 2,
+	"typeid": 2,
+	"const_cast": 2,
+	"dynamic_cast": 2,
+	"reinterpret_cast": 2,
+	"static_cast": 2,
+	"!": 3,
+	"~": 3,
+	"sizeof": 3,
+	"new": 3,
+	"delete": 3,
+	".*": 4,
+	"->*": 4,
+	"*": 5, # as bin op; 3 as prefix
+	"/": 5,
+	"%": 5,
+	"+": 6, # as bin op; 3 as prefix
+	"-": 6, # as bin op; 3 as prefix
+	"<<": 7,
+	">>": 7,
+	"<": 8,
+	"<=": 8,
+	">": 8,
+	">=": 8,
+	"==": 9,
+	"!=": 9,
+	"&": 10, # as bin op; 3 as prefix
+	"^": 11,
+	"|": 12,
+	"&&": 13,
+	"||": 14,
+	"?": 15, # a ? b : c
+	"=": 16,
+	"+=": 16,
+	"-=": 16,
+	"*=": 16,
+	"/=": 16,
+	"%=": 16,
+	"<<=": 16,
+	">>=": 16,
+	"&=": 16,
+	"^=": 16,
+	"|=": 16,
+	"throw": 17,
+	",": 18
+}
+
+OpsRightToLeft = set([
+	"=",
+	"+=", "-=",
+	"*=", "/=", "%=",
+	"<<=", ">>=",
+	"&=", "^=", "|="
+])
 
 # WARNING: this isn't really complete
 def simple_escape_char(c):
@@ -1569,13 +1630,38 @@ def _create_cast_call(stateStruct, parent, base, token):
 	funcCall.finalize(stateStruct)
 	return funcCall
 
+def opsDoLeftToRight(stateStruct, op1, op2):
+	try: opprec1 = OpPrecedences[op1]
+	except:
+		stateStruct.error("internal error: statement parsing: op " + op1 + " unknown")
+		opprec1 = 100
+	try: opprec2 = OpPrecedences[op2]
+	except:
+		stateStruct.error("internal error: statement parsing: op " + op2 + " unknown")
+		opprec2 = 100
+	
+	if opprec1 < opprec2:
+		return True
+	elif opprec1 > opprec2:
+		return False
+	if op1 in OpsRightToLeft:
+		return False
+	return True
+
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
-	def __nonzero__(self): return hasattr(self, "_tokens") and bool(self._tokens)
-	def __str__(self):
-		s = self.__class__.__name__ + " " + (str(self._tokens) if hasattr(self, "_tokens") else "()")
+	def __nonzero__(self): return bool(self._leftexpr) or bool(self._rightexpr)
+	def __repr__(self):
+		s = self.__class__.__name__
+		if self._leftexpr is not None: s += " " + repr(self._leftexpr)
+		if self._rightexpr is not None:
+			s += " "
+			s += str(self._op) if self._op is not None else "<None>"
+			s += " "
+			s += repr(self._rightexpr)
 		if self.defPos is not None: s += " @: " + self.defPos
-		return s
+		return "<" + s + ">"
+	__str__ = __repr__
 	def _initStatement(self):
 		self._state = 0
 		self._tokens = []
@@ -1584,8 +1670,8 @@ class CStatement(_CBaseWithOptBody):
 		self._rightexpr = None
 		self._prefixOps = []
 	def __init__(self, **kwargs):
-		_CBaseWithOptBody.__init__(self, **kwargs)
 		self._initStatement()
+		_CBaseWithOptBody.__init__(self, **kwargs)
 	@classmethod
 	def overtake(cls, obj):
 		obj.__class__ = cls
@@ -1620,6 +1706,9 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token))
 		elif self._state in (1,2,3): # struct,union,enum
+			if self._prefixOps:
+				stateStruct.error("statement parsing: prefixes " + str(self._prefixOps) + " not valid for type")
+				self._prefixOps = []
 			TName = {1:"struct", 2:"union", 3:"enum"}[self._state]
 			DictName = TName + "s"
 			if isinstance(token, CIdentifier):
@@ -1636,6 +1725,9 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
 		elif self._state == 5: # after expr
+			while self._prefixOps:
+				self._leftexpr = CStatement(parent=self, _op=self._prefixOps[-1], _rightexpr=self._leftexpr)
+				self._prefixOps.pop()
 			if token == COp("."):
 				self._state = 20
 				self._leftexpr = CAttribAccessRef(parent=self, base=self._leftexpr)
@@ -1669,15 +1761,48 @@ class CStatement(_CBaseWithOptBody):
 			elif token == COp("->"):
 				self._state = 22
 				self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
-			elif isinstance(token, COp):
+			elif self._op == COp("?"):
 				# TODO ...
-				#self._op = token
-				#self._state = 6
 				pass
+			elif isinstance(token, COp):
+				if opsDoLeftToRight(stateStruct, self._op.content, token.content):
+					import copy
+					subStatement = copy.copy(self)
+					self._leftexpr = subStatement
+					self._rightexpr = None
+					self._op = token
+					self._state = 6
+				else:
+					self._rightexpr = CStatement(parent=self, _leftexpr=self._rightexpr)
+					self._rightexpr._op = token
+					self._state = 8
 			elif isinstance(self._rightexpr, CStr) and isinstance(token, CStr):
 				self._rightexpr = CStr(self._rightexpr.content + token.content)
 			else:
 				self._rightexpr = _create_cast_call(stateStruct, self, self._rightexpr, token)
+		elif self._state == 8: # right-to-left chain, pull down
+			assert isinstance(self._rightexpr, CStatement)
+			self._rightexpr._cpre3_handle_token(stateStruct, token)
+			if self._rightexpr._state == 5:
+				self._state = 9
+		elif self._state == 9: # right-to-left chain after op + expr
+			assert isinstance(self._rightexpr, CStatement)
+			if token in (COp("."),COp("->")):
+				self._rightexpr._cpre3_handle_token(stateStruct, token)
+				self._state = 8
+			elif not isinstance(token, COp):
+				self._rightexpr._cpre3_handle_token(stateStruct, token)
+			else: # is COp
+				if opsDoLeftToRight(stateStruct, self._op.content, token.content):
+					import copy
+					subStatement = copy.copy(self)
+					self._leftexpr = subStatement
+					self._rightexpr = None
+					self._op = token
+					self._state = 6
+				else:
+					self._rightexpr._cpre3_handle_token(stateStruct, token)
+					self._state = 8
 		elif self._state == 20: # after attrib/ptr access
 			if isinstance(token, CIdentifier):
 				assert isinstance(self._leftexpr, (CAttribAccessRef,CPtrAccessRef))
@@ -1706,6 +1831,12 @@ class CStatement(_CBaseWithOptBody):
 			self._leftexpr = funcCall
 			cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
 			funcCall.finalize(stateStruct)
+			return
+
+		if self._state in (8,9): # right-to-left chain
+			self._rightexpr._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
+			if self._rightexpr._state == 5:
+				self._state = 9
 			return
 
 		if openingBracketToken.content == "(":
