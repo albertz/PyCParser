@@ -364,7 +364,11 @@ class State:
 			self.macros["__MACOSX__"] = self.EmptyMacro
 			self.macros["i386"] = self.EmptyMacro
 			self.macros["MAC_OS_X_VERSION_MIN_REQUIRED"] = Macro(rightside="1030")
-			
+	
+	def autoSetupGlobalIncludeWrappers(self):
+		from globalincludewrappers import Wrapper
+		Wrapper().install(self)
+	
 	def incIncludeLineChar(self, fullfilename=None, inc=None, line=None, char=None, charMod=None):
 		CharStartIndex = 0
 		LineStartIndex = 1
