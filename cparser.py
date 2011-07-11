@@ -544,7 +544,10 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 	prefixOp = None
 	opstr = ""
 	args = []
-	for c in condstr:
+	i = 0
+	while i < len(condstr):
+		c = condstr[i]
+		i += 1
 		breakLoop = False
 		while not breakLoop:
 			breakLoop = True
@@ -743,6 +746,10 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							if lasteval: return lasteval
 						elif opstr in OpBinFuncs:
 							op = OpBinFuncs[opstr]
+							if OpPrecedences[opstr] >= 6: # +,-,==, etc
+								# WARNING/HACK: guess that the following has lower or equal precedence :)
+								# HACK: add "()"
+								condstr = condstr[:i] + "(" + condstr[i:] + ")"
 						elif opstr in OpPrefixFuncs:
 							newprefixop = OpPrefixFuncs[opstr]
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
