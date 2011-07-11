@@ -2107,7 +2107,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif curCObj is not None and isinstance(curCObj.body, CStatement):
-				curCObj.body._cpre3_handle_token(stateStruct, token)
+				curCObj.body._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif isinstance(curCObj, _CControlStructure):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "(":
