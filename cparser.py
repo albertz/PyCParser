@@ -1990,6 +1990,8 @@ class CSwitchStatement(_CControlStructure):
 	Keyword = "switch"
 class CCaseStatement(_CControlStructure):
 	Keyword = "case"
+class CCaseDefaultStatement(_CControlStructure):
+	Keyword = "default"
 class CGotoStatement(_CControlStructure):
 	Keyword = "goto"
 class CReturnStatement(_CControlStructure):
@@ -2005,6 +2007,7 @@ CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 	CElseStatement,
 	CSwitchStatement,
 	CCaseStatement,
+	CCaseDefaultStatement,
 	CGotoStatement,
 	CReturnStatement,
 	]))
@@ -2281,6 +2284,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
 						curCObj.args.append(CStatement(parent=parentCObj))
 					curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
+			elif isinstance(curCObj, CCaseDefaultStatement) and token.content == ":":
+				curCObj.finalize(stateStruct)
+				curCObj = _CBaseWithOptBody(parent=parentCObj)
 			elif isinstance(curCObj, _CControlStructure):
 				stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected op '" + token.content + "'")
 			else:
