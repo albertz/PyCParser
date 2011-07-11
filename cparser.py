@@ -1548,17 +1548,26 @@ def findObjInNamespace(stateStruct, curCObj, name):
 					return arg
 	return None
 
-class CFuncCall(_CBaseWithOptBody):
+class _CStatementCall(_CBaseWithOptBody):
 	AutoAddToContent = False
 	base = None
 	def __nonzero__(self): return self.base is not None
 	def __str__(self): return self.__class__.__name__ + " " + str(self.base) + " " + str(self.args)
+	
+class CFuncCall(_CStatementCall): pass # base(args) or (base)args; i.e. can also be a simple cast
+class CArrayIndexRef(_CStatementCall): pass # base[args]
+class CAttribAccessRef(_CStatementCall): pass # base.name
+class CPtrAccessRef(_CStatementCall): pass # base->name
 
-class CArrayIndexRef(_CBaseWithOptBody):
-	AutoAddToContent = False
-	base = None
-	def __nonzero__(self): return self.base is not None
-	def __str__(self): return self.__class__.__name__ + " " + str(self.base) + " " + str(self.args)	
+def _create_cast_call(stateStruct, parent, base, token):
+	funcCall = CFuncCall(parent=parent)
+	funcCall.base = base
+	arg = CStatement(parent=funcCall)
+	funcCall.args = [arg]
+	arg._cpre3_handle_token(stateStruct, token)
+	arg.finalize(stateStruct)
+	funcCall.finalize(stateStruct)
+	return funcCall
 
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
@@ -1570,8 +1579,9 @@ class CStatement(_CBaseWithOptBody):
 	def _initStatement(self):
 		self._state = 0
 		self._tokens = []
-		self._leftexpr = []
+		self._leftexpr = None
 		self._op = None
+		self._rightexpr = None
 		self._prefixOps = []
 	def __init__(self, **kwargs):
 		_CBaseWithOptBody.__init__(self, **kwargs)
@@ -1626,19 +1636,63 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
 		elif self._state == 5: # after expr
-			if isinstance(token, COp):
+			if token == COp("."):
+				self._state = 20
+				self._leftexpr = CAttribAccessRef(parent=self, base=self._leftexpr)
+			elif token == COp("->"):
+				self._state = 20
+				self._leftexpr = CPtrAccessRef(parent=self, base=self._leftexpr)
+			elif isinstance(token, COp):
 				self._op = token
 				self._state = 6
 			elif isinstance(self._leftexpr, CStr) and isinstance(token, CStr):
 				self._leftexpr = CStr(self._leftexpr.content + token.content)
 			else:
-				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
+				self._leftexpr = _create_cast_call(stateStruct, self, self._leftexpr, token)
 		elif self._state == 6: # after expr + op
-			pass
-		# TODO ...
+			if isinstance(token, CIdentifier):
+				obj = findObjInNamespace(stateStruct, self.parent, token.content)
+				if obj is None:
+					stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
+					obj = CUnknownType(name=token.content)
+			elif isinstance(token, (CNumber,CStr,CChar)):
+				obj = token
+			else:
+				obj = CStatement(parent=self)
+				obj._cpre3_handle_token(stateStruct, token) # maybe a postfix op or whatever
+			self._rightexpr = obj
+			self._state = 7
+		elif self._state == 7: # after expr + op + expr
+			if token == COp("."):
+				self._state = 22
+				self._rightexpr = CAttribAccessRef(parent=self, base=self._rightexpr)
+			elif token == COp("->"):
+				self._state = 22
+				self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
+			elif isinstance(token, COp):
+				# TODO ...
+				#self._op = token
+				#self._state = 6
+				pass
+			elif isinstance(self._rightexpr, CStr) and isinstance(token, CStr):
+				self._rightexpr = CStr(self._rightexpr.content + token.content)
+			else:
+				self._rightexpr = _create_cast_call(stateStruct, self, self._rightexpr, token)
+		elif self._state == 20: # after attrib/ptr access
+			if isinstance(token, CIdentifier):
+				assert isinstance(self._leftexpr, (CAttribAccessRef,CPtrAccessRef))
+				self._leftexpr.name = token.content
+				self._state = 5
+			else:
+				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
+		else:
+			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
-		if self._state == 5: # after expr
-			ref = self._leftexpr
+		if self._state in (5,7): # after expr or expr + op + expr
+			if self._state == 5:
+				ref = self._leftexpr
+			else:
+				ref = self._rightexpr
 			if openingBracketToken.content == "(":
 				funcCall = CFuncCall(parent=self)
 			elif openingBracketToken.content == "[":
@@ -1659,9 +1713,22 @@ class CStatement(_CBaseWithOptBody):
 		elif openingBracketToken.content == "[":
 			subStatement = CArrayStatement(parent=self.parent)
 		else:
-			stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "'")
-			# fallback. handle just like '('
-			subStatement = CStatement(parent=self.parent)			
+			# fallback. handle just like '('. we error this below
+			subStatement = CStatement(parent=self.parent)
+
+		if self._state == 0:
+			self._leftexpr = subStatement
+			if openingBracketToken.content != "(":
+				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 0")
+			self._state = 5
+		elif self._state == 6: # expr + op
+			self._rightexpr = subStatement
+			if openingBracketToken.content != "(":
+				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 6")
+			self._state = 7
+		else:
+			stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state " + str(self._state))
+			
 		for token in input_iter:
 			if isinstance(token, COpeningBracket):
 				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
