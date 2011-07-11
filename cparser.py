@@ -966,8 +966,8 @@ def cpreprocess_parse(stateStruct, input):
 		else: stateStruct.incIncludeLineChar(char=1)
 
 class _CBase:
-	def __init__(self, data=None, rawstr=None, **kwargs):
-		self.content = data
+	def __init__(self, content=None, rawstr=None, **kwargs):
+		self.content = content
 		self.rawstr = rawstr
 		for k,v in kwargs.iteritems():
 			setattr(self, k, v)
@@ -1629,6 +1629,8 @@ class CStatement(_CBaseWithOptBody):
 			if isinstance(token, COp):
 				self._op = token
 				self._state = 6
+			elif isinstance(self._leftexpr, CStr) and isinstance(token, CStr):
+				self._leftexpr = CStr(self._leftexpr.content + token.content)
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
 		elif self._state == 6: # after expr + op
