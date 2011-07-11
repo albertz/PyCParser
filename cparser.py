@@ -1948,6 +1948,8 @@ class CCaseStatement(_CControlStructure):
 	Keyword = "case"
 class CGotoStatement(_CControlStructure):
 	Keyword = "goto"
+class CReturnStatement(_CControlStructure):
+	Keyword = "return"
 
 CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 	CForStatement,
@@ -1960,6 +1962,7 @@ CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 	CSwitchStatement,
 	CCaseStatement,
 	CGotoStatement,
+	CReturnStatement,
 	]))
 
 def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToList, input_iter):
@@ -2059,6 +2062,8 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 				curCObj = CStatement(parent=parentCObj)
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
+			elif curCObj is not None and isinstance(curCObj.body, CStatement):
+				curCObj.body._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, _CControlStructure):
 				curCObj._bracketlevel = list(token.brackets)
 				if token.content == "(":
@@ -2102,18 +2107,23 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 				# We finalize in any way, also for 'do'. We don't do any semantic checks here
 				# if there is a correct 'while' following or neither if the 'else' has a previous 'if'.
 				curCObj.finalize(stateStruct)
-				return lasttoken			
+				return lasttoken
+			elif isinstance(curCObj, CReturnStatement):
+				curCObj.body = CStatement(parent=curCObj)
 		elif isinstance(curCObj, CGotoStatement):
 			if curCObj.name is None:
 				curCObj.name = token.content
 			else:
 				stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got second identifier '" + token.content + "'")
+		elif isinstance(curCObj, CStatement):
+			curCObj._cpre3_handle_token(stateStruct, token)
+		elif curCObj is not None and isinstance(curCObj.body, CStatement):
+			curCObj.body._cpre3_handle_token(stateStruct, token)
 		elif isinstance(curCObj, _CControlStructure):
 			stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected identifier '" + token.content + "'")
 		else:
 			if curCObj is None:
 				curCObj = CStatement(parent=parentCObj)
-			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
 			else:
 				stateStruct.error("cpre3 parse single: got unexpected token " + str(token))
@@ -2181,7 +2191,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					curCObj.finalize(stateStruct)
 					if isinstance(lasttoken, CClosingBracket) and lasttoken.brackets == parentCObj._bracketlevel:
 						return
-					curCObj = _CBaseWithOptBody(parent=parentCObj)					
+					curCObj = _CBaseWithOptBody(parent=parentCObj)
+				elif isinstance(curCObj, CReturnStatement):
+					curCObj.body = CStatement(parent=curCObj)
 			elif (token.content,) in stateStruct.CBuiltinTypes:
 				curCObj._type_tokens += [token.content]
 			elif token.content in stateStruct.StdIntTypes:
