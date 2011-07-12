@@ -51,6 +51,7 @@ OpPrecedences = {
 	"&&": 13,
 	"||": 14,
 	"?": 15, # a ? b : c
+	"?:": 15, # this is the internal op representation when we have got all three sub nodes
 	"=": 16,
 	"+=": 16,
 	"-=": 16,
@@ -1700,6 +1701,8 @@ def _create_cast_call(stateStruct, parent, base, token):
 	return funcCall
 
 def opsDoLeftToRight(stateStruct, op1, op2):
+	if op1 == "?": return False
+	
 	try: opprec1 = OpPrecedences[op1]
 	except:
 		stateStruct.error("internal error: statement parsing: op " + op1 + " unknown")
@@ -1724,11 +1727,18 @@ def getConstValue(stateStruct, obj):
 
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
+	_leftexpr = None
+	_middleexpr = None
+	_rightexpr = None
+	_op = None
 	def __nonzero__(self): return bool(self._leftexpr) or bool(self._rightexpr)
 	def __repr__(self):
 		s = self.__class__.__name__
 		if self._leftexpr is not None: s += " " + repr(self._leftexpr)
-		if self._rightexpr is not None:
+		if self._op == COp("?:"):
+			s += " ? " + repr(self._middleexpr)
+			s += " : " + repr(self._rightexpr)
+		elif self._rightexpr is not None:
 			s += " "
 			s += str(self._op) if self._op is not None else "<None>"
 			s += " "
@@ -1739,9 +1749,6 @@ class CStatement(_CBaseWithOptBody):
 	def _initStatement(self):
 		self._state = 0
 		self._tokens = []
-		self._leftexpr = None
-		self._op = None
-		self._rightexpr = None
 		self._prefixOps = []
 	def __init__(self, **kwargs):
 		self._initStatement()
@@ -1831,11 +1838,13 @@ class CStatement(_CBaseWithOptBody):
 			elif token == COp("->"):
 				self._state = 22
 				self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
-			elif self._op == COp("?"):
-				# TODO ...
-				pass
 			elif isinstance(token, COp):
-				if opsDoLeftToRight(stateStruct, self._op.content, token.content):
+				if self._op == COp("?") and token == COp(":"):
+					self._middleexpr = self._rightexpr
+					self._rightexpr = None
+					self._op = COp("?:")
+					self._state = 6
+				elif opsDoLeftToRight(stateStruct, self._op.content, token.content):
 					import copy
 					subStatement = copy.copy(self)
 					self._leftexpr = subStatement
@@ -1947,13 +1956,16 @@ class CStatement(_CBaseWithOptBody):
 	def getConstValue(self, stateStruct):
 		if self._leftexpr is None: # prefixed only
 			func = OpPrefixFuncs[self._op.content]
-			v = getConstValue(self._rightexpr)
+			v = getConstValue(stateStruct, self._rightexpr)
 			return func(v)
 		if self._op is None or self._rightexpr is None:
-			return getConstValue(self._leftexpr)
+			return getConstValue(stateStruct, self._leftexpr)
+		v1 = getConstValue(stateStruct, self._leftexpr)
+		v2 = getConstValue(stateStruct, self._rightexpr)
 		func = OpBinFuncs[self._op.content]
-		v1 = getConstValue(self._leftexpr)
-		v2 = getConstValue(self._rightexpr)
+		if self._op == COp("?:"):
+			v15 = getConstValue(stateStruct, self._middleexpr)
+			return func(v1, v15, v2)
 		return func(v1, v2)
 			
 # only real difference is that this is inside of '[]'
