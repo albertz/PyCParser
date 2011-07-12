@@ -3,43 +3,56 @@
 # code under LGPL
 
 from cparser import *
+import ctypes
+import errno, os
 
+def wrapCFunc(state, funcname, restype=None, argtypes=None):
+	f = state.funcs[funcname] = getattr(ctypes.pythonapi, funcname)
+	if restype is CVoidType:
+		f.restype = None
+	elif restype is not None:
+		f.restype = restype
+	if argtypes is not None:
+		f.argtypes = argtypes
+	
 class Wrapper:
 	def handle_limits_h(self, state):
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
 	def handle_stdio_h(self, state):
 		state.macros["NULL"] = Macro(rightside="0")
-		state.vars["stdin"] = CVarDecl(type=CPointerType(CStdIntType("FILE")), name="stdin")
-		state.vars["stdout"] = CVarDecl(type=CPointerType(CStdIntType("FILE")), name="stdout")
-		state.vars["stderr"] = CVarDecl(type=CPointerType(CStdIntType("FILE")), name="stderr")
-		state.funcs["fprintf"] = lambda *args: None # TODO
-		state.funcs["fputs"] = lambda *args: None # TODO
-		state.funcs["fopen"] = lambda *args: None # TODO
-		state.funcs["fclose"] = lambda *args: None # TODO
-		state.vars["errno"] = CVarDecl(type=CStdIntType("int"), name="errno")
-		state.macros["EOF"] = Macro(rightside="-1")
-		state.funcs["setbuf"] = lambda *args: None # TODO
-		state.funcs["isatty"] = lambda *args: None # TODO
-		state.funcs["fileno"] = lambda *args: None # TODO
-		state.funcs["getc"] = lambda *args: None # TODO
-		state.funcs["ungetc"] = lambda *args: None # TODO
+		FileP = restype=CPointerType(CStdIntType("FILE")).getCType(state)
+		wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
+		wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
+		wrapCFunc(state, "fdopen", restype=FileP, argtypes=(ctypes.c_int, ctypes.c_char_p))
+		state.vars["stdin"] = ctypes.pythonapi.fdopen(0, "r")
+		state.vars["stdout"] = ctypes.pythonapi.fdopen(1, "a")
+		state.vars["stderr"] = ctypes.pythonapi.fdopen(2, "a")
+		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
+		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
+		state.vars["errno"] = 0 # TODO
+		state.macros["EOF"] = Macro(rightside="-1") # TODO?
+		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
+		wrapCFunc(state, "isatty", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+		wrapCFunc(state, "fileno")
+		wrapCFunc(state, "getc")
+		wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int,FileP))
 		state.structs["stat"] = CStruct(name="stat") # TODO
 		state.funcs["fstat"] = lambda *args: None # TODO
-		state.macros["S_IFMT"] = Macro(rightside="0")
-		state.macros["S_IFDIR"] = Macro(rightside="0")
+		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
+		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 	def handle_stdlib_h(self, state):
-		state.funcs["malloc"] = lambda *args: None # TODO
-		state.funcs["free"] = lambda *args: None # TODO
-		state.funcs["getenv"] = lambda *args: None # TODO
+		wrapCFunc(state, "malloc")
+		wrapCFunc(state, "free")
+		state.funcs["getenv"] = os.getenv
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
-		state.funcs["strlen"] = lambda *args: None # TODO
-		state.funcs["strcpy"] = lambda *args: None # TODO
-		state.funcs["strcat"] = lambda *args: None # TODO
-		state.funcs["strcmp"] = lambda *args: None # TODO
-		state.funcs["strtok"] = lambda *args: None # TODO
-		state.funcs["strerror"] = lambda *args: None # TODO
+		wrapCFunc(state, "strlen")
+		wrapCFunc(state, "strcpy")
+		wrapCFunc(state, "strcat")
+		wrapCFunc(state, "strcmp")
+		wrapCFunc(state, "strtok")
+		wrapCFunc(state, "strerror")
 	def handle_time_h(self, state): pass
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
