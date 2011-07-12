@@ -30,6 +30,7 @@ class Wrapper:
 	def handle_stdlib_h(self, state):
 		state.funcs["malloc"] = lambda *args: None # TODO
 		state.funcs["free"] = lambda *args: None # TODO
+		state.funcs["getenv"] = lambda *args: None # TODO
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
