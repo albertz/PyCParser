@@ -36,7 +36,7 @@ def iterIdWithPostfixes(name):
 		yield name + "_" + postfix
 
 import keyword
-PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist)
+PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist + ["ctypes"])
 
 def isValidVarName(name):
 	return name not in PyReservedNames
@@ -87,9 +87,31 @@ class FuncEnv:
 		scope = self.scopeStack.pop()
 		scope.finishMe()
 
-def getAstNodeForVarType(varDecl):
-	# TODO
-	pass
+def getAstNodeForCTypesBasicType(t):
+	import inspect
+	if t is None: return None
+	if t is CVoidType: return None
+	if not inspect.isclass(t) and isinstance(t, CVoidType): return None
+	if issubclass(t, CVoidType): return None
+	a = ast.Attribute()
+	a.value = ast.Name(id="ctypes")
+	a.attr = t.__name__
+	return a
+
+def getAstNodeForVarType(t):
+	if isinstance(t, CBuiltinType):
+		return getAstNodeForCTypesBasicType(t.builtinType)
+	elif isinstance(t, CStdIntType):
+		return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
+	elif isinstance(t, CPointerType):
+		a = ast.Attribute()
+		a.value = ast.Name(id="ctypes")
+		a.attr = "POINTER"
+		return makeAstNodeCall(a, getAstNodeForVarType(t.pointerOf))
+	elif isinstance(t, CTypedefType):
+		return ast.Name(id=t.name)
+	else:
+		assert False, "cannot handle " + str(t)
 
 def makeAstNodeCall(func, *args):
 	if not isinstance(func, ast.AST):
@@ -108,7 +130,7 @@ class FuncCodeblockScope:
 		if isinstance(varDecl, CVarDecl): # it could also be a CFuncArgDecl or so. only assing if CVarDecl
 			a = ast.Assign()
 			a.targets = [ast.Name(id=varName)]
-			varTypeNode = getAstNodeForVarType(varDecl)
+			varTypeNode = getAstNodeForVarType(varDecl.type)
 			a.value = makeAstNodeCall(varTypeNode)
 			self.funcEnv.astNode.body.append(a)
 		return varName
