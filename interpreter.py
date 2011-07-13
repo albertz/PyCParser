@@ -105,11 +105,12 @@ class FuncCodeblockScope:
 		varName = self.funcEnv._registerNewVar(varName, varDecl)
 		assert varName is not None
 		self.varNames.add(varName)
-		a = ast.Assign()
-		a.targets = [ast.Name(id=varName)]
-		varTypeNode = getAstNodeForVarType(varDecl)
-		a.value = makeAstNodeCall(varTypeNode)
-		self.funcEnv.astNode.body.append(a)
+		if isinstance(varDecl, CVarDecl): # it could also be a CFuncArgDecl or so. only assing if CVarDecl
+			a = ast.Assign()
+			a.targets = [ast.Name(id=varName)]
+			varTypeNode = getAstNodeForVarType(varDecl)
+			a.value = makeAstNodeCall(varTypeNode)
+			self.funcEnv.astNode.body.append(a)
 		return varName
 	def _astForDeleteVar(self, varName):
 		assert varName is not None
