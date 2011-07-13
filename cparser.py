@@ -1684,7 +1684,7 @@ class _CStatementCall(_CBaseWithOptBody):
 	base = None
 	def __nonzero__(self): return self.base is not None
 	def __str__(self):
-		s = self.__class__.__name__ + " " + str(self.base)
+		s = self.__class__.__name__ + " " + repr(self.base)
 		if self.name:
 			s += " name: " + self.name
 		else:
