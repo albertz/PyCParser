@@ -2050,7 +2050,7 @@ def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
 		elif token == COp(","):
 			if state in (1,2):
 				if state == 2:
-					valueStmnt.finalize(stateStruct)
+					valueStmnt.finalize(stateStruct, addToContent=False)
 					curCObj.value = valueStmnt.getConstValue(stateStruct)
 				curCObj.finalize(stateStruct)
 				curCObj = CEnumConst(parent=parentCObj)
@@ -2062,7 +2062,7 @@ def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
 			if token.brackets == parentCObj._bracketlevel:
 				if curCObj:
 					if state == 2:
-						valueStmnt.finalize(stateStruct)
+						valueStmnt.finalize(stateStruct, addToContent=False)
 						curCObj.value = valueStmnt.getConstValue(stateStruct)
 					curCObj.finalize(stateStruct)
 				parentCObj.finalize(stateStruct)
