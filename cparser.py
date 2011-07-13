@@ -1683,7 +1683,13 @@ class _CStatementCall(_CBaseWithOptBody):
 	AutoAddToContent = False
 	base = None
 	def __nonzero__(self): return self.base is not None
-	def __str__(self): return self.__class__.__name__ + " " + str(self.base) + " " + str(self.args)
+	def __str__(self):
+		s = self.__class__.__name__ + " " + str(self.base)
+		if self.name:
+			s += " name: " + self.name
+		else:
+			s += " args: " + str(self.args)
+		return s
 	
 class CFuncCall(_CStatementCall): pass # base(args) or (base)args; i.e. can also be a simple cast
 class CArrayIndexRef(_CStatementCall): pass # base[args]
@@ -1734,6 +1740,7 @@ class CStatement(_CBaseWithOptBody):
 	def __nonzero__(self): return bool(self._leftexpr) or bool(self._rightexpr)
 	def __repr__(self):
 		s = self.__class__.__name__
+		#s += " " + repr(self._tokens) # debug
 		if self._leftexpr is not None: s += " " + repr(self._leftexpr)
 		if self._op == COp("?:"):
 			s += " ? " + repr(self._middleexpr)
@@ -2693,6 +2700,8 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 		elif isinstance(token, CNumber):
 			if isinstance(curCObj, CVarDecl) and hasattr(curCObj, "bitsize"):
 				curCObj.bitsize = token.content
+			elif isinstance(curCObj, CStatement):
+				curCObj._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj.body, CStatement):
 				curCObj.body._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, CCaseStatement):
