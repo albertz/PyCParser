@@ -7,6 +7,12 @@ from cwrapper import CStateWrapper
 
 import ast
 
+class CWrapValue:
+	def __init__(self, value):
+		self.value = value
+	def __repr__(self):
+		return "<" + self.__class__.__name__ + " " + repr(self.value) + ">"
+
 def iterIdentifierNames():
 	S = "abcdefghijklmnopqrstuvwxyz0123456789"
 	n = 0
