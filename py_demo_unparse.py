@@ -244,7 +244,9 @@ class Unparser:
             self.fill("@")
             self.dispatch(deco)
         self.fill("def "+t.name + "(")
-        self.dispatch(t.args)
+        for i in xrange(len(t.args)):
+            if i > 0: self.write(", ")
+            self.dispatch(t.args[i])
         self.write(")")
         self.enter()
         self.dispatch(t.body)
