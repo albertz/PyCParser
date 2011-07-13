@@ -79,7 +79,7 @@ class FuncEnv:
 		scope = FuncCodeblockScope(funcEnv=self)
 		self.scopeStack += [scope]
 		return scope
-	def popScope(self, astFuncBody):
+	def popScope(self):
 		scope = self.scopeStack.pop()
 		scope.finishMe()
 
@@ -186,11 +186,16 @@ def astForStatement(funcEnv, stmnt):
 	elif isinstance(stmnt, CChar):
 		return ast.Str(s=stmnt.content)
 	elif isinstance(stmnt, CFuncCall):
-		assert isinstance(stmnt.base, CFunc) # TODO: also func ptrs etc
-		a = ast.Call()
-		a.func = ast.Name(id=stmnt.base.name)
-		a.args = map(lambda arg: astForStatement(funcEnv, arg), stmnt.args)
-		return a
+		if isinstance(stmnt.base, CFunc):
+			a = ast.Call()
+			a.func = ast.Name(id=stmnt.base.name)
+			a.args = map(lambda arg: astForStatement(funcEnv, arg), stmnt.args)
+			return a
+		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
+			# TODO cast ...
+			return ast.Name(id="None")
+		else:
+			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
 		# TODO
 		return ast.Name(id="None")
@@ -280,6 +285,10 @@ def astForCIf(funcEnv, stmnt):
 	# TODO
 	pass
 
+def astForCReturn(funcEnv, stmnt):
+	# TODO
+	pass
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -320,15 +329,20 @@ class Interpreter:
 				base.astNode.body.append(astForCDoWhile(base, c))
 			elif isinstance(c, CIfStatement):
 				base.astNode.body.append(astForCIf(base, c))
+			elif isinstance(c, CReturnStatement):
+				base.astNode.body.append(astForCReturn(base, c))
 			else:
 				assert False, "cannot handle " + str(c)
 		base.popScope()
 		return base
 	
-	def runFunc(self, funcname, *args):
+	def getFunc(self, funcname):
 		if funcname in self._func_cache:
-			func = self._func_cache[funcname]
+			return self._func_cache[funcname]
 		else:
 			func = self.translateFuncToPy(funcname)
 			self._func_cache[funcname] = func
-		func(*args)
+			return func
+		
+	def runFunc(self, funcname, *args):
+		self.getFunc(funcname)(*args)
