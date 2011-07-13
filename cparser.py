@@ -1609,7 +1609,9 @@ class CEnumConst(_CBaseWithOptBody):
 		if self.name:
 			# self.parent.parent is the parent of the enum
 			self.parent.parent.body.enumconsts[self.name] = self
-		
+	def getConstValue(self, stateStruct):
+		return self.value
+	
 class CFuncArgDecl(_CBaseWithOptBody):
 	AutoAddToContent = False	
 	def finalize(self, stateStruct, addToContent=False):
@@ -1728,6 +1730,8 @@ def opsDoLeftToRight(stateStruct, op1, op2):
 
 def getConstValue(stateStruct, obj):
 	if hasattr(obj, "getConstValue"): return obj.getConstValue(stateStruct)
+	if isinstance(obj, (CNumber,CStr,CChar)):
+		return obj.content
 	stateStruct.error("don't know how to get const value from " + str(obj))
 	return None
 
@@ -1964,14 +1968,18 @@ class CStatement(_CBaseWithOptBody):
 		if self._leftexpr is None: # prefixed only
 			func = OpPrefixFuncs[self._op.content]
 			v = getConstValue(stateStruct, self._rightexpr)
+			if v is None: return None
 			return func(v)
 		if self._op is None or self._rightexpr is None:
 			return getConstValue(stateStruct, self._leftexpr)
 		v1 = getConstValue(stateStruct, self._leftexpr)
+		if v1 is None: return None
 		v2 = getConstValue(stateStruct, self._rightexpr)
+		if v2 is None: return None
 		func = OpBinFuncs[self._op.content]
 		if self._op == COp("?:"):
 			v15 = getConstValue(stateStruct, self._middleexpr)
+			if v15 is None: return None
 			return func(v1, v15, v2)
 		return func(v1, v2)
 			
