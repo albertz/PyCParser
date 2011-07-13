@@ -1749,11 +1749,12 @@ class CStatement(_CBaseWithOptBody):
 		if self._op == COp("?:"):
 			s += " ? " + repr(self._middleexpr)
 			s += " : " + repr(self._rightexpr)
-		elif self._rightexpr is not None:
+		elif self._op is not None or self._rightexpr is not None:
 			s += " "
-			s += str(self._op) if self._op is not None else "<None>"
-			s += " "
-			s += repr(self._rightexpr)
+			s += str(self._op)
+			if self._rightexpr is not None:
+				s += " "
+				s += repr(self._rightexpr)
 		if self.defPos is not None: s += " @: " + self.defPos
 		return "<" + s + ">"
 	__str__ = __repr__
@@ -1918,7 +1919,10 @@ class CStatement(_CBaseWithOptBody):
 				funcCall = CStatement(parent=self.parent)
 			funcCall.base = ref
 			funcCall._bracketlevel = list(openingBracketToken.brackets)
-			self._leftexpr = funcCall
+			if self._state == 5:
+				self._leftexpr = funcCall
+			else:
+				self._rightexpr = funcCall
 			cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
 			funcCall.finalize(stateStruct)
 			return
@@ -1982,7 +1986,28 @@ class CStatement(_CBaseWithOptBody):
 			if v15 is None: return None
 			return func(v1, v15, v2)
 		return func(v1, v2)
-			
+	
+	def isCType(self):
+		if self._leftexpr is None: return False # all prefixed stuff is not a type
+		if self._rightexpr is not None: return False # same thing, prefixed stuff is not a type
+		t = self._leftexpr
+		try:
+			if issubclass(t, _ctypes._SimpleCData): return True
+		except: pass # e.g. typeerror or so
+		if isinstance(t, (CType,CStruct,CUnion,CEnum)): return True
+		return False
+		
+	def getCType(self, stateStruct):
+		assert self._leftexpr is not None
+		assert self._rightexpr is None
+		t = getCType(self._leftexpr, stateStruct)
+		if self._op is not None:
+			if self._op.content in ("*","&"):
+				t = POINTER(t)
+			else:
+				raise Exception, "postfix op " + str(self._op) + " unknown for pointer type " + str(self._leftexpr)
+		return t
+
 # only real difference is that this is inside of '[]'
 class CArrayStatement(CStatement): pass
 	
