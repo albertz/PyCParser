@@ -6,6 +6,7 @@ from cparser import *
 from cwrapper import CStateWrapper
 
 import ast
+import sys
 
 class CWrapValue:
 	def __init__(self, value):
@@ -46,7 +47,7 @@ class FuncEnv:
 		self.vars = {} # name -> varDecl
 		self.varNames = {} # id(varDecl) -> name
 		self.scopeStack = [] # FuncCodeblockScope
-		self.astNode = ast.FunctionDef(arguments=[], body=[])
+		self.astNode = ast.FunctionDef(name=None, args=[], body=[], decorator_list=[])
 	def _registerNewVar(self, varName, varDecl):
 		assert varDecl is not None
 		assert id(varDecl) not in self.varNames
@@ -61,15 +62,17 @@ class FuncEnv:
 		if varName in self.outerScope.vars: return self.outerScope.vars[varName]
 		return None
 	def registerNewVar(self, varName, varDecl):
-		self.scopeStack[-1].registerNewVar(varName, varDecl)
+		return self.scopeStack[-1].registerNewVar(varName, varDecl)
 	def getAstNodeForVarDecl(self, varDecl):
 		assert varDecl is not None
 		if id(varDecl) in self.varNames:
 			# local var
 			name = self.varNames[id(varDecl)]
+			assert name is not None
 			return ast.Name(id=name)
 		# we expect this is a global
 		assert varDecl.name in self.outerScope.vars, str(varDecl) + " is expected to be a global var"
+		assert varDecl.name is not None
 		return ast.Name(id=varDecl.name)
 	def _unregisterVar(self, varName):
 		varDecl = self.vars[varName]
@@ -90,22 +93,25 @@ def getAstNodeForVarType(varDecl):
 def makeAstNodeCall(func, *args):
 	if not isinstance(func, ast.AST):
 		# TODO ...
-		pass
-	return ast.Call(func=func, args=args)
-
+		func = ast.Name(id="None")
+	return ast.Call(func=func, args=args, keywords=[], starargs=None, kwargs=None)
+	
 class FuncCodeblockScope:
 	def __init__(self, funcEnv):
 		self.varNames = set()
 		self.funcEnv = funcEnv
 	def registerNewVar(self, varName, varDecl):
 		varName = self.funcEnv._registerNewVar(varName, varDecl)
+		assert varName is not None
 		self.varNames.add(varName)
 		a = ast.Assign()
 		a.targets = [ast.Name(id=varName)]
 		varTypeNode = getAstNodeForVarType(varDecl)
 		a.value = makeAstNodeCall(varTypeNode)
 		self.funcEnv.astNode.body.append(a)
+		return varName
 	def _astForDeleteVar(self, varName):
+		assert varName is not None
 		return ast.Delete(targets=[ast.Name(id=varName)])
 	def finishMe(self):
 		astCmds = []
@@ -175,9 +181,10 @@ def astForStatement(funcEnv, stmnt):
 	elif isinstance(stmnt, CStatement):
 		return astForCStatement(funcEnv, stmnt)
 	elif isinstance(stmnt, CAttribAccessRef):
+		assert stmnt.name is not None
 		a = ast.Attribute()
 		a.value = astForStatement(funcEnv, stmnt.base)
-		a.attr = ast.Name(id=stmnt.name)
+		a.attr = stmnt.name
 		return a
 	elif isinstance(stmnt, CNumber):
 		return ast.Num(n=stmnt.content)
@@ -187,7 +194,8 @@ def astForStatement(funcEnv, stmnt):
 		return ast.Str(s=stmnt.content)
 	elif isinstance(stmnt, CFuncCall):
 		if isinstance(stmnt.base, CFunc):
-			a = ast.Call()
+			assert stmnt.base.name is not None
+			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = ast.Name(id=stmnt.base.name)
 			a.args = map(lambda arg: astForStatement(funcEnv, arg), stmnt.args)
 			return a
@@ -267,27 +275,29 @@ def astForCStatement(funcEnv, stmnt):
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
+PyAstNoOp = ast.Assert(test=ast.Name(id="True"), msg=None)
+
 def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CWhileStatement)
 	assert len(stmnt.args) == 1
 	# TODO ...
-	pass
+	return PyAstNoOp
 
 def astForCFor(funcEnv, stmnt):
 	# TODO
-	pass
+	return PyAstNoOp
 
 def astForCDoWhile(funcEnv, stmnt):
 	# TODO
-	pass
+	return PyAstNoOp
 
 def astForCIf(funcEnv, stmnt):
 	# TODO
-	pass
+	return PyAstNoOp
 
 def astForCReturn(funcEnv, stmnt):
 	# TODO
-	pass
+	return PyAstNoOp
 
 class Interpreter:
 	def __init__(self):
@@ -315,12 +325,16 @@ class Interpreter:
 		base.pushScope()
 		for arg in func.args:
 			name = base.registerNewVar(arg.name, arg)
-			base.astNode.arguments.append(ast.Name(id=name))
+			assert name is not None
+			base.astNode.args.append(ast.Name(id=name))
 		for c in func.body.contentlist:
 			if isinstance(c, CVarDecl):
 				base.registerNewVar(c.name, c)
 			elif isinstance(c, CStatement):
-				base.astNode.body.append(astForCStatement(base, c))
+				a = astForCStatement(base, c)
+				if isinstance(a, ast.expr):
+					a = ast.Expr(value=a)
+				base.astNode.body.append(a)
 			elif isinstance(c, CWhileStatement):
 				base.astNode.body.append(astForCWhile(base, c))
 			elif isinstance(c, CForStatement):
@@ -343,6 +357,11 @@ class Interpreter:
 			func = self.translateFuncToPy(funcname)
 			self._func_cache[funcname] = func
 			return func
+	
+	def dumpFunc(self, funcname, output=sys.stdout):
+		f = self.getFunc(funcname)
+		from py_demo_unparse import Unparser
+		Unparser(f.astNode, output)
 		
 	def runFunc(self, funcname, *args):
 		self.getFunc(funcname)(*args)
