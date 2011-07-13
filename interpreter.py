@@ -34,6 +34,11 @@ def iterIdWithPostfixes(name):
 	for postfix in iterIdentifierNames():
 		yield name + "_" + postfix
 
+PyReservedNames = set(dir(__builtins__))
+
+def isValidVarName(name):
+	return name not in PyReservedNames
+
 class FuncEnv:
 	def __init__(self, stateStruct):
 		self._stateStruct = stateStruct
@@ -46,6 +51,7 @@ class FuncEnv:
 		assert varDecl is not None
 		assert id(varDecl) not in self.varNames
 		for name in iterIdWithPostfixes(varName):
+			if not isValidVarName(name): continue
 			if self.searchVarName(name) is None:
 				self.vars[name] = varDecl
 				self.varNames[id(varDecl)] = name
@@ -185,6 +191,9 @@ def astForStatement(funcEnv, stmnt):
 		a.func = ast.Name(id=stmnt.base.name)
 		a.args = map(lambda arg: astForStatement(funcEnv, arg), stmnt.args)
 		return a
+	elif isinstance(stmnt, CWrapValue):
+		# TODO
+		return ast.Name(id="None")
 	else:
 		assert False, "cannot handle " + str(stmnt)
 
