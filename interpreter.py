@@ -35,7 +35,8 @@ def iterIdWithPostfixes(name):
 	for postfix in iterIdentifierNames():
 		yield name + "_" + postfix
 
-PyReservedNames = set(dir(__builtins__))
+import keyword
+PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist)
 
 def isValidVarName(name):
 	return name not in PyReservedNames
