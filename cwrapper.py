@@ -94,7 +94,7 @@ class CWrapper:
 			while attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
 				stateStruct.macros[attrib]._parseTokens(stateStruct)
 				resolvedMacro = stateStruct.macros[attrib].getSingleIdentifer(wrappedStateStruct)
-				if resolvedMacro is not None: attrib = resolvedMacro
+				if resolvedMacro is not None: attrib = str(resolvedMacro)
 				else: break
 			if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
 				t = stateStruct.macros[attrib].getCValue(wrappedStateStruct)
@@ -110,7 +110,7 @@ class CWrapper:
 			cache[_attrib] = t
 			return t
 			
-		raise AttributeError, attrib + " not found in " + str(self)
+		raise AttributeError, _attrib + " not found in " + str(self)
 	
 	def __repr__(self):
 		return "<" + self.__class__.__name__  + " of " + repr(self.stateStructs) + ">"
