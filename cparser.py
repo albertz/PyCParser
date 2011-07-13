@@ -1441,7 +1441,7 @@ class _CBaseWithOptBody:
 		if addToContent is None: addToContent = self.AutoAddToContent
 		
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
-		if addToContent and self.parent.body and hasattr(self.parent.body, "contentlist"):
+		if addToContent and self.parent is not None and self.parent.body and hasattr(self.parent.body, "contentlist"):
 			self.parent.body.contentlist.append(self)
 	
 	def copy(self):
