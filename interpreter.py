@@ -249,8 +249,20 @@ def astForCStatement(funcEnv, stmnt):
 
 def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CWhileStatement)
-	assert len(c.args) == 1
+	assert len(stmnt.args) == 1
 	# TODO ...
+	pass
+
+def astForCFor(funcEnv, stmnt):
+	# TODO
+	pass
+
+def astForCDoWhile(funcEnv, stmnt):
+	# TODO
+	pass
+
+def astForCIf(funcEnv, stmnt):
+	# TODO
 	pass
 
 class Interpreter:
@@ -287,6 +299,12 @@ class Interpreter:
 				base.astNode.body.append(astForCStatement(base, c))
 			elif isinstance(c, CWhileStatement):
 				base.astNode.body.append(astForCWhile(base, c))
+			elif isinstance(c, CForStatement):
+				base.astNode.body.append(astForCFor(base, c))
+			elif isinstance(c, CDoStatement):
+				base.astNode.body.append(astForCDoWhile(base, c))
+			elif isinstance(c, CIfStatement):
+				base.astNode.body.append(astForCIf(base, c))
 			else:
 				assert False, "cannot handle " + str(c)
 		base.popScope()
