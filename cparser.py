@@ -2436,6 +2436,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 				break
 			stateStruct.error("cpre3 parse statements in brackets: unexpected closing bracket '" + token.content + "' after " + str(curCObj) + " at bracket level " + str(brackets))
 		elif token == sepToken:
+			curCObj.finalize(stateStruct, addToContent=False)
 			addToList.append(curCObj)
 			curCObj = _CBaseWithOptBody(parent=parentCObj)
 		elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
@@ -2453,7 +2454,9 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 				stateStruct.error("cpre3 parse statements in brackets: " + str(token) + " not expected after " + str(curCObj))
 			
 	# add also the last object
-	addToList.append(curCObj)
+	if curCObj:
+		curCObj.finalize(stateStruct, addToContent=False)
+		addToList.append(curCObj)
 
 def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 	curCObj = None
