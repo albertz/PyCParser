@@ -239,10 +239,6 @@ def _astOpToFunc(op):
 
 OpBinFuncs = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
 
-memcpy = ctypes.pythonapi.memcpy
-memcpy.restype = ctypes.c_void_p
-memcpy.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t)
-
 class Helpers:
 	@staticmethod
 	def prefixInc(a):
@@ -270,7 +266,7 @@ class Helpers:
 	def copy(a):
 		if isinstance(a, _ctypes._SimpleCData):
 			c = a.__class__()
-			memcpy(pointer(c), pointer(a), sizeof(a))
+			pointer(c)[0] = a
 			return c
 			#if isinstance(a, _ctypes._Pointer):
 			#	ptr = ctypes.cast(a, ctypes.c_void_p)
