@@ -7,6 +7,7 @@ from cwrapper import CStateWrapper
 
 import ast
 import sys
+import inspect
 
 class CWrapValue:
 	def __init__(self, value):
@@ -36,7 +37,7 @@ def iterIdWithPostfixes(name):
 		yield name + "_" + postfix
 
 import keyword
-PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist + ["ctypes"])
+PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist + ["ctypes", "helpers"])
 
 def isValidVarName(name):
 	return name not in PyReservedNames
@@ -87,16 +88,25 @@ class FuncEnv:
 		scope = self.scopeStack.pop()
 		scope.finishMe()
 
-def getAstNodeForCTypesBasicType(t):
-	import inspect
-	if t is None: return None
-	if t is CVoidType: return None
-	if not inspect.isclass(t) and isinstance(t, CVoidType): return None
-	if issubclass(t, CVoidType): return None
+NoneAstNode = ast.Name(id="None")
+
+def getAstNodeAttrib(value, attrib):
 	a = ast.Attribute()
-	a.value = ast.Name(id="ctypes")
-	a.attr = t.__name__
+	if isinstance(value, (str,unicode)):
+		a.value = ast.Name(id=value)
+	elif isinstance(value, ast.AST):
+		a.value = value
+	else:
+		assert False, str(value) + " has invalid type"
+	a.attr = attrib
 	return a
+
+def getAstNodeForCTypesBasicType(t):
+	if t is None: return NoneAstNode
+	if t is CVoidType: return NoneAstNode
+	if not inspect.isclass(t) and isinstance(t, CVoidType): return NoneAstNode
+	if issubclass(t, CVoidType): return None
+	return getAstNodeAttrib("ctypes", t.__name__)
 
 def getAstNodeForVarType(t):
 	if isinstance(t, CBuiltinType):
@@ -116,9 +126,23 @@ def getAstNodeForVarType(t):
 def makeAstNodeCall(func, *args):
 	if not isinstance(func, ast.AST):
 		# TODO ...
-		func = ast.Name(id="None")
+		func = NoneAstNode
 	return ast.Call(func=func, args=args, keywords=[], starargs=None, kwargs=None)
-	
+
+def getAstNode_copyValue(objAst, objType):
+	typeAst = getAstNodeForVarType(objType)
+	return astForHelperFunc("copyWithTypeCheck", objAst, typeAst)
+
+def getAstNode_newTypeInstance(objType, arg=None):
+	typeAst = getAstNodeForVarType(objType)
+	return makeAstNodeCall(typeAst, *([arg] if arg is not None else []))
+
+# if True, we are always safe. however, not complete
+def _isAstSafeCopy(t):
+	for a in ast.walk(t):
+		if isinstance(a, ast.Name): return False
+	return True
+
 class FuncCodeblockScope:
 	def __init__(self, funcEnv):
 		self.varNames = set()
@@ -127,12 +151,23 @@ class FuncCodeblockScope:
 		varName = self.funcEnv._registerNewVar(varName, varDecl)
 		assert varName is not None
 		self.varNames.add(varName)
-		if isinstance(varDecl, CVarDecl): # it could also be a CFuncArgDecl or so. only assing if CVarDecl
-			a = ast.Assign()
-			a.targets = [ast.Name(id=varName)]
-			varTypeNode = getAstNodeForVarType(varDecl.type)
-			a.value = makeAstNodeCall(varTypeNode)
-			self.funcEnv.astNode.body.append(a)
+		a = ast.Assign()
+		a.targets = [ast.Name(id=varName)]
+		if isinstance(varDecl, CFuncArgDecl):
+			a.value = getAstNode_copyValue(ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
+		elif isinstance(varDecl, CVarDecl):
+			if varDecl.body is not None:
+				bodyAst = astForStatement(self.funcEnv, varDecl.body)
+				if _isAstSafeCopy(bodyAst):
+					# no need to copy anymore
+					a.value = makeAstNodeCall(getAstNodeAttrib("ctypes","cast"), bodyAst, getAstNode_newTypeInstance(varDecl.type))
+				else:
+					a.value = getAstNode_copyValue(bodyAst, varDecl.type)
+			else:	
+				a.value = getAstNode_newTypeInstance(varDecl.type)
+		else:
+			assert False, "didn't expected " + str(varDecl)
+		self.funcEnv.astNode.body.append(a)
 		return varName
 	def _astForDeleteVar(self, varName):
 		assert varName is not None
@@ -181,23 +216,88 @@ OpBinCmp = {
 
 OpAugAssign = dict(map(lambda (k,v): (k + "=", v), OpBin.iteritems()))
 
-def helper_prefixInc(a):
-	a.value += 1
+def _astOpToFunc(op):
+	if inspect.isclass(op): op = op()
+	assert isinstance(op, ast.operator)
+	l = ast.Lambda()
+	a = l.args = ast.arguments()
+	a.args = [
+		ast.Name(id="a", ctx=ast.Param()),
+		ast.Name(id="b", ctx=ast.Param())]
+	a.vararg = None
+	a.kwarg = None
+	a.defaults = []
+	t = l.body = ast.BinOp()
+	t.left = ast.Name(id="a", ctx=ast.Load())
+	t.right = ast.Name(id="b", ctx=ast.Load())
+	t.op = op
+	expr = ast.Expression(body=l)
+	ast.fix_missing_locations(expr)
+	code = compile(expr, "<_astOpToFunc>", "eval")
+	f = eval(code)
+	return f
+
+OpBinFuncs = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
+
+memcpy = ctypes.pythonapi.memcpy
+memcpy.restype = ctypes.c_void_p
+memcpy.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t)
+
+class Helpers:
+	@staticmethod
+	def prefixInc(a):
+		a.value += 1
+		return a
+	
+	@staticmethod
+	def prefixDec(a):
+		a.value -= 1
+		return a
+	
+	@staticmethod
+	def postfixInc(a):
+		b = a.__class__(a.value) # copy
+		a.value += 1
+		return b
+	
+	@staticmethod
+	def postfixDec(a):
+		b = a.__class__(a.value) # copy
+		a.value -= 1
+		return b
+	
+	@staticmethod
+	def copy(a):
+		if isinstance(a, _ctypes._SimpleCData):
+			c = a.__class__()
+			memcpy(pointer(c), pointer(a), sizeof(a))
+			return c
+			#if isinstance(a, _ctypes._Pointer):
+			#	ptr = ctypes.cast(a, ctypes.c_void_p)
+			#	return a.__class__(ptr.value)
+		assert False, "cannot copy " + str(a)
+	
+	@staticmethod
+	def copyWithTypeCheck(a, typ):
+		assert a.__class__ == typ
+		return copy(a)
+
+	@staticmethod
+	def assign(a, b):
+		a.value = b.value
+		return a
+	
+	@staticmethod
+	def augAssign(a, op, b):
+		a.value = OpBinFuncs[op](a.value, b.value)
+		return a
+
+def astForHelperFunc(helperFuncName, *astArgs):
+	helperFuncAst = getAstNodeAttrib("helpers", helperFuncName)
+	a = ast.Call(keywords=[], starargs=None, kwargs=None)
+	a.func = helperFuncAst
+	a.args = astArgs
 	return a
-
-def helper_prefixDec(a):
-	a.value -= 1
-	return a
-
-def helper_postfixInc(a):
-	b = a.__class__(a.value) # copy
-	a.value += 1
-	return b
-
-def helper_postfixDec(a):
-	b = a.__class__(a.value) # copy
-	a.value -= 1
-	return b
 
 def astForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
