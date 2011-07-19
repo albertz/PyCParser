@@ -49,11 +49,21 @@ class GlobalScope:
 		self.names = {} # id(decl) -> name
 		
 	def findIdentifier(self, name):
-		return self.identifiers.get(name, None)
+		o = self.identifiers.get(name, None)
+		if o is not None: return o
+		o = self.stateStruct.vars.get(name, None)
+		if o is None: return None
+		self.identifiers[name] = o
+		self.names[id(o)] = name
+		return o
 	
 	def findName(self, decl):
-		return self.names.get(id(decl), None)
-
+		name = self.names.get(id(decl), None)
+		if name is not None: return name
+		o = self.findIdentifier(decl.name)
+		if o is decl: return decl.name
+		return None
+	
 class FuncEnv:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope

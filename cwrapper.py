@@ -16,6 +16,10 @@ class CStateDictWrapper:
 		for d in self._dicts:
 			if k in d: return True
 		return False
+	def get(self, k, default = None):
+		for d in self._dicts:
+			if k in d: return d[k]
+		return default		
 	def has_key(self, k):
 		return self.__contains__(k)
 	def __repr__(self): return "CStateDictWrapper(" + repr(self._dicts) + ")"
