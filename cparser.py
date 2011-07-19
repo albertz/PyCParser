@@ -1451,6 +1451,12 @@ class _CBaseWithOptBody:
 	def getCType(self, stateStruct):
 		raise Exception, str(self) + " cannot be converted to a C type"
 	
+	def findAttrib(self, attrib):
+		for c in self.body.contentlist:
+			if not isinstance(c, CVarDecl): continue
+			if c.name == attrib: return c
+		return None
+	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
@@ -1556,6 +1562,15 @@ class CUnion(_CBaseWithOptBody):
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Union, self, stateStruct)
 
+def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64):
+	if b is None: b = a
+	bits = minBits
+	while bits <= maxBits:
+		if a >= 0 and b < (1<<bits): return "uint" + str(bits) + "_t"
+		elif a >= -(1<<(bits-1)) and b < (1<<(bits-1)): return "int" + str(bits) + "_t"
+		bits *= 2
+	return None
+
 class CEnum(_CBaseWithOptBody):
 	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="enums", **kwargs)
 	def getNumRange(self):
@@ -1572,11 +1587,10 @@ class CEnum(_CBaseWithOptBody):
 		return None
 	def getCType(self, stateStruct):
 		a,b = self.getNumRange()
-		if a >= 0 and b < (1<<32): t = ctypes.c_uint32
-		elif a >= -(1<<31) and b < (1<<31): t = ctypes.c_int32
-		elif a >= 0 and b < (1<<64): t = ctypes.c_uint64
-		elif a >= -(1<<63) and b < (1<<63): t = ctypes.c_int64
-		else: raise Exception, str(self) + " has a too high number range " + str((a,b))
+		t = minCIntTypeForNums(a, b)
+		if t is None:
+			raise Exception, str(self) + " has a too high number range " + str((a,b))
+		t = stateStruct.StdIntTypes[t]
 		class EnumType(t):
 			_typeStruct = self
 			def __repr__(self):
@@ -1996,17 +2010,23 @@ class CStatement(_CBaseWithOptBody):
 		except: pass # e.g. typeerror or so
 		if isinstance(t, (CType,CStruct,CUnion,CEnum)): return True
 		return False
-		
-	def getCType(self, stateStruct):
+	
+	def asType(self):
 		assert self._leftexpr is not None
 		assert self._rightexpr is None
-		t = getCType(self._leftexpr, stateStruct)
+		if isinstance(self._leftexpr, CStatement):
+			t = self._leftexpr.asType()
+		else:
+			t = self._leftexpr
 		if self._op is not None:
 			if self._op.content in ("*","&"):
-				t = POINTER(t)
+				t = CPointerType(t)
 			else:
 				raise Exception, "postfix op " + str(self._op) + " unknown for pointer type " + str(self._leftexpr)
 		return t
+		
+	def getCType(self, stateStruct):
+		return getCType(self.asType(), stateStruct)
 
 # only real difference is that this is inside of '[]'
 class CArrayStatement(CStatement): pass

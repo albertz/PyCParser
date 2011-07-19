@@ -42,10 +42,21 @@ PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist + ["ctype
 def isValidVarName(name):
 	return name not in PyReservedNames
 
-class FuncEnv:
+class GlobalScope:
 	def __init__(self, stateStruct):
-		self._stateStruct = stateStruct
-		self.outerScope = stateStruct
+		self.stateStruct = stateStruct
+		self.identifiers = {} # name -> CVarDecl | ...
+		self.names = {} # id(decl) -> name
+		
+	def findIdentifier(self, name):
+		return self.identifiers.get(name, None)
+	
+	def findName(self, decl):
+		return self.names.get(id(decl), None)
+
+class FuncEnv:
+	def __init__(self, globalScope):
+		self.globalScope = globalScope
 		self.vars = {} # name -> varDecl
 		self.varNames = {} # id(varDecl) -> name
 		self.scopeStack = [] # FuncCodeblockScope
@@ -61,8 +72,7 @@ class FuncEnv:
 				return name
 	def searchVarName(self, varName):
 		if varName in self.vars: return self.vars[varName]
-		if varName in self.outerScope.vars: return self.outerScope.vars[varName]
-		return None
+		return self.globalScope.findIdentifier(varName)
 	def registerNewVar(self, varName, varDecl):
 		return self.scopeStack[-1].registerNewVar(varName, varDecl)
 	def getAstNodeForVarDecl(self, varDecl):
@@ -73,9 +83,9 @@ class FuncEnv:
 			assert name is not None
 			return ast.Name(id=name)
 		# we expect this is a global
-		assert varDecl.name in self.outerScope.vars, str(varDecl) + " is expected to be a global var"
-		assert varDecl.name is not None
-		return ast.Name(id=varDecl.name)
+		name = self.globalScope.findName(varDecl)
+		assert name is not None, str(varDecl) + " is expected to be a global var"
+		return ast.Name(id=name)
 	def _unregisterVar(self, varName):
 		varDecl = self.vars[varName]
 		del self.varNames[id(varDecl)]
@@ -106,6 +116,7 @@ def getAstNodeForCTypesBasicType(t):
 	if t is CVoidType: return NoneAstNode
 	if not inspect.isclass(t) and isinstance(t, CVoidType): return NoneAstNode
 	if issubclass(t, CVoidType): return None
+	assert getattr(ctypes, t.__name__) is t
 	return getAstNodeAttrib("ctypes", t.__name__)
 
 def getAstNodeForVarType(t):
@@ -121,7 +132,9 @@ def getAstNodeForVarType(t):
 	elif isinstance(t, CTypedefType):
 		return ast.Name(id=t.name)
 	else:
-		assert False, "cannot handle " + str(t)
+		try: return getAstNodeForCTypesBasicType(t)
+		except: pass
+	assert False, "cannot handle " + str(t)
 
 def makeAstNodeCall(func, *args):
 	if not isinstance(func, ast.AST):
@@ -137,12 +150,6 @@ def getAstNode_newTypeInstance(objType, arg=None):
 	typeAst = getAstNodeForVarType(objType)
 	return makeAstNodeCall(typeAst, *([arg] if arg is not None else []))
 
-# if True, we are always safe. however, not complete
-def _isAstSafeCopy(t):
-	for a in ast.walk(t):
-		if isinstance(a, ast.Name): return False
-	return True
-
 class FuncCodeblockScope:
 	def __init__(self, funcEnv):
 		self.varNames = set()
@@ -157,12 +164,10 @@ class FuncCodeblockScope:
 			a.value = getAstNode_copyValue(ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
 		elif isinstance(varDecl, CVarDecl):
 			if varDecl.body is not None:
-				bodyAst = astForStatement(self.funcEnv, varDecl.body)
-				if _isAstSafeCopy(bodyAst):
-					# no need to copy anymore
-					a.value = makeAstNodeCall(getAstNodeAttrib("ctypes","cast"), bodyAst, getAstNode_newTypeInstance(varDecl.type))
-				else:
-					a.value = getAstNode_copyValue(bodyAst, varDecl.type)
+				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
+				a.value = getAstNode_newTypeInstance(t, bodyAst)
+				if t != varDecl.type:
+					a.value = getAstNode_newTypeInstance(varDecl.type, a.value)
 			else:	
 				a.value = getAstNode_newTypeInstance(varDecl.type)
 		else:
@@ -295,103 +300,111 @@ def astForHelperFunc(helperFuncName, *astArgs):
 	a.args = astArgs
 	return a
 
-def astForStatement(funcEnv, stmnt):
+def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
-		return funcEnv.getAstNodeForVarDecl(stmnt)
+		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
 	elif isinstance(stmnt, CStatement):
-		return astForCStatement(funcEnv, stmnt)
+		return astAndTypeForCStatement(funcEnv, stmnt)
 	elif isinstance(stmnt, CAttribAccessRef):
 		assert stmnt.name is not None
 		a = ast.Attribute()
-		a.value = astForStatement(funcEnv, stmnt.base)
+		a.value, t = astAndTypeForStatement(funcEnv, stmnt.base)
 		a.attr = stmnt.name
-		return a
+		while isinstance(t, CTypedefType):
+			t = funcEnv.globalScope.stateStruct.typedefs[t.name]
+		assert isinstance(t, (CStruct,CUnion))
+		attrDecl = t.findAttrib(a.attr)
+		assert attrDecl is not None
+		return a, attrDecl.type
 	elif isinstance(stmnt, CNumber):
-		return ast.Num(n=stmnt.content)
+		t = minCIntTypeForNums(stmnt.content)
+		if t is None: t = "int64_t" # it's an overflow; just take a big type
+		return ast.Num(n=stmnt.content), CStdIntType(t)
 	elif isinstance(stmnt, CStr):
-		return ast.Str(s=stmnt.content)
+		return ast.Str(s=stmnt.content), ctypes.c_char_p
 	elif isinstance(stmnt, CChar):
-		return ast.Str(s=stmnt.content)
+		return ast.Str(s=stmnt.content), ctypes.c_char
 	elif isinstance(stmnt, CFuncCall):
 		if isinstance(stmnt.base, CFunc):
 			assert stmnt.base.name is not None
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = ast.Name(id=stmnt.base.name)
-			a.args = map(lambda arg: astForStatement(funcEnv, arg), stmnt.args)
-			return a
+			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			return a, stmnt.type
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
-			# TODO cast ...
-			return ast.Name(id="None")
+			assert len(stmnt.args) == 1
+			v, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
+			return v, stmnt.base.asType()
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
 		# TODO
-		return ast.Name(id="None")
+		return ast.Name(id="None"), ctypes.c_int
 	else:
 		assert False, "cannot handle " + str(stmnt)
 
-def astForCStatement(funcEnv, stmnt):
+def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
 	if stmnt._leftexpr is None: # prefixed only
-		rightAstNode = astForStatement(funcEnv, stmnt._rightexpr)
+		rightAstNode,rightType = astAndTypeForStatement(funcEnv, stmnt._rightexpr)
 		if stmnt._op.content == "++":
-			return makeAstNodeCall(helper_prefixInc, rightAstNode)
+			return makeAstNodeCall(helper_prefixInc, rightAstNode), rightType
 		elif stmnt._op.content == "--":
-			return makeAstNodeCall(helper_prefixDec, rightAstNode)
+			return makeAstNodeCall(helper_prefixDec, rightAstNode), rightType
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
 			a.operand = rightAstNode
-			return a
+			return a, rightType
 		else:
 			assert False, "unary prefix op " + str(stmnt._op) + " is unknown"
 	if stmnt._op is None:
-		return astForStatement(funcEnv, stmnt._leftexpr)
+		return astAndTypeForStatement(funcEnv, stmnt._leftexpr)
 	if stmnt._rightexpr is None:
-		leftAstNode = astForStatement(funcEnv, stmnt._leftexpr)
+		leftAstNode, leftType = astAndTypeForStatement(funcEnv, stmnt._leftexpr)
 		if stmnt._op.content == "++":
-			return makeAstNodeCall(helper_postfixInc, leftAstNode)
+			return makeAstNodeCall(helper_postfixInc, leftAstNode), leftType
 		elif stmnt._op.content == "--":
-			return makeAstNodeCall(helper_postfixDec, leftAstNode)
+			return makeAstNodeCall(helper_postfixDec, leftAstNode), leftType
 		else:
 			assert False, "unary postfix op " + str(stmnt._op) + " is unknown"
-	leftAstNode = astForStatement(funcEnv, stmnt._leftexpr)
-	rightAstNode = astForStatement(funcEnv, stmnt._rightexpr)
+	leftAstNode, leftType = astAndTypeForStatement(funcEnv, stmnt._leftexpr)
+	rightAstNode, rightType = astAndTypeForStatement(funcEnv, stmnt._rightexpr)
 	if stmnt._op.content in OpBin:
 		a = ast.BinOp()
 		a.op = OpBin[stmnt._op.content]()
 		a.left = leftAstNode
 		a.right = rightAstNode
-		return a
+		return a, leftType # TODO: not really correct. e.g. int + float -> float
 	elif stmnt._op.content in OpBinBool:
 		a = ast.BoolOp()
 		a.op = OpBinBool[stmnt._op.content]()
 		a.values = [leftAstNode, rightAstNode]
-		return a
+		return a, ctypes.c_int
 	elif stmnt._op.content in OpBinCmp:
 		a = ast.Compare()
 		a.ops = [OpBinCmp[stmnt._op.content]()]
 		a.left = leftAstNode
 		a.comparators = [rightAstNode]
-		return a
+		return a, ctypes.c_int
 	elif stmnt._op.content == "=":
 		a = ast.Assign()
 		a.targets = [leftAstNode]
 		a.value = rightAstNode
-		return a
+		return a, leftType
 	elif stmnt._op.content in OpAugAssign:
 		a = ast.AugAssign()
 		a.op = OpAugAssign[stmnt._op.content]()
 		a.target = leftAstNode
 		a.value = rightAstNode
-		return a
+		return a, leftType
 	elif stmnt._op.content == "?:":
-		middleAstNode = astForStatement(funcEnv, stmnt._middleexpr)
+		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		a = ast.IfExp()
 		a.test = leftAstNode
 		a.body = middleAstNode
 		a.orelse = rightAstNode
-		return a
+		return a, middleType # TODO: not really correct...
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
@@ -423,6 +436,7 @@ class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
 		self._cStateWrapper = CStateWrapper(self)
+		self.globalScope = GlobalScope(self._cStateWrapper)
 		self._func_cache = {}
 		
 	def register(self, stateStruct):
@@ -440,7 +454,7 @@ class Interpreter:
 	
 	def translateFuncToPy(self, funcname):
 		func = self._cStateWrapper.funcs[funcname]
-		base = FuncEnv(stateStruct=self._cStateWrapper)
+		base = FuncEnv(globalScope=self.globalScope)
 		base.astNode.name = funcname
 		base.pushScope()
 		for arg in func.args:
@@ -451,7 +465,7 @@ class Interpreter:
 			if isinstance(c, CVarDecl):
 				base.registerNewVar(c.name, c)
 			elif isinstance(c, CStatement):
-				a = astForCStatement(base, c)
+				a, t = astAndTypeForCStatement(base, c)
 				if isinstance(a, ast.expr):
 					a = ast.Expr(value=a)
 				base.astNode.body.append(a)
