@@ -110,10 +110,10 @@ class FuncEnv:
 
 NoneAstNode = ast.Name(id="None")
 
-def getAstNodeAttrib(value, attrib):
+def getAstNodeAttrib(value, attrib, ctx=ast.Load()):
 	a = ast.Attribute()
 	if isinstance(value, (str,unicode)):
-		a.value = ast.Name(id=value)
+		a.value = ast.Name(id=value, ctx=ctx)
 	elif isinstance(value, ast.AST):
 		a.value = value
 	else:
@@ -146,19 +146,52 @@ def getAstNodeForVarType(t):
 		except: pass
 	assert False, "cannot handle " + str(t)
 
+def findHelperFunc(f):
+	for k in dir(Helpers):
+		v = getattr(Helpers, k)
+		if v is f: return k
+	return None
+
 def makeAstNodeCall(func, *args):
 	if not isinstance(func, ast.AST):
-		# TODO ...
-		func = NoneAstNode
+		name = findHelperFunc(func)
+		assert name is not None, str(func) + " unknown"
+		func = getAstNodeAttrib("helpers", name)
 	return ast.Call(func=func, args=args, keywords=[], starargs=None, kwargs=None)
 
-def getAstNode_copyValue(objAst, objType):
-	typeAst = getAstNodeForVarType(objType)
-	return astForHelperFunc("copyWithTypeCheck", objAst, typeAst)
+def isPointerType(t):
+	if isinstance(t, CPointerType): return True
+	return False
 
-def getAstNode_newTypeInstance(objType, arg=None):
+def getAstNode_valueFromObj(objAst, objType):
+	if isPointerType(objType):
+		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
+		astValue = getAstNodeAttrib(astVoidP, "value")
+		return astValue
+	else:
+		astValue = getAstNodeAttrib(objAst, "value")
+		return astValue		
+		
+def getAstNode_newTypeInstance(objType, argAst=None, argType=None):
+	args = []
+	if argAst is not None:
+		if isinstance(argAst, (ast.Str, ast.Num)):
+			args += [argAst]
+		else:
+			assert argType is not None
+			args += [getAstNode_valueFromObj(argAst, argType)]
+
 	typeAst = getAstNodeForVarType(objType)
-	return makeAstNodeCall(typeAst, *([arg] if arg is not None else []))
+
+	if isPointerType(objType) and argAst is not None:
+		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		astVoidP = makeAstNodeCall(astVoidPT, *args)
+		return makeAstNodeCall(astCast, astVoidP, typeAst)
+	else:
+		return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
 	def __init__(self, funcEnv):
@@ -171,13 +204,12 @@ class FuncCodeblockScope:
 		a = ast.Assign()
 		a.targets = [ast.Name(id=varName)]
 		if isinstance(varDecl, CFuncArgDecl):
-			a.value = getAstNode_copyValue(ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
+			# Note: We just assume that the parameter has the correct/same type.
+			a.value = getAstNode_newTypeInstance(varDecl.type, ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
 		elif isinstance(varDecl, CVarDecl):
 			if varDecl.body is not None:
 				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
-				a.value = getAstNode_newTypeInstance(t, bodyAst)
-				if t != varDecl.type:
-					a.value = getAstNode_newTypeInstance(varDecl.type, a.value)
+				a.value = getAstNode_newTypeInstance(varDecl.type, bodyAst, t)
 			else:	
 				a.value = getAstNode_newTypeInstance(varDecl.type)
 		else:
@@ -267,41 +299,72 @@ class Helpers:
 	
 	@staticmethod
 	def postfixInc(a):
-		b = a.__class__(a.value) # copy
+		b = Helpers.copy(a)
 		a.value += 1
 		return b
 	
 	@staticmethod
 	def postfixDec(a):
-		b = a.__class__(a.value) # copy
+		b = Helpers.copy(a)
 		a.value -= 1
 		return b
 	
+	@staticmethod
+	def prefixIncPtr(a):
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value += ctypes.sizeof(a._type_)
+		return a
+
+	@staticmethod
+	def prefixDecPtr(a):
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value -= ctypes.sizeof(a._type_)
+		return a
+	
+	@staticmethod
+	def postfixIncPtr(a):
+		b = Helpers.copy(a)
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value += ctypes.sizeof(a._type_)
+		return b
+
+	@staticmethod
+	def postfixDecPtr(a):
+		b = Helpers.copy(a)
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value -= ctypes.sizeof(a._type_)
+		return b
+
 	@staticmethod
 	def copy(a):
 		if isinstance(a, _ctypes._SimpleCData):
 			c = a.__class__()
 			pointer(c)[0] = a
 			return c
-			#if isinstance(a, _ctypes._Pointer):
-			#	ptr = ctypes.cast(a, ctypes.c_void_p)
-			#	return a.__class__(ptr.value)
 		assert False, "cannot copy " + str(a)
 	
 	@staticmethod
-	def copyWithTypeCheck(a, typ):
-		assert a.__class__ == typ
-		return copy(a)
-
-	@staticmethod
-	def assign(a, b):
-		a.value = b.value
+	def assign(a, bValue):
+		a.value = bValue
 		return a
 	
 	@staticmethod
-	def augAssign(a, op, b):
-		a.value = OpBinFuncs[op](a.value, b.value)
+	def assignPtr(a, bValue):
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value = bValue
 		return a
+
+	@staticmethod
+	def augAssign(a, op, bValue):
+		a.value = OpBinFuncs[op](a.value, bValue)
+		return a
+
+	@staticmethod
+	def augAssignPtr(a, op, bValue):
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr.contents.value = OpBinFuncs[op](aPtr.contents.value, bValue)
+		return a
+
 
 def astForHelperFunc(helperFuncName, *astArgs):
 	helperFuncAst = getAstNodeAttrib("helpers", helperFuncName)
@@ -329,11 +392,12 @@ def astAndTypeForStatement(funcEnv, stmnt):
 	elif isinstance(stmnt, CNumber):
 		t = minCIntTypeForNums(stmnt.content)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
-		return ast.Num(n=stmnt.content), CStdIntType(t)
+		t = CStdIntType(t)
+		return getAstNode_newTypeInstance(t, ast.Num(n=stmnt.content)), t
 	elif isinstance(stmnt, CStr):
-		return ast.Str(s=stmnt.content), ctypes.c_char_p
+		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=stmnt.content)), ctypes.c_char_p
 	elif isinstance(stmnt, CChar):
-		return ast.Str(s=stmnt.content), ctypes.c_char
+		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char"), ast.Str(s=stmnt.content)), ctypes.c_char
 	elif isinstance(stmnt, CFuncCall):
 		if isinstance(stmnt.base, CFunc):
 			assert stmnt.base.name is not None
@@ -349,18 +413,51 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
 		# TODO
-		return ast.Name(id="None"), ctypes.c_int
+		return ast.Num(0), ctypes.c_int
 	else:
 		assert False, "cannot handle " + str(stmnt)
 
+def getAstNode_assign(aAst, aType, bAst, bType):
+	bValueAst = getAstNode_valueFromObj(bAst, bType)
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
+	return makeAstNodeCall(Helpers.assign, aAst, bValueAst)
+
+def getAstNode_augAssign(aAst, aType, op, bAst, bType):
+	opAst = ast.Str(op)
+	bValueAst = getAstNode_valueFromObj(bAst, bType)
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.augAssignPtr, aAst, opAst, bValueAst)
+	return makeAstNodeCall(Helpers.augAssign, aAst, opAst, bValueAst)
+
+def getAstNode_prefixInc(aAst, aType):
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.prefixIncPtr, aAst)
+	return makeAstNodeCall(Helpers.prefixInc, aAst)
+
+def getAstNode_prefixDec(aAst, aType):
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.prefixDecPtr, aAst)
+	return makeAstNodeCall(Helpers.prefixDec, aAst)
+
+def getAstNode_postfixInc(aAst, aType):
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.postfixIncPtr, aAst)
+	return makeAstNodeCall(Helpers.postfixInc, aAst)
+
+def getAstNode_postfixDec(aAst, aType):
+	if isPointerType(aType):
+		return makeAstNodeCall(Helpers.postfixDecPtr, aAst)
+	return makeAstNodeCall(Helpers.postfixDec, aAst)
+	
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
 	if stmnt._leftexpr is None: # prefixed only
 		rightAstNode,rightType = astAndTypeForStatement(funcEnv, stmnt._rightexpr)
 		if stmnt._op.content == "++":
-			return makeAstNodeCall(helper_prefixInc, rightAstNode), rightType
+			return getAstNode_prefixInc(rightAstNode, rightType), rightType
 		elif stmnt._op.content == "--":
-			return makeAstNodeCall(helper_prefixDec, rightAstNode), rightType
+			return getAstNode_prefixDec(rightAstNode, rightType), rightType
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
@@ -373,9 +470,9 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 	if stmnt._rightexpr is None:
 		leftAstNode, leftType = astAndTypeForStatement(funcEnv, stmnt._leftexpr)
 		if stmnt._op.content == "++":
-			return makeAstNodeCall(helper_postfixInc, leftAstNode), leftType
+			return getAstNode_postfixInc(leftAstNode, leftType), leftType
 		elif stmnt._op.content == "--":
-			return makeAstNodeCall(helper_postfixDec, leftAstNode), leftType
+			return getAstNode_postfixDec(leftAstNode, leftType), leftType
 		else:
 			assert False, "unary postfix op " + str(stmnt._op) + " is unknown"
 	leftAstNode, leftType = astAndTypeForStatement(funcEnv, stmnt._leftexpr)
@@ -398,16 +495,9 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.comparators = [rightAstNode]
 		return a, ctypes.c_int
 	elif stmnt._op.content == "=":
-		a = ast.Assign()
-		a.targets = [leftAstNode]
-		a.value = rightAstNode
-		return a, leftType
+		return getAstNode_assign(leftAstNode, leftType, rightAstNode, rightType), leftType
 	elif stmnt._op.content in OpAugAssign:
-		a = ast.AugAssign()
-		a.op = OpAugAssign[stmnt._op.content]()
-		a.target = leftAstNode
-		a.value = rightAstNode
-		return a, leftType
+		return getAstNode_augAssign(leftAstNode, leftType, stmnt._op.content, rightAstNode, rightType), leftType
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		a = ast.IfExp()
