@@ -137,6 +137,8 @@ class GlobalsDictWrapper:
 		if decl is None: raise KeyError
 		if isinstance(decl, CVarDecl):
 			v = self.globalScope.getVar(name)
+		elif isinstance(decl, CWrapValue):
+			v = decl.value
 		elif isinstance(decl, CFunc):
 			v = self.globalScope.interpreter.getFunc(name)
 		elif isinstance(decl, (CTypedef,CStruct,CUnion,CEnum)):
