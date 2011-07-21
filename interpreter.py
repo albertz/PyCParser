@@ -619,19 +619,6 @@ def astForCReturn(funcEnv, stmnt):
 	# TODO
 	return PyAstNoOp
 
-def deepCopyAst(node):
-	if isinstance(node, (tuple,list)):
-		return map(deepCopyAst, node)
-	elif not isinstance(node, ast.AST):
-		return node
-	copied = node.__class__()
-	for a in node._fields + node._attributes + ("name",):
-		if hasattr(node, a):
-			v = getattr(node, a)
-			v = deepCopyAst(v)
-			setattr(copied, a, v)
-	return copied
-
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -692,9 +679,6 @@ class Interpreter:
 		pyAst = funcEnv.astNode
 		exprAst = ast.Module(body=[pyAst])
 		ast.fix_missing_locations(exprAst)
-		#exprAst = deepCopyAst(exprAst)
-		#from py_demo_unparse import Unparser
-		#Unparser(exprAst, sys.stdout)
 		compiled = compile(exprAst, "<PyCParser>", "exec")
 		eval(compiled, {}, self.globalsDict)
 		func = self.globalsDict._cache[funcname]
