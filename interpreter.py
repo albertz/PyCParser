@@ -125,10 +125,13 @@ class GlobalsDictWrapper:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope
 		self._cache = {}
-		
+	
+	def __setitem__(self, name, value):
+		self._cache[name] = value
+	
 	def __getitem__(self, name):
 		if name in self._cache: return self._cache[name]
-		print "dict wrapper:", name
+		print "dict wrapper getitem:", name
 		decl = self.globalScope.findIdentifier(name)
 		if decl is None: raise KeyError
 		if isinstance(decl, CVarDecl):
@@ -142,6 +145,10 @@ class GlobalsDictWrapper:
 		self._cache[name] = v
 		return v
 	
+	def __getattr__(self, k):
+		print "dict wrapper:", k
+		raise AttributeError
+
 class FuncEnv:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope
@@ -149,7 +156,7 @@ class FuncEnv:
 		self.varNames = {} # id(varDecl) -> name
 		self.scopeStack = [] # FuncCodeblockScope
 		self.astNode = ast.FunctionDef(
-			name=None, args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
+			args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
 			body=[], decorator_list=[])
 	def _registerNewVar(self, varName, varDecl):
 		assert varDecl is not None
@@ -612,6 +619,19 @@ def astForCReturn(funcEnv, stmnt):
 	# TODO
 	return PyAstNoOp
 
+def deepCopyAst(node):
+	if isinstance(node, (tuple,list)):
+		return map(deepCopyAst, node)
+	elif not isinstance(node, ast.AST):
+		return node
+	copied = node.__class__()
+	for a in node._fields + node._attributes + ("name",):
+		if hasattr(node, a):
+			v = getattr(node, a)
+			v = deepCopyAst(v)
+			setattr(copied, a, v)
+	return copied
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -636,6 +656,7 @@ class Interpreter:
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)
 		base = FuncEnv(globalScope=self.globalScope)
+		assert func.name is not None
 		base.astNode.name = func.name
 		base.pushScope()
 		for arg in func.args:
@@ -671,8 +692,12 @@ class Interpreter:
 		pyAst = funcEnv.astNode
 		exprAst = ast.Module(body=[pyAst])
 		ast.fix_missing_locations(exprAst)
+		#exprAst = deepCopyAst(exprAst)
+		#from py_demo_unparse import Unparser
+		#Unparser(exprAst, sys.stdout)
 		compiled = compile(exprAst, "<PyCParser>", "exec")
-		func = eval(compiled, {}, self.globalsDict)
+		eval(compiled, {}, self.globalsDict)
+		func = self.globalsDict._cache[funcname]
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
 		return func
