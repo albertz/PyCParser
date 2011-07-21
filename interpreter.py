@@ -130,6 +130,7 @@ class GlobalsDictWrapper:
 		self._cache[name] = value
 	
 	def __getitem__(self, name):
+		# TODO handle '__builtins__' ?
 		if name in self._cache: return self._cache[name]
 		print "dict wrapper getitem:", name
 		decl = self.globalScope.findIdentifier(name)
@@ -145,6 +146,9 @@ class GlobalsDictWrapper:
 		self._cache[name] = v
 		return v
 	
+	def __repr__(self):
+		return "<" + self.__class__.__name__ + " " + repr(self._cache) + ">"
+
 	def __getattr__(self, k):
 		print "dict wrapper:", k
 		raise AttributeError
@@ -625,10 +629,13 @@ class Interpreter:
 		self._cStateWrapper = CStateWrapper(self)
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
-		self.globalsDict = GlobalsDictWrapper(self)
+		self.globalsDict = GlobalsDictWrapper(self.globalScope)
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
+	
+	def registerFinalize(self):
+		self.globalScope.registerExterns()
 	
 	def getCType(self, obj):
 		wrappedStateStruct = self._cStateWrapper
@@ -677,10 +684,10 @@ class Interpreter:
 		cfunc = self._cStateWrapper.funcs[funcname]
 		funcEnv = self._translateFuncToPyAst(cfunc)
 		pyAst = funcEnv.astNode
-		exprAst = ast.Module(body=[pyAst])
+		exprAst = ast.Interactive(body=[pyAst])
 		ast.fix_missing_locations(exprAst)
-		compiled = compile(exprAst, "<PyCParser>", "exec")
-		eval(compiled, {}, self.globalsDict)
+		compiled = compile(exprAst, "<PyCParser>", "single")
+		eval(compiled, self.globalsDict, self.globalsDict)
 		func = self.globalsDict._cache[funcname]
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
