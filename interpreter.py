@@ -127,8 +127,6 @@ class GlobalsWrapper:
 		self.__dict__[name] = value
 	
 	def __getattr__(self, name):
-		# TODO handle '__builtins__' ?
-		print "dict wrapper getitem:", name
 		decl = self.globalScope.findIdentifier(name)
 		if decl is None: raise KeyError
 		if isinstance(decl, CVarDecl):
