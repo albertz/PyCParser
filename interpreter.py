@@ -426,7 +426,7 @@ class Helpers:
 	
 	@staticmethod
 	def assignPtr(a, bValue):
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = bValue
 		return a
 
@@ -437,7 +437,7 @@ class Helpers:
 
 	@staticmethod
 	def augAssignPtr(a, op, bValue):
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = OpBinFuncs[op](aPtr.contents.value, bValue)
 		return a
 
@@ -646,6 +646,13 @@ class Interpreter:
 			name = base.registerNewVar(arg.name, arg)
 			assert name is not None
 			base.astNode.args.args.append(ast.Name(id=name, ctx=ast.Param()))
+		if func.body is None:
+			# TODO: search in other C files
+			# Hack for now: ignore :)
+			print "XXX:", func.name, "is not loaded yet"
+			base.astNode.body.append(ast.Pass())
+			base.popScope()
+			return base
 		for c in func.body.contentlist:
 			if isinstance(c, CVarDecl):
 				base.registerNewVar(c.name, c)
@@ -666,6 +673,8 @@ class Interpreter:
 				base.astNode.body.append(astForCReturn(base, c))
 			else:
 				assert False, "cannot handle " + str(c)
+		if not base.astNode.body:
+			base.astNode.body.append(ast.Pass())
 		base.popScope()
 		return base
 
