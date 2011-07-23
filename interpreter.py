@@ -509,9 +509,20 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
 			return a, stmnt.type
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
+			# C static cast
 			assert len(stmnt.args) == 1
-			v, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
-			return v, stmnt.base.asType()
+			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
+			bValueAst = getAstNode_valueFromObj(bAst, bType)
+			aType = stmnt.base.asType()
+			aTypeAst = getAstNodeForVarType(aType)
+
+			if isPointerType(aType):
+				astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+				astCast = getAstNodeAttrib("ctypes", "cast")
+				astVoidP = makeAstNodeCall(astVoidPT, bValueAst)
+				return makeAstNodeCall(astCast, astVoidP, aTypeAst), aType
+			else:
+				return makeAstNodeCall(aTypeAst, bValueAst), aType
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
