@@ -92,15 +92,6 @@ class GlobalScope:
 		self.varname_ctypes = self.registerExternVar("ctypes", ctypes)
 		self.varname_helpers = self.registerExternVar("helpers", Helpers)
 
-	def getAst(self, name, ctx = ast.Load()):
-		return ast.Name(id=name, ctx=ctx)
-
-	def getAst_ctypes(self, ctx = ast.Load()):
-		return self.getAst(self.varname_ctypes, ctx=ctx)
-
-	def getAst_helpers(self, ctx = ast.Load()):
-		return self.getAst(self.varname_helpers, ctx=ctx)
-
 	def getVar(self, name):
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
@@ -121,17 +112,15 @@ class CTypeWrapper:
 		# TODO: we are ignoring args here
 		return self._ctype_cache()
 
-class GlobalsDictWrapper:
+class GlobalsWrapper:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope
-		self._cache = {}
 	
-	def __setitem__(self, name, value):
-		self._cache[name] = value
+	def __setattr__(self, name, value):
+		self.__dict__[name] = value
 	
-	def __getitem__(self, name):
+	def __getattr__(self, name):
 		# TODO handle '__builtins__' ?
-		if name in self._cache: return self._cache[name]
 		print "dict wrapper getitem:", name
 		decl = self.globalScope.findIdentifier(name)
 		if decl is None: raise KeyError
@@ -145,15 +134,11 @@ class GlobalsDictWrapper:
 			v = CTypeWrapper(decl, self.globalScope)
 		else:
 			assert False, "didn't expected " + str(decl)
-		self._cache[name] = v
+		self.__dict__[name] = v
 		return v
 	
 	def __repr__(self):
 		return "<" + self.__class__.__name__ + " " + repr(self._cache) + ">"
-
-	def __getattr__(self, k):
-		print "dict wrapper:", k
-		raise AttributeError
 
 class FuncEnv:
 	def __init__(self, globalScope):
@@ -188,7 +173,7 @@ class FuncEnv:
 		# we expect this is a global
 		name = self.globalScope.findName(varDecl)
 		assert name is not None, str(varDecl) + " is expected to be a global var"
-		return ast.Name(id=name, ctx=ast.Load())
+		return getAstNodeAttrib("g", name)
 	def _unregisterVar(self, varName):
 		varDecl = self.vars[varName]
 		del self.varNames[id(varDecl)]
@@ -228,12 +213,10 @@ def getAstNodeForVarType(t):
 	elif isinstance(t, CStdIntType):
 		return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
 	elif isinstance(t, CPointerType):
-		a = ast.Attribute(ctx=ast.Load())
-		a.value = ast.Name(id="ctypes", ctx=ast.Load())
-		a.attr = "POINTER"
+		a = getAstNodeAttrib("ctypes", "POINTER")
 		return makeAstNodeCall(a, getAstNodeForVarType(t.pointerOf))
 	elif isinstance(t, CTypedefType):
-		return ast.Name(id=t.name, ctx=ast.Load())
+		return getAstNodeAttrib("g", t.name)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
 		except: pass
@@ -495,7 +478,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		if isinstance(stmnt.base, CFunc):
 			assert stmnt.base.name is not None
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
-			a.func = ast.Name(id=stmnt.base.name, ctx=ast.Load())
+			a.func = getAstNodeAttrib("g", stmnt.base.name)
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
 			return a, stmnt.type
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
@@ -625,13 +608,16 @@ def astForCReturn(funcEnv, stmnt):
 	# TODO
 	return PyAstNoOp
 
+
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
 		self._cStateWrapper = CStateWrapper(self)
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
-		self.globalsDict = GlobalsDictWrapper(self.globalScope)
+		self.globalsWrapper = GlobalsWrapper(self.globalScope)
+		self.globalsDict = {"ctypes": ctypes, "helpers": Helpers, "g": self.globalsWrapper}
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
@@ -681,16 +667,37 @@ class Interpreter:
 				assert False, "cannot handle " + str(c)
 		base.popScope()
 		return base
+
+	def _compile(self, pyAst):
+		# We unparse + parse again for now for better debugging (so we get some code in a backtrace).
+		def _unparse(pyAst):
+			from cStringIO import StringIO
+			output = StringIO()
+			from py_demo_unparse import Unparser
+			Unparser(pyAst, output)
+			return output.getvalue()
+		def _set_linecache(filename, source):
+			import linecache
+			linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
+		SRC_FILENAME = "<PyCParser_" + pyAst.name + ">"
+		def _unparseAndParse(pyAst):
+			src = _unparse(pyAst)
+			_set_linecache(SRC_FILENAME, src)
+			return compile(src, SRC_FILENAME, "single")
+		def _justCompile(pyAst):
+			exprAst = ast.Interactive(body=[pyAst])		
+			ast.fix_missing_locations(exprAst)
+			return compile(exprAst, SRC_FILENAME, "single")
+		return _unparseAndParse(pyAst)
 	
 	def _translateFuncToPy(self, funcname):
 		cfunc = self._cStateWrapper.funcs[funcname]
 		funcEnv = self._translateFuncToPyAst(cfunc)
 		pyAst = funcEnv.astNode
-		exprAst = ast.Interactive(body=[pyAst])
-		ast.fix_missing_locations(exprAst)
-		compiled = compile(exprAst, "<PyCParser>", "single")
-		eval(compiled, self.globalsDict, self.globalsDict)
-		func = self.globalsDict._cache[funcname]
+		compiled = self._compile(pyAst)
+		d = {}
+		exec compiled in self.globalsDict, d
+		func = d[funcname]
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
 		return func
