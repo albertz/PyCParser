@@ -264,9 +264,12 @@ def getAstNode_newTypeInstance(objType, argAst=None, argType=None):
 	if argAst is not None:
 		if isinstance(argAst, (ast.Str, ast.Num)):
 			args += [argAst]
-		else:
-			assert argType is not None
+		elif argType is not None:
 			args += [getAstNode_valueFromObj(argAst, argType)]
+		else:
+			# expect that it is the AST for the value.
+			# there is no really way to 'assert' this.
+			args += [argAst]
 
 	typeAst = getAstNodeForVarType(objType)
 
@@ -576,8 +579,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
-			a.operand = rightAstNode
-			return a, rightType
+			a.operand = getAstNode_valueFromObj(rightAstNode, rightType)
+			return getAstNode_newTypeInstance(rightType, a), rightType
 		else:
 			assert False, "unary prefix op " + str(stmnt._op) + " is unknown"
 	if stmnt._op is None:
@@ -595,20 +598,22 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 	if stmnt._op.content in OpBin:
 		a = ast.BinOp()
 		a.op = OpBin[stmnt._op.content]()
-		a.left = leftAstNode
-		a.right = rightAstNode
-		return a, leftType # TODO: not really correct. e.g. int + float -> float
+		a.left = getAstNode_valueFromObj(leftAstNode, leftType)
+		a.right = getAstNode_valueFromObj(rightAstNode, rightType)
+		return getAstNode_newTypeInstance(leftType, a), leftType # TODO: not really correct. e.g. int + float -> float
 	elif stmnt._op.content in OpBinBool:
 		a = ast.BoolOp()
 		a.op = OpBinBool[stmnt._op.content]()
-		a.values = [leftAstNode, rightAstNode]
-		return a, ctypes.c_int
+		a.values = [
+			getAstNode_valueFromObj(leftAstNode, leftType),
+			getAstNode_valueFromObj(rightAstNode, rightType)]
+		return getAstNode_newTypeInstance(ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content in OpBinCmp:
 		a = ast.Compare()
 		a.ops = [OpBinCmp[stmnt._op.content]()]
-		a.left = leftAstNode
-		a.comparators = [rightAstNode]
-		return a, ctypes.c_int
+		a.left = getAstNode_valueFromObj(leftAstNode, leftType)
+		a.comparators = [getAstNode_valueFromObj(rightAstNode, rightType)]
+		return getAstNode_newTypeInstance(ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content == "=":
 		return getAstNode_assign(leftAstNode, leftType, rightAstNode, rightType), leftType
 	elif stmnt._op.content in OpAugAssign:
@@ -616,10 +621,10 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		a = ast.IfExp()
-		a.test = leftAstNode
-		a.body = middleAstNode
-		a.orelse = rightAstNode
-		return a, middleType # TODO: not really correct...
+		a.test = getAstNode_valueFromObj(leftAstNode, leftType)
+		a.body = getAstNode_valueFromObj(middleAstNode, middleType)
+		a.orelse = getAstNode_valueFromObj(rightAstNode, rightType)
+		return getAstNode_newTypeInstance(middleType, a), middleType # TODO: not really correct...
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
