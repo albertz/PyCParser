@@ -97,7 +97,7 @@ class GlobalScope:
 		decl = self.findIdentifier(name)
 		assert isinstance(decl, CVarDecl)
 		# TODO: We ignore any special initialization here. This is probably not what we want.
-		initValue = decl.getCType(self.stateStruct)()
+		initValue = decl.type.getCType(self.stateStruct)()
 		self.vars[name] = initValue
 		return initValue
 
