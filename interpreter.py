@@ -138,7 +138,7 @@ class GlobalsWrapper:
 		return v
 	
 	def __repr__(self):
-		return "<" + self.__class__.__name__ + " " + repr(self._cache) + ">"
+		return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
 
 class FuncEnv:
 	def __init__(self, globalScope):
