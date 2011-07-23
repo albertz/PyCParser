@@ -175,7 +175,7 @@ def fallback_findfile(filename):
 def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 	output("EXCEPTION")
 	output('Traceback (most recent call last):')
-	topFrameLocals,topFrameGlobals = None,None
+	allLocals,allGlobals = {},{}
 	try:
 		import linecache
 		limit = None
@@ -196,7 +196,8 @@ def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 				return prefix + "!" + e.__class__.__name__ + ": " + str(e)
 		while _tb is not None and (limit is None or n < limit):
 			f = _tb.tb_frame
-			topFrameLocals,topFrameGlobals = f.f_locals,f.f_globals
+			allLocals.update(f.f_locals)
+			allGlobals.update(f.f_globals)
 			lineno = _tb.tb_lineno
 			co = f.f_code
 			filename = co.co_filename
@@ -261,7 +262,7 @@ def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 		except: pass
 	if debugshell:
 		output("---------- DEBUG SHELL -----------")
-		debug_shell(user_ns=topFrameLocals, user_global_ns=topFrameGlobals)
+		debug_shell(user_ns=allLocals, user_global_ns=allGlobals)
 		
 def install():
 	sys.excepthook = better_exchook
