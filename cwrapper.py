@@ -27,7 +27,7 @@ class CStateDictWrapper:
 	
 class CStateWrapper:
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
-	LocalAttribs = ("_cwrapper")
+	LocalAttribs = ("_cwrapper","IndirectSimpleCTypes")
 	def __init__(self, cwrapper):
 		self._cwrapper = cwrapper
 	def __getattr__(self, k):

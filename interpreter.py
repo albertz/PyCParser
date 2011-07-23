@@ -614,6 +614,7 @@ class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
 		self._cStateWrapper = CStateWrapper(self)
+		self._cStateWrapper.IndirectSimpleCTypes = True
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
