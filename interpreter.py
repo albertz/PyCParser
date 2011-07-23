@@ -678,20 +678,22 @@ class Interpreter:
 		base.popScope()
 		return base
 
+	@staticmethod
+	def _unparse(pyAst):
+		from cStringIO import StringIO
+		output = StringIO()
+		from py_demo_unparse import Unparser
+		Unparser(pyAst, output)
+		return output.getvalue()
+
 	def _compile(self, pyAst):
 		# We unparse + parse again for now for better debugging (so we get some code in a backtrace).
-		def _unparse(pyAst):
-			from cStringIO import StringIO
-			output = StringIO()
-			from py_demo_unparse import Unparser
-			Unparser(pyAst, output)
-			return output.getvalue()
 		def _set_linecache(filename, source):
 			import linecache
 			linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 		SRC_FILENAME = "<PyCParser_" + pyAst.name + ">"
 		def _unparseAndParse(pyAst):
-			src = _unparse(pyAst)
+			src = self._unparse(pyAst)
 			_set_linecache(SRC_FILENAME, src)
 			return compile(src, SRC_FILENAME, "single")
 		def _justCompile(pyAst):
@@ -712,6 +714,7 @@ class Interpreter:
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
 		func.C_argTypes = map(lambda a: a.type, cfunc.args)
+		func.C_unparse = lambda: self._unparse(pyAst)
 		return func
 
 	def getFunc(self, funcname):
