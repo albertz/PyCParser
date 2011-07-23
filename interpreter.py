@@ -696,10 +696,10 @@ class Interpreter:
 			# TODO: search in other C files
 			# Hack for now: ignore :)
 			print "XXX:", func.name, "is not loaded yet"
-			base.astNode.body.append(ast.Pass())
-			base.popScope()
-			return base
-		for c in func.body.contentlist:
+			funccontent = []
+		else:
+			funccontent = func.body.contentlist
+		for c in funccontent:
 			if isinstance(c, CVarDecl):
 				base.registerNewVar(c.name, c)
 			elif isinstance(c, CStatement):
@@ -719,9 +719,13 @@ class Interpreter:
 				base.astNode.body.append(astForCReturn(base, c))
 			else:
 				assert False, "cannot handle " + str(c)
-		if not base.astNode.body:
-			base.astNode.body.append(ast.Pass())
 		base.popScope()
+		if isSameType(self._cStateWrapper, func.type, CVoidType()):
+			returnValueAst = NoneAstNode
+		else:
+			returnTypeAst = getAstNodeForVarType(func.type)
+			returnValueAst = makeAstNodeCall(returnTypeAst)
+		base.astNode.body.append(ast.Return(value=returnValueAst))
 		return base
 
 	@staticmethod

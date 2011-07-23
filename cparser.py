@@ -337,6 +337,11 @@ def getCType(t, stateStruct):
 		return t.getCType(stateStruct)
 	raise Exception, str(t) + " cannot be converted to a C type"
 
+def isSameType(stateStruct, type1, type2):
+	ctype1 = getCType(type1, stateStruct)
+	ctype2 = getCType(type2, stateStruct)
+	return ctype1 == ctype2	
+
 def getSizeOf(t, stateStruct):
 	t = getCType(t, stateStruct)
 	return ctypes.sizeof(t)
