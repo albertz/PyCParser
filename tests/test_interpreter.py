@@ -47,7 +47,7 @@ if __name__ == '__main__':
 			print c
 	
 	print
-	print "PyAST of Py_Main:"
+	print "PyAST of main:"
 	interpreter.dumpFunc("main")
 	
 	print
