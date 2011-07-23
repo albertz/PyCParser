@@ -5,6 +5,7 @@
 from cparser import *
 from cwrapper import CStateWrapper
 
+import _ctypes
 import ast
 import sys
 import inspect
@@ -19,7 +20,13 @@ class CWrapValue:
 		s += repr(self.value)
 		s += ">"
 		return s
-
+	def getCType(self):
+		if self.decl is not None: return self.decl.type
+		elif self.value is not None and hasattr(self.value, "__class__"):
+			return self.value.__class__
+			#if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
+		return self	
+			
 def iterIdentifierNames():
 	S = "abcdefghijklmnopqrstuvwxyz0123456789"
 	n = 0
@@ -237,6 +244,8 @@ def makeAstNodeCall(func, *args):
 
 def isPointerType(t):
 	if isinstance(t, CPointerType): return True
+	import inspect
+	if inspect.isclass(t) and issubclass(t, _ctypes._Pointer): return True
 	return False
 
 def getAstNode_valueFromObj(objAst, objType):
@@ -449,6 +458,24 @@ def astForHelperFunc(helperFuncName, *astArgs):
 	a.args = list(astArgs)
 	return a
 
+def getAstNodeArrayIndex(base, index, ctx=ast.Load()):
+	a = ast.Subscript(ctx=ctx)
+	if isinstance(base, (str,unicode)):
+		base = ast.Name(id=base, ctx=ctx)
+	elif isinstance(base, ast.AST):
+		pass # ok
+	else:
+		assert False, "base " + str(base) + " has invalid type"
+	if isinstance(index, ast.AST):
+		pass # ok
+	elif isinstance(index, (int,long)):
+		index = ast.Num(index)
+	else:
+		assert False, "index " + str(index) + " has invalid type"
+	a.value = base
+	a.slice = ast.Index(value=index)
+	return a
+	
 def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
@@ -488,8 +515,9 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
-		# TODO
-		return ast.Num(0), ctypes.c_int
+		funcEnv.globalScope.interpreter.wrappedValuesDict[id(stmnt)] = stmnt
+		v = getAstNodeArrayIndex("values", id(stmnt))
+		return getAstNodeAttrib(v, "value"), stmnt.getCType()
 	else:
 		assert False, "cannot handle " + str(stmnt)
 
@@ -618,7 +646,14 @@ class Interpreter:
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
-		self.globalsDict = {"ctypes": ctypes, "helpers": Helpers, "g": self.globalsWrapper, "intp": self}
+		self.wrappedValuesDict = {} # id(obj) -> obj
+		self.globalsDict = {
+			"ctypes": ctypes,
+			"helpers": Helpers,
+			"g": self.globalsWrapper,
+			"values": self.wrappedValuesDict,
+			"intp": self
+			}
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
