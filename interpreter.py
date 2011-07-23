@@ -653,9 +653,15 @@ PyAstNoOp = ast.Assert(test=ast.Name(id="True", ctx=ast.Load()), msg=None)
 
 def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CWhileStatement)
+	assert stmnt.body is not None
 	assert len(stmnt.args) == 1
-	# TODO ...
-	return PyAstNoOp
+	assert isinstance(stmnt.args[0], CStatement)
+	whileAst = ast.While(body=[], orelse=[])
+	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+	funcEnv.pushScope()
+	codeContentToBody(funcEnv,  stmnt.body.contentlist, whileAst.body)
+	funcEnv.popScope()
+	return whileAst
 
 def astForCFor(funcEnv, stmnt):
 	# TODO
@@ -673,7 +679,27 @@ def astForCReturn(funcEnv, stmnt):
 	# TODO
 	return PyAstNoOp
 
-
+def codeContentToBody(funcEnv, content, body):
+	for c in content:
+		if isinstance(c, CVarDecl):
+			funcEnv.registerNewVar(c.name, c)
+		elif isinstance(c, CStatement):
+			a, t = astAndTypeForCStatement(funcEnv, c)
+			if isinstance(a, ast.expr):
+				a = ast.Expr(value=a)
+			body.append(a)
+		elif isinstance(c, CWhileStatement):
+			body.append(astForCWhile(funcEnv, c))
+		elif isinstance(c, CForStatement):
+			body.append(astForCFor(funcEnv, c))
+		elif isinstance(c, CDoStatement):
+			body.append(astForCDoWhile(funcEnv, c))
+		elif isinstance(c, CIfStatement):
+			body.append(astForCIf(funcEnv, c))
+		elif isinstance(c, CReturnStatement):
+			body.append(astForCReturn(funcEnv, c))
+		else:
+			assert False, "cannot handle " + str(c)
 
 class Interpreter:
 	def __init__(self):
@@ -722,29 +748,8 @@ class Interpreter:
 			# TODO: search in other C files
 			# Hack for now: ignore :)
 			print "XXX:", func.name, "is not loaded yet"
-			funccontent = []
 		else:
-			funccontent = func.body.contentlist
-		for c in funccontent:
-			if isinstance(c, CVarDecl):
-				base.registerNewVar(c.name, c)
-			elif isinstance(c, CStatement):
-				a, t = astAndTypeForCStatement(base, c)
-				if isinstance(a, ast.expr):
-					a = ast.Expr(value=a)
-				base.astNode.body.append(a)
-			elif isinstance(c, CWhileStatement):
-				base.astNode.body.append(astForCWhile(base, c))
-			elif isinstance(c, CForStatement):
-				base.astNode.body.append(astForCFor(base, c))
-			elif isinstance(c, CDoStatement):
-				base.astNode.body.append(astForCDoWhile(base, c))
-			elif isinstance(c, CIfStatement):
-				base.astNode.body.append(astForCIf(base, c))
-			elif isinstance(c, CReturnStatement):
-				base.astNode.body.append(astForCReturn(base, c))
-			else:
-				assert False, "cannot handle " + str(c)
+			codeContentToBody(base, func.body.contentlist, base.astNode.body)
 		base.popScope()
 		if isSameType(self._cStateWrapper, func.type, CVoidType()):
 			returnValueAst = NoneAstNode
