@@ -617,7 +617,7 @@ class Interpreter:
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
-		self.globalsDict = {"ctypes": ctypes, "helpers": Helpers, "g": self.globalsWrapper}
+		self.globalsDict = {"ctypes": ctypes, "helpers": Helpers, "g": self.globalsWrapper, "intp": self}
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
@@ -698,8 +698,10 @@ class Interpreter:
 		d = {}
 		exec compiled in self.globalsDict, d
 		func = d[funcname]
+		func.C_cFunc = cfunc
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
+		func.C_argTypes = map(lambda a: a.type, cfunc.args)
 		return func
 
 	def getFunc(self, funcname):
@@ -714,6 +716,31 @@ class Interpreter:
 		f = self.getFunc(funcname)
 		from py_demo_unparse import Unparser
 		Unparser(f.C_pyAst, output)
-		
+	
+	def _castArgToCType(self, arg, typ):
+		if isinstance(typ, CPointerType):
+			ctyp = getCType(typ, self._cStateWrapper)
+			if arg is None:
+				return ctyp()
+			elif isinstance(arg, (str,unicode)):
+				return ctypes.cast(ctypes.c_char_p(arg), ctyp)
+			assert isinstance(arg, (list,tuple))
+			o = (ctyp._type_ * (len(arg) + 1))()
+			for i in xrange(len(arg)):
+				o[i] = self._castArgToCType(arg[i], typ.pointerOf)
+			op = ctypes.pointer(o)
+			op = ctypes.cast(op, ctyp)
+			# TODO: what when 'o' goes out of scope and freed?
+			return op
+		elif isinstance(arg, (int,long)):
+			t = minCIntTypeForNums(arg)
+			if t is None: t = "int64_t" # it's an overflow; just take a big type
+			return self._cStateWrapper.StdIntTypes[t](arg)			
+		else:
+			assert False, "cannot cast " + str(arg) + " to " + str(typ)
+	
 	def runFunc(self, funcname, *args):
-		return self.getFunc(funcname)(*args)
+		f = self.getFunc(funcname)
+		assert len(args) == len(f.C_argTypes)
+		args = map(lambda (arg,typ): self._castArgToCType(arg,typ), zip(args,f.C_argTypes))
+		return f(*args)
