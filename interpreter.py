@@ -449,6 +449,8 @@ class Helpers:
 
 	@staticmethod
 	def augAssignPtr(a, op, bValue):
+		assert op in ("+","-")
+		bValue *= ctypes.sizeof(a._type_)
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = OpBinFuncs[op](aPtr.contents.value, bValue)
 		return a
@@ -567,6 +569,21 @@ def getAstNode_postfixDec(aAst, aType):
 	if isPointerType(aType):
 		return makeAstNodeCall(Helpers.postfixDecPtr, aAst)
 	return makeAstNodeCall(Helpers.postfixDec, aAst)
+
+def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
+	assert isPointerType(aType)
+	assert opStr in OpBin
+	op = OpBin[opStr]()
+	assert isinstance(op, (ast.Add,ast.Sub))
+	s = ctypes.sizeof(getCType(aType, stateStruct)._type_)
+	a = ast.BinOp()
+	a.op = op
+	a.left = getAstNode_valueFromObj(aAst, aType)
+	a.right = r = ast.BinOp()
+	r.op = ast.Mult()
+	r.left = ast.Num(s)
+	r.right = getAstNode_valueFromObj(bAst, bType)
+	return getAstNode_newTypeInstance(aType, a)
 	
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
@@ -595,12 +612,10 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			assert False, "unary postfix op " + str(stmnt._op) + " is unknown"
 	leftAstNode, leftType = astAndTypeForStatement(funcEnv, stmnt._leftexpr)
 	rightAstNode, rightType = astAndTypeForStatement(funcEnv, stmnt._rightexpr)
-	if stmnt._op.content in OpBin:
-		a = ast.BinOp()
-		a.op = OpBin[stmnt._op.content]()
-		a.left = getAstNode_valueFromObj(leftAstNode, leftType)
-		a.right = getAstNode_valueFromObj(rightAstNode, rightType)
-		return getAstNode_newTypeInstance(leftType, a), leftType # TODO: not really correct. e.g. int + float -> float
+	if stmnt._op.content == "=":
+		return getAstNode_assign(leftAstNode, leftType, rightAstNode, rightType), leftType
+	elif stmnt._op.content in OpAugAssign:
+		return getAstNode_augAssign(leftAstNode, leftType, stmnt._op.content, rightAstNode, rightType), leftType
 	elif stmnt._op.content in OpBinBool:
 		a = ast.BoolOp()
 		a.op = OpBinBool[stmnt._op.content]()
@@ -614,10 +629,6 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.left = getAstNode_valueFromObj(leftAstNode, leftType)
 		a.comparators = [getAstNode_valueFromObj(rightAstNode, rightType)]
 		return getAstNode_newTypeInstance(ctypes.c_int, a), ctypes.c_int
-	elif stmnt._op.content == "=":
-		return getAstNode_assign(leftAstNode, leftType, rightAstNode, rightType), leftType
-	elif stmnt._op.content in OpAugAssign:
-		return getAstNode_augAssign(leftAstNode, leftType, stmnt._op.content, rightAstNode, rightType), leftType
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		a = ast.IfExp()
@@ -625,6 +636,18 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.body = getAstNode_valueFromObj(middleAstNode, middleType)
 		a.orelse = getAstNode_valueFromObj(rightAstNode, rightType)
 		return getAstNode_newTypeInstance(middleType, a), middleType # TODO: not really correct...
+	elif isPointerType(leftType):
+		return getAstNode_ptrBinOpExpr(
+			funcEnv.globalScope.stateStruct,
+			leftAstNode, leftType,
+			stmnt._op.content,
+			rightAstNode, rightType), leftType
+	elif stmnt._op.content in OpBin:
+		a = ast.BinOp()
+		a.op = OpBin[stmnt._op.content]()
+		a.left = getAstNode_valueFromObj(leftAstNode, leftType)
+		a.right = getAstNode_valueFromObj(rightAstNode, rightType)		
+		return getAstNode_newTypeInstance(leftType, a), leftType # TODO: not really correct. e.g. int + float -> float
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
