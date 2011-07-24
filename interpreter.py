@@ -584,6 +584,12 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a.func = getAstNodeAttrib("g", stmnt.base.name)
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
 			return a, stmnt.base.type
+		elif isinstance(stmnt.base, CSizeofSymbol):
+			assert len(stmnt.args) == 1
+			t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
+			assert t is not None
+			s = ctypes.sizeof(t)
+			return ast.Num(s), ctypes.c_size_t
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
 			# C static cast
 			assert len(stmnt.args) == 1
