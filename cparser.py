@@ -331,7 +331,13 @@ def getCType(t, stateStruct):
 	try:
 		if issubclass(t, _ctypes._SimpleCData): return t
 	except: pass # e.g. typeerror or so
-	if isinstance(t, _CBaseWithOptBody):
+	if isinstance(t, (CStruct,CUnion,CEnum)):
+		if t.body is None:
+			# it probably is the pre-declaration. but we might find the real-one
+			if isinstance(t, CStruct): D = "structs"
+			elif isinstance(t, CUnion): D = "unions"
+			elif isinstance(t, CEnum): D = "enums"
+			t = getattr(stateStruct, D).get(t.name, t)
 		return t.getCType(stateStruct)
 	if isinstance(t, CType):
 		return t.getCType(stateStruct)
@@ -340,7 +346,7 @@ def getCType(t, stateStruct):
 def isSameType(stateStruct, type1, type2):
 	ctype1 = getCType(type1, stateStruct)
 	ctype2 = getCType(type2, stateStruct)
-	return ctype1 == ctype2	
+	return ctype1 == ctype2
 
 def getSizeOf(t, stateStruct):
 	t = getCType(t, stateStruct)
