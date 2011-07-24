@@ -2354,6 +2354,28 @@ class CCodeBlock(_CBaseWithOptBody):
 	NameIsRelevant = False
 class CGotoLabel(_CBaseWithOptBody): pass
 
+def _getLastCBody(base):
+	last = None
+	while True:
+		if isinstance(base.body, CBody):
+			if not base.body.contentlist: break
+			last = base.body.contentlist[-1]
+		elif isinstance(base.body, _CControlStructure):
+			last = base.body
+		else:
+			break
+		if not isinstance(last, _CControlStructure): break
+		if isinstance(last, CIfStatement):
+			if last.elsePart is not None:
+				base = last.elsePart
+			else:
+				base = last
+		elif isinstance(last, (CForStatement,CWhileStatement)):
+			base = last
+		else:
+			break
+	return last
+
 class _CControlStructure(_CBaseWithOptBody):
 	NameIsRelevant = False
 	StrOutAttribList = [
@@ -2380,7 +2402,7 @@ class CWhileStatement(_CControlStructure):
 		assert self.parent is not None
 
 		if isinstance(self.parent.body, CBody) and self.parent.body.contentlist:
-			last = self.parent.body.contentlist[-1]
+			last = _getLastCBody(self.parent)
 			if isinstance(last, CDoStatement):
 				if self.body is not None:
 					stateStruct.error("'while' " + str(self) + " as part of 'do' " + str(last) + " has another body")
