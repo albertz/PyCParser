@@ -722,7 +722,7 @@ def astForCIf(funcEnv, stmnt):
 	assert len(stmnt.args) == 1
 	assert isinstance(stmnt.args[0], CStatement)
 
-	ifAst = ast.While(body=[], orelse=[])
+	ifAst = ast.If(body=[], orelse=[])
 	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
 	cCodeToPyAstList(funcEnv, stmnt.body, ifAst.body)
