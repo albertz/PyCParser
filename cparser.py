@@ -1539,6 +1539,11 @@ class CFunc(_CBaseWithOptBody):
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
 
+def wrapCTypeClass(t):
+	class WrappedType(t): pass
+	WrappedType.__name__ = t.__name__
+	return WrappedType
+
 def _getCTypeStruct(baseClass, obj, stateStruct):
 	if hasattr(obj, "_ctype"): return obj._ctype
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
@@ -1553,9 +1558,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 			t = t * n
 		elif t.__base__ is _ctypes._SimpleCData and stateStruct.IndirectSimpleCTypes:
 			# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
-			class WrappedType(t): pass
-			WrappedType.__name__ = t.__name__
-			t = WrappedType
+			t = wrapCTypeClass(t)
 		if hasattr(c, "bitsize"):
 			fields += [(c.name, t, c.bitsize)]
 		else:
