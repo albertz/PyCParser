@@ -38,8 +38,9 @@ class Wrapper:
 		wrapCFunc(state, "fileno")
 		wrapCFunc(state, "getc")
 		wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int,FileP))
-		state.structs["stat"] = CStruct(name="stat") # TODO
-		state.structs["stat"].body = CBody(state.structs["stat"])
+		struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
+		struct_stat.body = CBody(parent=struct_stat)
+		CVarDecl(parent=struct_stat, name="st_mode", type=ctypes.c_int).finalize(state)
 		state.funcs["fstat"] = CWrapValue(lambda *args: None) # TODO
 		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
 		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
