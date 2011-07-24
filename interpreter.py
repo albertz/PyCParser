@@ -229,7 +229,7 @@ def getAstNodeForCTypesBasicType(t):
 	if t is CVoidType: return NoneAstNode
 	if not inspect.isclass(t) and isinstance(t, CVoidType): return NoneAstNode
 	if issubclass(t, CVoidType): return None
-	assert getattr(ctypes, t.__name__) is t
+	assert issubclass(t, getattr(ctypes, t.__name__))
 	return getAstNodeAttrib("ctypes", t.__name__)
 
 def getAstNodeForVarType(t):
@@ -529,7 +529,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		t = CStdIntType(t)
 		return getAstNode_newTypeInstance(t, ast.Num(n=stmnt.content)), t
 	elif isinstance(stmnt, CStr):
-		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=stmnt.content)), ctypes.c_char_p
+		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=stmnt.content)), CPointerType(ctypes.c_char)
 	elif isinstance(stmnt, CChar):
 		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char"), ast.Str(s=stmnt.content)), ctypes.c_char
 	elif isinstance(stmnt, CFuncCall):
@@ -564,11 +564,19 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
 		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
-		assert isinstance(aType, CPointerType) # TODO: also have CArrayType :)
+		assert isinstance(aType, CPointerType)
 		assert len(stmnt.args) == 1
-		bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
-		bValueAst = getAstNode_valueFromObj(bAst, bType)
-		return getAstNodeArrayIndex(aAst, bValueAst), aType.pointerOf
+		# kind of a hack: create equivalent ptr arithmetic expression
+		ptrStmnt = CStatement()
+		ptrStmnt._leftexpr = stmnt.base
+		ptrStmnt._op = COp("+")
+		ptrStmnt._rightexpr = stmnt.args[0]
+		return astAndTypeForCStatement(funcEnv, ptrStmnt)
+		# TODO: support for real arrays.
+		# the following code may be useful
+		#bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
+		#bValueAst = getAstNode_valueFromObj(bAst, bType)
+		#return getAstNodeArrayIndex(aAst, bValueAst), aType.pointerOf
 	elif isinstance(stmnt, CWrapValue):
 		v = getAstForWrapValue(funcEnv, stmnt)
 		return getAstNodeAttrib(v, "value"), stmnt.getCType()
