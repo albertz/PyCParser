@@ -449,6 +449,8 @@ class Helpers:
 			c = a.__class__()
 			ctypes.pointer(c)[0] = a
 			return c
+		if isinstance(a, _ctypes._Pointer):
+			return ctypes.cast(a, a.__class__)
 		assert False, "cannot copy " + str(a)
 	
 	@staticmethod
