@@ -147,9 +147,9 @@ class GlobalsStructWrapper:
 		self.__dict__[name] = value
 	
 	def __getattr__(self, name):
-		decl = self.globalScope.stateStruct.get(name)
-		if decl is None: raise KeyError
-		v = CTypeWrapper(decl, self.globalScope)		
+		decl = self.globalScope.stateStruct.structs.get(name)
+		if decl is None: raise AttributeError
+		v = getCType(decl, self.globalScope.stateStruct)
 		self.__dict__[name] = v
 		return v
 	
