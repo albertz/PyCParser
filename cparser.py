@@ -1889,7 +1889,7 @@ class CStatement(_CBaseWithOptBody):
 					self._op = token
 					self._state = 6
 				else:
-					self._rightexpr = CStatement(parent=self, _leftexpr=self._rightexpr)
+					self._rightexpr = CStatement(parent=self, _leftexpr=self._rightexpr, _state=6)
 					self._rightexpr._op = token
 					self._state = 8
 			elif isinstance(self._rightexpr, CStr) and isinstance(token, CStr):
