@@ -542,6 +542,13 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			return a, stmnt.type
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
+	elif isinstance(stmnt, CArrayIndexRef):
+		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
+		assert isinstance(aType, CPointerType) # TODO: also have CArrayType :)
+		assert len(stmnt.args) == 1
+		bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
+		bValueAst = getAstNode_valueFromObj(bAst, bType)
+		return getAstNodeArrayIndex(aAst, bValueAst), aType.pointerOf
 	elif isinstance(stmnt, CWrapValue):
 		v = getAstForWrapValue(funcEnv, stmnt)
 		return getAstNodeAttrib(v, "value"), stmnt.getCType()
