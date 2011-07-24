@@ -51,5 +51,6 @@ if __name__ == '__main__':
 	interpreter.dumpFunc("main")
 	
 	print
+	print
 	interpreter.runFunc("main", len(sys.argv), sys.argv + [None])
 
