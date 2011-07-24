@@ -1565,6 +1565,8 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 	if hasattr(obj, "_ctype"): return obj._ctype
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
 	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
+	class ctype(baseClass): pass
+	obj._ctype = ctype
 	fields = []
 	for c in obj.body.contentlist:
 		if not isinstance(c, CVarDecl): continue
@@ -1579,10 +1581,8 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 		if hasattr(c, "bitsize"):
 			fields += [(c.name, t, c.bitsize)]
 		else:
-			fields += [(c.name, t)]
-	class ctype(baseClass):
-		_fields_ = fields
-	obj._ctype = ctype
+			fields += [(c.name, t)]	
+	ctype._fields_ = fields
 	return ctype
 	
 class CStruct(_CBaseWithOptBody):
