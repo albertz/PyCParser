@@ -478,7 +478,12 @@ def getAstNodeArrayIndex(base, index, ctx=ast.Load()):
 	a.value = base
 	a.slice = ast.Index(value=index)
 	return a
-	
+
+def getAstForWrapValue(funcEnv, wrapValue):
+	funcEnv.globalScope.interpreter.wrappedValuesDict[id(wrapValue)] = wrapValue
+	v = getAstNodeArrayIndex("values", id(wrapValue))
+	return v
+
 def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
@@ -526,11 +531,16 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				return makeAstNodeCall(astCast, astVoidP, aTypeAst), aType
 			else:
 				return makeAstNodeCall(aTypeAst, bValueAst), aType
+		elif isinstance(stmnt.base, CWrapValue):
+			# expect that we just wrapped a callable function/object
+			a = ast.Call(keywords=[], starargs=None, kwargs=None)
+			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv, stmnt.base), "value")
+			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			return a, stmnt.type
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CWrapValue):
-		funcEnv.globalScope.interpreter.wrappedValuesDict[id(stmnt)] = stmnt
-		v = getAstNodeArrayIndex("values", id(stmnt))
+		v = getAstForWrapValue(funcEnv, stmnt)
 		return getAstNodeAttrib(v, "value"), stmnt.getCType()
 	else:
 		assert False, "cannot handle " + str(stmnt)
