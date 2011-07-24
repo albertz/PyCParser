@@ -7,15 +7,20 @@ from interpreter import CWrapValue
 import ctypes
 import errno, os
 
+def _fixCType(t):
+	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_char)
+	return wrapCTypeClassIfNeeded(t)
+
 def wrapCFunc(state, funcname, restype=None, argtypes=None):
 	f = getattr(ctypes.pythonapi, funcname)
+	if restype is None: restype = ctypes.c_int
 	if restype is CVoidType:
 		f.restype = None
 	elif restype is not None:
-		f.restype = restype
+		f.restype = _fixCType(restype)
 	if argtypes is not None:
-		f.argtypes = argtypes
-	state.funcs[funcname] = CWrapValue(f, returnType=restype)
+		f.argtypes = map(_fixCType, argtypes)
+	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
 	
 class Wrapper:
 	def handle_limits_h(self, state):
@@ -48,7 +53,7 @@ class Wrapper:
 		wrapCFunc(state, "malloc")
 		wrapCFunc(state, "free")
 		state.funcs["getenv"] = CWrapValue(
-			lambda x: ctypes.c_char_p(os.getenv(x.value)),
+			lambda x: ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value)),
 			returnType=CPointerType(ctypes.c_char))
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
@@ -56,7 +61,7 @@ class Wrapper:
 		wrapCFunc(state, "strlen")
 		wrapCFunc(state, "strcpy")
 		wrapCFunc(state, "strcat")
-		wrapCFunc(state, "strcmp")
+		wrapCFunc(state, "strcmp", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
 		wrapCFunc(state, "strtok")
 		wrapCFunc(state, "strchr")
 		wrapCFunc(state, "strerror")
