@@ -148,6 +148,23 @@ class GlobalsWrapper:
 	def __repr__(self):
 		return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
 
+class GlobalsStructWrapper:
+	def __init__(self, globalScope):
+		self.globalScope = globalScope
+	
+	def __setattr__(self, name, value):
+		self.__dict__[name] = value
+	
+	def __getattr__(self, name):
+		decl = self.globalScope.stateStruct.get(name)
+		if decl is None: raise KeyError
+		v = CTypeWrapper(decl, self.globalScope)		
+		self.__dict__[name] = v
+		return v
+	
+	def __repr__(self):
+		return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
+	
 class FuncEnv:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope
@@ -225,6 +242,9 @@ def getAstNodeForVarType(t):
 		return makeAstNodeCall(a, getAstNodeForVarType(t.pointerOf))
 	elif isinstance(t, CTypedefType):
 		return getAstNodeAttrib("g", t.name)
+	elif isinstance(t, CStruct):
+		# TODO: this assumes the was previously declared globally.
+		return getAstNodeAttrib("structs", t.name)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
 		except: pass
@@ -501,7 +521,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			t = funcEnv.globalScope.stateStruct.typedefs[t.name]
 		assert isinstance(t, (CStruct,CUnion))
 		attrDecl = t.findAttrib(a.attr)
-		assert attrDecl is not None
+		assert attrDecl is not None, "attrib " + str(a.attr) + " not found"
 		return a, attrDecl.type
 	elif isinstance(stmnt, CNumber):
 		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
@@ -773,11 +793,13 @@ class Interpreter:
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
+		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
 		self.wrappedValuesDict = {} # id(obj) -> obj
 		self.globalsDict = {
 			"ctypes": ctypes,
 			"helpers": Helpers,
 			"g": self.globalsWrapper,
+			"structs": self.globalsStructWrapper,
 			"values": self.wrappedValuesDict,
 			"intp": self
 			}
