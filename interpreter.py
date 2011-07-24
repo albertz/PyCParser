@@ -447,7 +447,7 @@ class Helpers:
 	def copy(a):
 		if isinstance(a, _ctypes._SimpleCData):
 			c = a.__class__()
-			pointer(c)[0] = a
+			ctypes.pointer(c)[0] = a
 			return c
 		assert False, "cannot copy " + str(a)
 	
