@@ -514,6 +514,15 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		attrDecl = t.findAttrib(a.attr)
 		assert attrDecl is not None, "attrib " + str(a.attr) + " not found"
 		return a, attrDecl.type
+	elif isinstance(stmnt, CPtrAccessRef):
+		# build equivalent AttribAccess statement
+		derefStmnt = CStatement()
+		derefStmnt._op = COp("*")
+		derefStmnt._rightexpr = stmnt.base
+		attrStmnt = CAttribAccessRef()
+		attrStmnt.base = derefStmnt
+		attrStmnt.name = stmnt.name
+		return astAndTypeForStatement(funcEnv, attrStmnt)		
 	elif isinstance(stmnt, CNumber):
 		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
