@@ -685,6 +685,10 @@ def astForCIf(funcEnv, stmnt):
 	# TODO
 	return PyAstNoOp
 
+def astForCSwitch(funcEnv, stmnt):
+	# TODO
+	return PyAstNoOp
+
 def astForCReturn(funcEnv, stmnt):
 	assert isinstance(stmnt, CReturnStatement)
 	if not stmnt.body:
@@ -713,6 +717,8 @@ def codeContentToBody(funcEnv, content, body):
 			body.append(astForCDoWhile(funcEnv, c))
 		elif isinstance(c, CIfStatement):
 			body.append(astForCIf(funcEnv, c))
+		elif isinstance(c, CSwitchStatement):
+			body.append(astForCSwitch(funcEnv, c))
 		elif isinstance(c, CReturnStatement):
 			body.append(astForCReturn(funcEnv, c))
 		else:
