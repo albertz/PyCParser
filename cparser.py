@@ -1781,6 +1781,8 @@ def getConstValue(stateStruct, obj):
 	stateStruct.error("don't know how to get const value from " + str(obj))
 	return None
 
+class CSizeofSymbol: pass
+
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
 	_leftexpr = None
@@ -1830,6 +1832,8 @@ class CStatement(_CBaseWithOptBody):
 					elif token.content == "enum":
 						self._state = 3
 						return
+					elif token.content == "sizeof":
+						obj = CSizeofSymbol()
 					else:
 						obj = findObjInNamespace(stateStruct, self.parent, token.content)
 						if obj is None:
