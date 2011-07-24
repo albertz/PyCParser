@@ -1374,6 +1374,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 class _CBaseWithOptBody:
 	NameIsRelevant = True
 	AutoAddToContent = True
+	AlwaysNonZero = False
 	StrOutAttribList = [
 		("args", bool, None, str),
 		("arrayargs", bool, None, str),
@@ -1430,6 +1431,7 @@ class _CBaseWithOptBody:
 
 	def __nonzero__(self):
 		return \
+			self.AlwaysNonZero or \
 			bool(self._type_tokens) or \
 			bool(self.type) or \
 			bool(self.name) or \
@@ -2424,8 +2426,10 @@ class CWhileStatement(_CControlStructure):
 		_CControlStructure.finalize(self, stateStruct, addToContent)			
 class CContinueStatement(_CControlStructure):
 	Keyword = "continue"
+	AlwaysNonZero = True
 class CBreakStatement(_CControlStructure):
 	Keyword = "break"
+	AlwaysNonZero = True
 class CIfStatement(_CControlStructure):
 	Keyword = "if"
 	StrOutAttribList = [
@@ -2472,10 +2476,12 @@ class CCaseStatement(_CControlStructure):
 	Keyword = "case"
 class CCaseDefaultStatement(_CControlStructure):
 	Keyword = "default"
+	AlwaysNonZero = True
 class CGotoStatement(_CControlStructure):
 	Keyword = "goto"
 class CReturnStatement(_CControlStructure):
 	Keyword = "return"
+	AlwaysNonZero = True
 
 CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 	CForStatement,
