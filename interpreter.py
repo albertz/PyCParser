@@ -792,6 +792,7 @@ class Interpreter:
 		output = StringIO()
 		from py_demo_unparse import Unparser
 		Unparser(pyAst, output)
+		output.write("\n")
 		return output.getvalue()
 
 	def _compile(self, pyAst):
@@ -835,8 +836,7 @@ class Interpreter:
 	
 	def dumpFunc(self, funcname, output=sys.stdout):
 		f = self.getFunc(funcname)
-		from py_demo_unparse import Unparser
-		Unparser(f.C_pyAst, output)
+		print >>output, f.C_unparse()
 	
 	def _castArgToCType(self, arg, typ):
 		if isinstance(typ, CPointerType):
