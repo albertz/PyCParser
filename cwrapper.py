@@ -8,18 +8,24 @@ class CStateDictWrapper:
 	def __setitem__(self, k, v):
 		assert False, "read-only in C wrapped state"
 	def __getitem__(self, k):
+		found = []
 		for d in self._dicts:
-			try: return d[k]
+			try: found += [d[k]]
 			except KeyError: pass
+		for f in found:
+			# prefer items with body set.
+			if hasattr(f, "body") and f.body is not None: return f
+		if found:
+			# fallback, noone has body set.
+			return found[0]
 		raise KeyError, str(k) + " not found in C wrapped state " + str(self)
 	def __contains__(self, k):
 		for d in self._dicts:
 			if k in d: return True
 		return False
 	def get(self, k, default = None):
-		for d in self._dicts:
-			if k in d: return d[k]
-		return default		
+		try: return self.__getitem__(k)
+		except KeyError: return default
 	def has_key(self, k):
 		return self.__contains__(k)
 	def __repr__(self): return "CStateDictWrapper(" + repr(self._dicts) + ")"
