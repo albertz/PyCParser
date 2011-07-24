@@ -672,7 +672,7 @@ def astForCWhile(funcEnv, stmnt):
 	whileAst = ast.While(body=[], orelse=[])
 	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
-	codeContentToBody(funcEnv,  stmnt.body.contentlist, whileAst.body)
+	codeContentToBody(funcEnv, stmnt.body.contentlist, whileAst.body)
 	funcEnv.popScope()
 	return whileAst
 
@@ -685,8 +685,24 @@ def astForCDoWhile(funcEnv, stmnt):
 	return PyAstNoOp
 
 def astForCIf(funcEnv, stmnt):
-	# TODO
-	return PyAstNoOp
+	assert isinstance(stmnt, CIfStatement)
+	assert stmnt.body is not None
+	assert len(stmnt.args) == 1
+	assert isinstance(stmnt.args[0], CStatement)
+
+	ifAst = ast.While(body=[], orelse=[])
+	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+	funcEnv.pushScope()
+	codeContentToBody(funcEnv, stmnt.body.contentlist, ifAst.body)
+	funcEnv.popScope()
+	
+	if stmnt.elsePart is not None:
+		assert stmnt.elsePart.body is not None
+		funcEnv.pushScope()
+		codeContentToBody(funcEnv, stmnt.elsePart.body.contentlist, ifAst.orelse)
+		funcEnv.popScope()
+
+	return ifAst
 
 def astForCSwitch(funcEnv, stmnt):
 	# TODO
