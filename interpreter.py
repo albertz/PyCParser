@@ -531,7 +531,9 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		t = CStdIntType(t)
 		return getAstNode_newTypeInstance(t, ast.Num(n=stmnt.content)), t
 	elif isinstance(stmnt, CStr):
-		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=str(stmnt.content))), CPointerType(ctypes.c_char)
+		t = CPointerType(ctypes.c_char)
+		v = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=str(stmnt.content)))
+		return getAstNode_newTypeInstance(t, v, t), t
 	elif isinstance(stmnt, CChar):
 		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char"), ast.Str(s=str(stmnt.content))), ctypes.c_char
 	elif isinstance(stmnt, CFuncCall):
@@ -573,7 +575,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		ptrStmnt._leftexpr = stmnt.base
 		ptrStmnt._op = COp("+")
 		ptrStmnt._rightexpr = stmnt.args[0]
-		return astAndTypeForCStatement(funcEnv, ptrStmnt)
+		derefStmnt = CStatement()
+		derefStmnt._op = COp("*")
+		derefStmnt._rightexpr = ptrStmnt
+		return astAndTypeForCStatement(funcEnv, derefStmnt)
 		# TODO: support for real arrays.
 		# the following code may be useful
 		#bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
