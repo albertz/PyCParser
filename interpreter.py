@@ -751,6 +751,10 @@ def cStatementToPyAst(funcEnv, c, body):
 		body.append(astForCSwitch(funcEnv, c))
 	elif isinstance(c, CReturnStatement):
 		body.append(astForCReturn(funcEnv, c))
+	elif isinstance(c, CCodeBlock):
+		funcEnv.pushScope()
+		cCodeToPyAstList(funcEnv, c.body, body)
+		funcEnv.popScope()
 	else:
 		assert False, "cannot handle " + str(c)
 
