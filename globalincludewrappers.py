@@ -7,10 +7,11 @@ from interpreter import CWrapValue
 import ctypes, _ctypes
 import errno, os
 
-def _fixCType(t):
+def _fixCType(t, wrap=False):
 	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
 	if t is ctypes.c_char: t = ctypes.c_byte
-	return wrapCTypeClassIfNeeded(t)
+	if wrap: return wrapCTypeClassIfNeeded(t)
+	return t
 
 def wrapCFunc(state, funcname, restype=None, argtypes=None):
 	f = getattr(ctypes.pythonapi, funcname)
@@ -18,7 +19,7 @@ def wrapCFunc(state, funcname, restype=None, argtypes=None):
 	if restype is CVoidType:
 		f.restype = None
 	elif restype is not None:
-		f.restype = _fixCType(restype)
+		f.restype = _fixCType(restype, wrap=True)
 	if argtypes is not None:
 		f.argtypes = map(_fixCType, argtypes)
 	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
@@ -76,13 +77,13 @@ class Wrapper:
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
-		wrapCFunc(state, "strlen")
-		wrapCFunc(state, "strcpy")
-		wrapCFunc(state, "strcat")
+		wrapCFunc(state, "strlen", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p,))
+		wrapCFunc(state, "strcpy", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
+		wrapCFunc(state, "strcat", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
 		wrapCFunc(state, "strcmp", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
-		wrapCFunc(state, "strtok")
-		wrapCFunc(state, "strchr")
-		wrapCFunc(state, "strerror")
+		wrapCFunc(state, "strtok", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
+		wrapCFunc(state, "strchr", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_int))
+		wrapCFunc(state, "strerror", restype=ctypes.c_char_p, argtypes=(ctypes.c_int,))
 	def handle_time_h(self, state): pass
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
