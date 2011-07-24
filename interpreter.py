@@ -179,18 +179,19 @@ class FuncEnv:
 			args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
 			body=[], decorator_list=[])
 	def _registerNewVar(self, varName, varDecl):
-		assert varDecl is not None
-		assert id(varDecl) not in self.varNames
+		if varDecl is not None:
+			assert id(varDecl) not in self.varNames
 		for name in iterIdWithPostfixes(varName):
 			if not isValidVarName(name): continue
 			if self.searchVarName(name) is None:
 				self.vars[name] = varDecl
-				self.varNames[id(varDecl)] = name
+				if varDecl is not None:
+					self.varNames[id(varDecl)] = name
 				return name
 	def searchVarName(self, varName):
 		if varName in self.vars: return self.vars[varName]
 		return self.globalScope.findIdentifier(varName)
-	def registerNewVar(self, varName, varDecl):
+	def registerNewVar(self, varName, varDecl=None):
 		return self.scopeStack[-1].registerNewVar(varName, varDecl)
 	def getAstNodeForVarDecl(self, varDecl):
 		assert varDecl is not None
@@ -205,7 +206,8 @@ class FuncEnv:
 		return getAstNodeAttrib("g", name)
 	def _unregisterVar(self, varName):
 		varDecl = self.vars[varName]
-		del self.varNames[id(varDecl)]
+		if varDecl is not None:
+			del self.varNames[id(varDecl)]
 		del self.vars[varName]
 	def pushScope(self, bodyStmntList):
 		scope = FuncCodeblockScope(funcEnv=self, body=bodyStmntList)
@@ -328,7 +330,9 @@ class FuncCodeblockScope:
 		self.varNames.add(varName)
 		a = ast.Assign()
 		a.targets = [ast.Name(id=varName, ctx=ast.Store())]
-		if isinstance(varDecl, CFuncArgDecl):
+		if varDecl is None:
+			a.value = ast.Name(id="None", ctx=ast.Load())
+		elif isinstance(varDecl, CFuncArgDecl):
 			# Note: We just assume that the parameter has the correct/same type.
 			a.value = getAstNode_newTypeInstance(varDecl.type, ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
 		elif isinstance(varDecl, CVarDecl):
@@ -783,8 +787,66 @@ def astForCIf(funcEnv, stmnt):
 	return ifAst
 
 def astForCSwitch(funcEnv, stmnt):
-	# TODO
-	return PyAstNoOp
+	assert isinstance(stmnt, CSwitchStatement)
+	assert isinstance(stmnt.body, CBody)
+	assert len(stmnt.args) == 1
+	assert isinstance(stmnt.args[0], CStatement)
+
+	# introduce dummy 'while' AST so that we can return a single AST node
+	whileAst = ast.While(body=[], orelse=[])
+	whileAst.test = ast.Name(id="True", ctx=ast.Load())
+	funcEnv.pushScope(whileAst.body)
+
+	switchVarName = funcEnv.registerNewVar("_switchvalue")	
+	switchValueAst, switchValueType = astAndTypeForCStatement(funcEnv, stmnt.args[0])
+	a = ast.Assign()
+	a.targets = [ast.Name(id=switchVarName, ctx=ast.Store())]
+	a.value = getAstNode_valueFromObj(switchValueAst, switchValueType)
+	funcEnv.getBody().append(a)
+	
+	fallthroughVarName = funcEnv.registerNewVar("_switchfallthrough")
+	a = ast.Assign()
+	a.targets = [ast.Name(id=fallthroughVarName, ctx=ast.Store())]
+	a.value = ast.Name(id="False", ctx=ast.Load())
+	fallthroughVarAst = ast.Name(id=fallthroughVarName, ctx=ast.Load())
+	funcEnv.getBody().append(a)
+	
+	curCase = None
+	for c in stmnt.body.contentlist:
+		if isinstance(c, CCaseStatement):
+			if curCase is not None: funcEnv.popScope()
+			assert len(c.args) == 1
+			curCase = ast.If(body=[], orelse=[])
+			curCase.test = ast.BoolOp(op=ast.Or(), values=[
+				fallthroughVarAst,
+				ast.Compare(
+					left=ast.Name(id=switchVarName, ctx=ast.Load()),
+					ops=[ast.Eq()],
+					comparators=[getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, c.args[0]))]
+					)
+				])
+			funcEnv.getBody().append(curCase)
+			funcEnv.pushScope(curCase.body)
+			a = ast.Assign()
+			a.targets = [ast.Name(id=fallthroughVarName, ctx=ast.Store())]
+			a.value = ast.Name(id="True", ctx=ast.Load())
+			funcEnv.getBody().append(a)
+			
+		elif isinstance(c, CCaseDefaultStatement):
+			if curCase is not None: funcEnv.popScope()
+			curCase = ast.If(body=[], orelse=[])
+			curCase.test = ast.UnaryOp(op=ast.Not(), operand=fallthroughVarAst)
+			funcEnv.getBody().append(curCase)
+			funcEnv.pushScope(curCase.body)
+
+		else:
+			assert curCase is not None
+			cStatementToPyAst(funcEnv, c)
+	if curCase is not None: funcEnv.popScope()
+	
+	funcEnv.getBody().append(ast.Break())
+	funcEnv.popScope()
+	return whileAst
 
 def astForCReturn(funcEnv, stmnt):
 	assert isinstance(stmnt, CReturnStatement)
@@ -818,6 +880,10 @@ def cStatementToPyAst(funcEnv, c):
 		body.append(astForCSwitch(funcEnv, c))
 	elif isinstance(c, CReturnStatement):
 		body.append(astForCReturn(funcEnv, c))
+	elif isinstance(c, CBreakStatement):
+		body.append(ast.Break())
+	elif isinstance(c, CContinueStatement):
+		body.append(ast.Continue())
 	elif isinstance(c, CCodeBlock):
 		funcEnv.pushScope(body)
 		cCodeToPyAstList(funcEnv, c.body)
