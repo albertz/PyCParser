@@ -54,6 +54,7 @@ class Wrapper:
 		wrapCFunc(state, "strcat")
 		wrapCFunc(state, "strcmp")
 		wrapCFunc(state, "strtok")
+		wrapCFunc(state, "strchr")
 		wrapCFunc(state, "strerror")
 	def handle_time_h(self, state): pass
 	def handle_ctype_h(self, state): pass
