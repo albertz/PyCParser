@@ -1509,7 +1509,8 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 	if addToContent is None:
 		addToContent = obj.name is not None
 
-	obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
+	if obj.type is None:
+		obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
 	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
 	
 	if addToContent and hasattr(obj.parent, "body"):
