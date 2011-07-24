@@ -1788,7 +1788,6 @@ class CStatement(_CBaseWithOptBody):
 	def _initStatement(self):
 		self._state = 0
 		self._tokens = []
-		self._prefixOps = []
 	def __init__(self, **kwargs):
 		self._initStatement()
 		_CBaseWithOptBody.__init__(self, **kwargs)
@@ -1822,13 +1821,13 @@ class CStatement(_CBaseWithOptBody):
 				self._leftexpr = obj
 				self._state = 5
 			elif isinstance(token, COp):
-				self._prefixOps += [token]
+				# prefix op
+				self._op = token
+				self._rightexpr = CStatement(parent=self)
+				self._state = 8
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token))
 		elif self._state in (1,2,3): # struct,union,enum
-			if self._prefixOps:
-				stateStruct.error("statement parsing: prefixes " + str(self._prefixOps) + " not valid for type")
-				self._prefixOps = []
 			TName = {1:"struct", 2:"union", 3:"enum"}[self._state]
 			DictName = TName + "s"
 			if isinstance(token, CIdentifier):
@@ -1841,9 +1840,6 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
 		elif self._state == 5: # after expr
-			while self._prefixOps:
-				self._leftexpr = CStatement(parent=self, _op=self._prefixOps[-1], _rightexpr=self._leftexpr)
-				self._prefixOps.pop()
 			if token == COp("."):
 				self._state = 20
 				self._leftexpr = CAttribAccessRef(parent=self, base=self._leftexpr)
@@ -1863,13 +1859,15 @@ class CStatement(_CBaseWithOptBody):
 				if obj is None:
 					stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
 					obj = CUnknownType(name=token.content)
+				self._state = 7
 			elif isinstance(token, (CNumber,CStr,CChar)):
 				obj = token
+				self._state = 7
 			else:
 				obj = CStatement(parent=self)
 				obj._cpre3_handle_token(stateStruct, token) # maybe a postfix op or whatever
+				self._state = 8
 			self._rightexpr = obj
-			self._state = 7
 		elif self._state == 7: # after expr + op + expr
 			if token == COp("."):
 				self._state = 22
