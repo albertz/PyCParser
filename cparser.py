@@ -1490,8 +1490,15 @@ class _CBaseWithOptBody:
 
 	def getCType(self, stateStruct):
 		raise Exception, str(self) + " cannot be converted to a C type"
-	
-	def findAttrib(self, attrib):
+
+	def findAttrib(self, stateStruct, attrib):
+		if self.body is None:
+			# it probably is the pre-declaration. but we might find the real-one
+			if isinstance(self, CStruct): D = "structs"
+			elif isinstance(self, CUnion): D = "unions"
+			elif isinstance(self, CEnum): D = "enums"
+			self = getattr(stateStruct, D).get(self.name, self)
+		if self.body is None: return None
 		for c in self.body.contentlist:
 			if not isinstance(c, CVarDecl): continue
 			if c.name == attrib: return c

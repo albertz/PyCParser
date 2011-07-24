@@ -229,6 +229,7 @@ def getAstNodeAttrib(value, attrib, ctx=ast.Load()):
 		a.value = value
 	else:
 		assert False, str(value) + " has invalid type"
+	assert attrib is not None
 	a.attr = attrib
 	return a
 
@@ -554,7 +555,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		while isinstance(t, CTypedefType):
 			t = funcEnv.globalScope.stateStruct.typedefs[t.name]
 		assert isinstance(t, (CStruct,CUnion))
-		attrDecl = t.findAttrib(a.attr)
+		attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, a.attr)
 		assert attrDecl is not None, "attrib " + str(a.attr) + " not found"
 		return a, attrDecl.type
 	elif isinstance(stmnt, CPtrAccessRef):
