@@ -11,9 +11,11 @@ import sys
 import inspect
 
 class CWrapValue:
-	def __init__(self, value, decl=None):
+	def __init__(self, value, decl=None, **kwattr):
 		self.value = value
 		self.decl = decl
+		for k,v in kwattr.iteritems():
+			setattr(self, k, v)
 	def __repr__(self):
 		s = "<" + self.__class__.__name__ + " "
 		if self.decl is not None: s += repr(self.decl) + " "
@@ -538,7 +540,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib("g", stmnt.base.name)
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.type
+			return a, stmnt.base.type
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
 			# C static cast
 			assert len(stmnt.args) == 1
@@ -559,7 +561,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv, stmnt.base), "value")
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.type
+			return a, stmnt.base.returnType
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):

@@ -15,7 +15,7 @@ def wrapCFunc(state, funcname, restype=None, argtypes=None):
 		f.restype = restype
 	if argtypes is not None:
 		f.argtypes = argtypes
-	state.funcs[funcname] = CWrapValue(f)
+	state.funcs[funcname] = CWrapValue(f, returnType=restype)
 	
 class Wrapper:
 	def handle_limits_h(self, state):
@@ -41,13 +41,15 @@ class Wrapper:
 		struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
 		struct_stat.body = CBody(parent=struct_stat)
 		CVarDecl(parent=struct_stat, name="st_mode", type=ctypes.c_int).finalize(state)
-		state.funcs["fstat"] = CWrapValue(lambda *args: None) # TODO
+		state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=CVoidType()) # TODO
 		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
 		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 	def handle_stdlib_h(self, state):
 		wrapCFunc(state, "malloc")
 		wrapCFunc(state, "free")
-		state.funcs["getenv"] = CWrapValue(os.getenv) # TODO?
+		state.funcs["getenv"] = CWrapValue(
+			lambda x: ctypes.c_char_p(os.getenv(x.value)),
+			returnType=CPointerType(ctypes.c_char))
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
