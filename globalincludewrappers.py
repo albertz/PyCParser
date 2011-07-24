@@ -55,6 +55,7 @@ class Wrapper:
 		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"))
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
+		wrapCFunc(state, "fflush", restype=ctypes.c_int, argtypes=(FileP,))
 		state.vars["errno"] = CWrapValue(0) # TODO
 		state.macros["EOF"] = Macro(rightside="-1") # TODO?
 		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
