@@ -114,7 +114,6 @@ class GlobalScope:
 		else:	
 			valueAst = getAstNode_newTypeInstance(decl.type)
 		v = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init>")
-		print "getvar:", name, "evaluated to:", v
 		self.vars[name] = v
 		return v
 
