@@ -27,7 +27,7 @@ class CStateDictWrapper:
 	
 class CStateWrapper:
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
-	LocalAttribs = ("_cwrapper","IndirectSimpleCTypes")
+	LocalAttribs = ("_cwrapper")
 	def __init__(self, cwrapper):
 		self._cwrapper = cwrapper
 	def __getattr__(self, k):
@@ -50,10 +50,7 @@ class CStateWrapper:
 		return "<CStateWrapper of " + repr(self._cwrapper) + ">"
 	def __str__(self): return self.__repr__()
 	def __setattr__(self, k, v):
-		if k in self.LocalAttribs:
-			self.__dict__[k] = v
-			return
-		assert False, "read-only CStateWrapper " + str(self)
+		self.__dict__[k] = v
 	def __getstate__(self):
 		assert False, "this is not really prepared/intended to be pickled"
 	
