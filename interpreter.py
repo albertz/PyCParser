@@ -501,7 +501,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		assert attrDecl is not None
 		return a, attrDecl.type
 	elif isinstance(stmnt, CNumber):
-		t = minCIntTypeForNums(stmnt.content)
+		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
 		t = CStdIntType(t)
 		return getAstNode_newTypeInstance(t, ast.Num(n=stmnt.content)), t

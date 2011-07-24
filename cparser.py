@@ -1575,11 +1575,11 @@ class CUnion(_CBaseWithOptBody):
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Union, self, stateStruct)
 
-def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64):
+def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True):
 	if b is None: b = a
 	bits = minBits
 	while bits <= maxBits:
-		if a >= 0 and b < (1<<bits): return "uint" + str(bits) + "_t"
+		if useUnsignedTypes and a >= 0 and b < (1<<bits): return "uint" + str(bits) + "_t"
 		elif a >= -(1<<(bits-1)) and b < (1<<(bits-1)): return "int" + str(bits) + "_t"
 		bits *= 2
 	return None
