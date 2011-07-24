@@ -27,6 +27,7 @@ class Wrapper:
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
 	def handle_stdio_h(self, state):
 		state.macros["NULL"] = Macro(rightside="0")
+		wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
 		FileP = CPointerType(CStdIntType("FILE")).getCType(state)
 		wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
 		wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
