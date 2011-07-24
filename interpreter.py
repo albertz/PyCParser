@@ -419,27 +419,27 @@ class Helpers:
 	
 	@staticmethod
 	def prefixIncPtr(a):
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value += ctypes.sizeof(a._type_)
 		return a
 
 	@staticmethod
 	def prefixDecPtr(a):
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value -= ctypes.sizeof(a._type_)
 		return a
 	
 	@staticmethod
 	def postfixIncPtr(a):
 		b = Helpers.copy(a)
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value += ctypes.sizeof(a._type_)
 		return b
 
 	@staticmethod
 	def postfixDecPtr(a):
 		b = Helpers.copy(a)
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(c_void_p))
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value -= ctypes.sizeof(a._type_)
 		return b
 
