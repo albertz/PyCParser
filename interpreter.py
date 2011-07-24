@@ -614,6 +614,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content == "*":
 			assert isinstance(rightType, CPointerType)
 			return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
+		elif stmnt._op.content == "&":
+			return makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode), CPointerType(rightType)
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
