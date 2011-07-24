@@ -277,7 +277,7 @@ def getAstNode_valueFromObj(objAst, objType):
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
 		astValue = getAstNodeAttrib(astVoidP, "value")
-		return astValue
+		return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
 	else:
 		astValue = getAstNodeAttrib(objAst, "value")
 		return astValue		
