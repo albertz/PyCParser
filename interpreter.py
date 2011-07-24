@@ -108,10 +108,18 @@ class GlobalScope:
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
 		assert isinstance(decl, CVarDecl)
-		# TODO: We ignore any special initialization here. This is probably not what we want.
-		initValue = decl.type.getCType(self.stateStruct)()
-		self.vars[name] = initValue
-		return initValue
+		if decl.body is not None:
+			bodyAst, t = astAndTypeForStatement(self, decl.body)
+			valueAst = getAstNode_newTypeInstance(decl.type, bodyAst, t)
+		else:	
+			valueAst = getAstNode_newTypeInstance(decl.type)
+		valueExprAst = ast.Expression(valueAst)
+		ast.fix_missing_locations(valueExprAst)
+		valueCode = compile(valueExprAst, "<PyCParser_globalvar_" + name + "_init>", "eval")
+		v = eval(valueCode, self.interpreter.globalsDict)
+		print "getvar:", name, "evaluated to:", v
+		self.vars[name] = v
+		return v
 
 class GlobalsWrapper:
 	def __init__(self, globalScope):
