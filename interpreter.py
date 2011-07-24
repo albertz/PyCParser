@@ -346,6 +346,9 @@ class FuncCodeblockScope:
 					a.value = getAstNode_newTypeInstance(varDecl.type, bodyAst, t)
 			else:	
 				a.value = getAstNode_newTypeInstance(varDecl.type)
+		elif isinstance(varDecl, CFunc):
+			# TODO: register func, ...
+			a.value = ast.Name(id="None", ctx=ast.Load())
 		else:
 			assert False, "didn't expected " + str(varDecl)
 		self.body.append(a)
@@ -869,7 +872,7 @@ def astForCReturn(funcEnv, stmnt):
 
 def cStatementToPyAst(funcEnv, c):
 	body = funcEnv.getBody()
-	if isinstance(c, CVarDecl):
+	if isinstance(c, (CVarDecl,CFunc)):
 		funcEnv.registerNewVar(c.name, c)
 	elif isinstance(c, CStatement):
 		a, t = astAndTypeForCStatement(funcEnv, c)
