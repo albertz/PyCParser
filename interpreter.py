@@ -208,14 +208,16 @@ class FuncEnv:
 		varDecl = self.vars[varName]
 		del self.varNames[id(varDecl)]
 		del self.vars[varName]
-	def pushScope(self):
-		scope = FuncCodeblockScope(funcEnv=self)
+	def pushScope(self, bodyStmntList):
+		scope = FuncCodeblockScope(funcEnv=self, body=bodyStmntList)
 		self.scopeStack += [scope]
 		return scope
 	def popScope(self):
 		scope = self.scopeStack.pop()
 		scope.finishMe()
-
+	def getBody(self):
+		return self.scopeStack[-1].body
+		
 NoneAstNode = ast.Name(id="None", ctx=ast.Load())
 
 def getAstNodeAttrib(value, attrib, ctx=ast.Load()):
@@ -317,9 +319,10 @@ def getAstNode_newTypeInstance(objType, argAst=None, argType=None):
 		return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
-	def __init__(self, funcEnv):
+	def __init__(self, funcEnv, body):
 		self.varNames = set()
 		self.funcEnv = funcEnv
+		self.body = body
 	def registerNewVar(self, varName, varDecl):
 		varName = self.funcEnv._registerNewVar(varName, varDecl)
 		assert varName is not None
@@ -342,7 +345,7 @@ class FuncCodeblockScope:
 				a.value = getAstNode_newTypeInstance(varDecl.type)
 		else:
 			assert False, "didn't expected " + str(varDecl)
-		self.funcEnv.astNode.body.append(a)
+		self.body.append(a)
 		return varName
 	def _astForDeleteVar(self, varName):
 		assert varName is not None
@@ -353,7 +356,7 @@ class FuncCodeblockScope:
 			astCmds += [self._astForDeleteVar(varName)]
 			self.funcEnv._unregisterVar(varName)
 		self.varNames.clear()
-		self.funcEnv.astNode.body.extend(astCmds)
+		self.body.extend(astCmds)
 
 OpUnary = {
 	"~": ast.Invert,
@@ -744,8 +747,8 @@ def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt.args[0], CStatement)
 	whileAst = ast.While(body=[], orelse=[])
 	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
-	funcEnv.pushScope()
-	cCodeToPyAstList(funcEnv, stmnt.body, whileAst.body)
+	funcEnv.pushScope(whileAst.body)
+	cCodeToPyAstList(funcEnv, stmnt.body)
 	if not whileAst.body: whileAst.body.append(ast.Pass())
 	funcEnv.popScope()
 	return whileAst
@@ -766,15 +769,15 @@ def astForCIf(funcEnv, stmnt):
 
 	ifAst = ast.If(body=[], orelse=[])
 	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
-	funcEnv.pushScope()
-	cCodeToPyAstList(funcEnv, stmnt.body, ifAst.body)
+	funcEnv.pushScope(ifAst.body)
+	cCodeToPyAstList(funcEnv, stmnt.body)
 	if not ifAst.body: ifAst.body.append(ast.Pass())
 	funcEnv.popScope()
 	
 	if stmnt.elsePart is not None:
 		assert stmnt.elsePart.body is not None
-		funcEnv.pushScope()
-		cCodeToPyAstList(funcEnv, stmnt.elsePart.body, ifAst.orelse)
+		funcEnv.pushScope(ifAst.orelse)
+		cCodeToPyAstList(funcEnv, stmnt.elsePart.body)
 		if not ifAst.orelse: ifAst.orelse.append(ast.Pass())
 		funcEnv.popScope()
 
@@ -795,7 +798,8 @@ def astForCReturn(funcEnv, stmnt):
 	returnValueAst = makeAstNodeCall(returnTypeAst, valueAst)
 	return ast.Return(value=returnValueAst)
 
-def cStatementToPyAst(funcEnv, c, body):
+def cStatementToPyAst(funcEnv, c):
+	body = funcEnv.getBody()
 	if isinstance(c, CVarDecl):
 		funcEnv.registerNewVar(c.name, c)
 	elif isinstance(c, CStatement):
@@ -816,18 +820,18 @@ def cStatementToPyAst(funcEnv, c, body):
 	elif isinstance(c, CReturnStatement):
 		body.append(astForCReturn(funcEnv, c))
 	elif isinstance(c, CCodeBlock):
-		funcEnv.pushScope()
-		cCodeToPyAstList(funcEnv, c.body, body)
+		funcEnv.pushScope(body)
+		cCodeToPyAstList(funcEnv, c.body)
 		funcEnv.popScope()
 	else:
 		assert False, "cannot handle " + str(c)
 
-def cCodeToPyAstList(funcEnv, cBody, astBody):
+def cCodeToPyAstList(funcEnv, cBody):
 	if isinstance(cBody, CBody):
 		for c in cBody.contentlist:
-			cStatementToPyAst(funcEnv, c, astBody)
+			cStatementToPyAst(funcEnv, c)
 	else:
-		cStatementToPyAst(funcEnv, cBody, astBody)
+		cStatementToPyAst(funcEnv, cBody)
 		
 class Interpreter:
 	def __init__(self):
@@ -874,7 +878,7 @@ class Interpreter:
 		assert func.name is not None
 		base.func = func
 		base.astNode.name = func.name
-		base.pushScope()
+		base.pushScope(base.astNode.body)
 		for arg in func.args:
 			name = base.registerNewVar(arg.name, arg)
 			assert name is not None
@@ -884,7 +888,7 @@ class Interpreter:
 			# Hack for now: ignore :)
 			print "XXX:", func.name, "is not loaded yet"
 		else:
-			cCodeToPyAstList(base, func.body, base.astNode.body)
+			cCodeToPyAstList(base, func.body)
 		base.popScope()
 		if isSameType(self._cStateWrapper, func.type, CVoidType()):
 			returnValueAst = NoneAstNode
