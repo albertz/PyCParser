@@ -686,7 +686,14 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
-			a.operand = getAstNode_valueFromObj(rightAstNode, rightType)
+			if isPointerType(rightType):
+				assert stmnt._op.content == "!", "the only supported unary op for ptr types is '!'"
+				a.operand = makeAstNodeCall(
+					ast.Name(id="bool", ctx=ast.Load()),
+					rightAstNode)
+				rightType = ctypes.c_int
+			else:
+				a.operand = getAstNode_valueFromObj(rightAstNode, rightType)
 			return getAstNode_newTypeInstance(rightType, a), rightType
 		else:
 			assert False, "unary prefix op " + str(stmnt._op) + " is unknown"
