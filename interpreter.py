@@ -792,10 +792,9 @@ def astForCSwitch(funcEnv, stmnt):
 	assert len(stmnt.args) == 1
 	assert isinstance(stmnt.args[0], CStatement)
 
-	# introduce dummy 'while' AST so that we can return a single AST node
-	whileAst = ast.While(body=[], orelse=[])
-	whileAst.test = ast.Name(id="True", ctx=ast.Load())
-	funcEnv.pushScope(whileAst.body)
+	# introduce dummy 'if' AST so that we can return a single AST node
+	ifAst = ast.If(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+	funcEnv.pushScope(ifAst.body)
 
 	switchVarName = funcEnv.registerNewVar("_switchvalue")	
 	switchValueAst, switchValueType = astAndTypeForCStatement(funcEnv, stmnt.args[0])
@@ -810,6 +809,11 @@ def astForCSwitch(funcEnv, stmnt):
 	a.value = ast.Name(id="False", ctx=ast.Load())
 	fallthroughVarAst = ast.Name(id=fallthroughVarName, ctx=ast.Load())
 	funcEnv.getBody().append(a)
+
+	# use 'while' AST so that we can just use 'break' as intended
+	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+	funcEnv.getBody().append(whileAst)	
+	funcEnv.pushScope(whileAst.body)
 	
 	curCase = None
 	for c in stmnt.body.contentlist:
@@ -844,9 +848,13 @@ def astForCSwitch(funcEnv, stmnt):
 			cStatementToPyAst(funcEnv, c)
 	if curCase is not None: funcEnv.popScope()
 	
+	# finish 'while'
 	funcEnv.getBody().append(ast.Break())
 	funcEnv.popScope()
-	return whileAst
+	
+	# finish 'if'
+	funcEnv.popScope()
+	return ifAst
 
 def astForCReturn(funcEnv, stmnt):
 	assert isinstance(stmnt, CReturnStatement)
