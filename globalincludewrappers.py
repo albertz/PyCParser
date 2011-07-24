@@ -19,7 +19,7 @@ def wrapCFunc(state, funcname, restype=None, argtypes=None):
 	if restype is CVoidType:
 		f.restype = None
 	elif restype is not None:
-		f.restype = _fixCType(restype, wrap=True)
+		f.restype = restype = _fixCType(restype, wrap=True)
 	if argtypes is not None:
 		f.argtypes = map(_fixCType, argtypes)
 	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
