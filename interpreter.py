@@ -705,6 +705,7 @@ def astForCWhile(funcEnv, stmnt):
 	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
 	cCodeToPyAstList(funcEnv, stmnt.body, whileAst.body)
+	if not whileAst.body: whileAst.body.append(ast.Pass())
 	funcEnv.popScope()
 	return whileAst
 
@@ -726,12 +727,14 @@ def astForCIf(funcEnv, stmnt):
 	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
 	cCodeToPyAstList(funcEnv, stmnt.body, ifAst.body)
+	if not ifAst.body: ifAst.body.append(ast.Pass())
 	funcEnv.popScope()
 	
 	if stmnt.elsePart is not None:
 		assert stmnt.elsePart.body is not None
 		funcEnv.pushScope()
 		cCodeToPyAstList(funcEnv, stmnt.elsePart.body, ifAst.orelse)
+		if not ifAst.orelse: ifAst.orelse.append(ast.Pass())
 		funcEnv.popScope()
 
 	return ifAst
