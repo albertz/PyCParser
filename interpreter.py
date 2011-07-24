@@ -113,13 +113,18 @@ class GlobalScope:
 			valueAst = getAstNode_newTypeInstance(decl.type, bodyAst, t)
 		else:	
 			valueAst = getAstNode_newTypeInstance(decl.type)
-		valueExprAst = ast.Expression(valueAst)
-		ast.fix_missing_locations(valueExprAst)
-		valueCode = compile(valueExprAst, "<PyCParser_globalvar_" + name + "_init>", "eval")
-		v = eval(valueCode, self.interpreter.globalsDict)
+		v = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init>")
 		print "getvar:", name, "evaluated to:", v
 		self.vars[name] = v
 		return v
+
+def evalValueAst(funcEnv, valueAst, srccode_name=None):
+	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
+	valueExprAst = ast.Expression(valueAst)
+	ast.fix_missing_locations(valueExprAst)
+	valueCode = compile(valueExprAst, "<PyCParser_globalvar_" + srccode_name + "_init>", "eval")
+	v = eval(valueCode, funcEnv.interpreter.globalsDict)
+	return v
 
 class GlobalsWrapper:
 	def __init__(self, globalScope):
@@ -167,6 +172,7 @@ class GlobalsStructWrapper:
 class FuncEnv:
 	def __init__(self, globalScope):
 		self.globalScope = globalScope
+		self.interpreter = globalScope.interpreter
 		self.vars = {} # name -> varDecl
 		self.varNames = {} # id(varDecl) -> name
 		self.scopeStack = [] # FuncCodeblockScope
@@ -280,6 +286,15 @@ def getAstNode_valueFromObj(objAst, objType):
 		return astValue		
 		
 def getAstNode_newTypeInstance(objType, argAst=None, argType=None):
+	typeAst = getAstNodeForVarType(objType)
+
+	if isPointerType(objType) and isPointerType(argType):
+		# We can have it simpler. This is even important in some cases
+		# were the pointer instance is temporary and the object
+		# would get freed otherwise!
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		return makeAstNodeCall(astCast, argAst, typeAst)		
+		
 	args = []
 	if argAst is not None:
 		if isinstance(argAst, (ast.Str, ast.Num)):
@@ -291,13 +306,13 @@ def getAstNode_newTypeInstance(objType, argAst=None, argType=None):
 			# there is no really way to 'assert' this.
 			args += [argAst]
 
-	typeAst = getAstNodeForVarType(objType)
-
 	if isPointerType(objType) and argAst is not None:
-		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
-		astCast = getAstNodeAttrib("ctypes", "cast")
-		astVoidP = makeAstNodeCall(astVoidPT, *args)
-		return makeAstNodeCall(astCast, astVoidP, typeAst)
+		assert False, "not supported because unsafe! " + str(argAst)
+		return makeAstNodeCall(typeAst)		
+		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		#astCast = getAstNodeAttrib("ctypes", "cast")
+		#astVoidP = makeAstNodeCall(astVoidPT, *args)
+		#return makeAstNodeCall(astCast, astVoidP, typeAst)
 	else:
 		return makeAstNodeCall(typeAst, *args)
 
@@ -317,7 +332,12 @@ class FuncCodeblockScope:
 		elif isinstance(varDecl, CVarDecl):
 			if varDecl.body is not None:
 				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
-				a.value = getAstNode_newTypeInstance(varDecl.type, bodyAst, t)
+				if isPointerType(varDecl.type) and not isPointerType(t):
+					v = varDecl.body.getConstValue(self.funcEnv.globalScope.stateStruct)
+					assert not v, "Initializing pointer type " + str(varDecl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(varDecl.body)
+					a.value = getAstNode_newTypeInstance(varDecl.type)
+				else:
+					a.value = getAstNode_newTypeInstance(varDecl.type, bodyAst, t)
 			else:	
 				a.value = getAstNode_newTypeInstance(varDecl.type)
 		else:
@@ -472,11 +492,15 @@ class Helpers:
 	@staticmethod
 	def augAssignPtr(a, op, bValue):
 		assert op in ("+","-")
+		op = OpBin[op]
 		bValue *= ctypes.sizeof(a._type_)
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = OpBinFuncs[op](aPtr.contents.value, bValue)
 		return a
 
+	@staticmethod
+	def ptrArithmetic(a, op, bValue):
+		return Helpers.augAssignPtr(Helpers.copy(a), op, bValue)
 
 def astForHelperFunc(helperFuncName, *astArgs):
 	helperFuncAst = getAstNodeAttrib("helpers", helperFuncName)
@@ -604,8 +628,8 @@ def getAstNode_assign(aAst, aType, bAst, bType):
 		return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
 	return makeAstNodeCall(Helpers.assign, aAst, bValueAst)
 
-def getAstNode_augAssign(aAst, aType, op, bAst, bType):
-	opAst = ast.Str(op)
+def getAstNode_augAssign(aAst, aType, opStr, bAst, bType):
+	opAst = ast.Str(opStr)
 	bValueAst = getAstNode_valueFromObj(bAst, bType)
 	if isPointerType(aType):
 		return makeAstNodeCall(Helpers.augAssignPtr, aAst, opAst, bValueAst)
@@ -633,18 +657,9 @@ def getAstNode_postfixDec(aAst, aType):
 
 def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
 	assert isPointerType(aType)
-	assert opStr in OpBin
-	op = OpBin[opStr]()
-	assert isinstance(op, (ast.Add,ast.Sub))
-	s = ctypes.sizeof(getCType(aType, stateStruct)._type_)
-	a = ast.BinOp()
-	a.op = op
-	a.left = getAstNode_valueFromObj(aAst, aType)
-	a.right = r = ast.BinOp()
-	r.op = ast.Mult()
-	r.left = ast.Num(s)
-	r.right = getAstNode_valueFromObj(bAst, bType)
-	return getAstNode_newTypeInstance(aType, a)
+	opAst = ast.Str(opStr)
+	bValueAst = getAstNode_valueFromObj(bAst, bType)
+	return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
 	
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
@@ -699,9 +714,12 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		a = ast.IfExp()
 		a.test = getAstNode_valueFromObj(leftAstNode, leftType)
-		a.body = getAstNode_valueFromObj(middleAstNode, middleType)
-		a.orelse = getAstNode_valueFromObj(rightAstNode, rightType)
-		return getAstNode_newTypeInstance(middleType, a), middleType # TODO: not really correct...
+		a.body = middleAstNode
+		a.orelse = rightAstNode
+		# TODO: we take the type from middleType right now. not really correct...
+		# So, cast the orelse part.
+		a.orelse = getAstNode_newTypeInstance(middleType, a.orelse, rightType)
+		return a, middleType
 	elif isPointerType(leftType):
 		return getAstNode_ptrBinOpExpr(
 			funcEnv.globalScope.stateStruct,
