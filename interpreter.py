@@ -686,8 +686,15 @@ def astForCIf(funcEnv, stmnt):
 	return PyAstNoOp
 
 def astForCReturn(funcEnv, stmnt):
-	# TODO
-	return PyAstNoOp
+	assert isinstance(stmnt, CReturnStatement)
+	if not stmnt.body:
+		assert isSameType(funcEnv.globalScope.stateStruct, funcEnv.func.type, CVoidType())
+		return ast.Return(value=None)
+	assert isinstance(stmnt.body, CStatement)
+	valueAst = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.body))
+	returnTypeAst = getAstNodeForVarType(funcEnv.func.type)
+	returnValueAst = makeAstNodeCall(returnTypeAst, valueAst)
+	return ast.Return(value=returnValueAst)
 
 def codeContentToBody(funcEnv, content, body):
 	for c in content:
@@ -748,6 +755,7 @@ class Interpreter:
 		assert isinstance(func, CFunc)
 		base = FuncEnv(globalScope=self.globalScope)
 		assert func.name is not None
+		base.func = func
 		base.astNode.name = func.name
 		base.pushScope()
 		for arg in func.args:
