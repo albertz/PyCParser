@@ -1731,7 +1731,6 @@ def _create_cast_call(stateStruct, parent, base, token):
 	arg = CStatement(parent=funcCall)
 	funcCall.args = [arg]
 	arg._cpre3_handle_token(stateStruct, token)
-	arg.finalize(stateStruct)
 	funcCall.finalize(stateStruct)
 	return funcCall
 
@@ -1853,6 +1852,7 @@ class CStatement(_CBaseWithOptBody):
 				self._leftexpr = CStr(self._leftexpr.content + token.content)
 			else:
 				self._leftexpr = _create_cast_call(stateStruct, self, self._leftexpr, token)
+				self._state = 40
 		elif self._state == 6: # after expr + op
 			if isinstance(token, CIdentifier):
 				obj = findObjInNamespace(stateStruct, self.parent, token.content)
@@ -1896,6 +1896,7 @@ class CStatement(_CBaseWithOptBody):
 				self._rightexpr = CStr(self._rightexpr.content + token.content)
 			else:
 				self._rightexpr = _create_cast_call(stateStruct, self, self._rightexpr, token)
+				self._state = 45
 		elif self._state == 8: # right-to-left chain, pull down
 			assert isinstance(self._rightexpr, CStatement)
 			self._rightexpr._cpre3_handle_token(stateStruct, token)
@@ -1926,6 +1927,20 @@ class CStatement(_CBaseWithOptBody):
 				self._state = 5
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
+		elif self._state == 40: # after cast_call((expr) x)
+			if token in (COp("."),COp("->")):
+				self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
+			else:
+				self._leftexpr.args[0].finalize(stateStruct)
+				self._state = 5
+				self._cpre3_handle_token(stateStruct, token) # redo handling
+		elif self._state == 45: # after expr + op + cast_call((expr) x)
+			if token in (COp("."),COp("->")):
+				self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
+			else:
+				self._rightexpr.args[0].finalize(stateStruct)
+				self._state = 7
+				self._cpre3_handle_token(stateStruct, token) # redo handling
 		else:
 			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
@@ -1956,6 +1971,15 @@ class CStatement(_CBaseWithOptBody):
 			self._rightexpr._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
 			if self._rightexpr._state == 5:
 				self._state = 9
+			return
+
+		if self._state in (40,45): # after .. cast_call + expr
+			if self._state == 40:
+				ref = self._leftexpr
+			else:
+				ref = self._rightexpr
+			assert isinstance(ref, CFuncCall)
+			ref.args[0]._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
 			return
 
 		if openingBracketToken.content == "(":

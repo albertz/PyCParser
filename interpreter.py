@@ -672,7 +672,7 @@ def astForCWhile(funcEnv, stmnt):
 	whileAst = ast.While(body=[], orelse=[])
 	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
-	codeContentToBody(funcEnv, stmnt.body.contentlist, whileAst.body)
+	cCodeToPyAstList(funcEnv, stmnt.body, whileAst.body)
 	funcEnv.popScope()
 	return whileAst
 
@@ -693,13 +693,13 @@ def astForCIf(funcEnv, stmnt):
 	ifAst = ast.While(body=[], orelse=[])
 	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
 	funcEnv.pushScope()
-	codeContentToBody(funcEnv, stmnt.body.contentlist, ifAst.body)
+	cCodeToPyAstList(funcEnv, stmnt.body, ifAst.body)
 	funcEnv.popScope()
 	
 	if stmnt.elsePart is not None:
 		assert stmnt.elsePart.body is not None
 		funcEnv.pushScope()
-		codeContentToBody(funcEnv, stmnt.elsePart.body.contentlist, ifAst.orelse)
+		cCodeToPyAstList(funcEnv, stmnt.elsePart.body, ifAst.orelse)
 		funcEnv.popScope()
 
 	return ifAst
@@ -719,30 +719,36 @@ def astForCReturn(funcEnv, stmnt):
 	returnValueAst = makeAstNodeCall(returnTypeAst, valueAst)
 	return ast.Return(value=returnValueAst)
 
-def codeContentToBody(funcEnv, content, body):
-	for c in content:
-		if isinstance(c, CVarDecl):
-			funcEnv.registerNewVar(c.name, c)
-		elif isinstance(c, CStatement):
-			a, t = astAndTypeForCStatement(funcEnv, c)
-			if isinstance(a, ast.expr):
-				a = ast.Expr(value=a)
-			body.append(a)
-		elif isinstance(c, CWhileStatement):
-			body.append(astForCWhile(funcEnv, c))
-		elif isinstance(c, CForStatement):
-			body.append(astForCFor(funcEnv, c))
-		elif isinstance(c, CDoStatement):
-			body.append(astForCDoWhile(funcEnv, c))
-		elif isinstance(c, CIfStatement):
-			body.append(astForCIf(funcEnv, c))
-		elif isinstance(c, CSwitchStatement):
-			body.append(astForCSwitch(funcEnv, c))
-		elif isinstance(c, CReturnStatement):
-			body.append(astForCReturn(funcEnv, c))
-		else:
-			assert False, "cannot handle " + str(c)
+def cStatementToPyAst(funcEnv, c, body):
+	if isinstance(c, CVarDecl):
+		funcEnv.registerNewVar(c.name, c)
+	elif isinstance(c, CStatement):
+		a, t = astAndTypeForCStatement(funcEnv, c)
+		if isinstance(a, ast.expr):
+			a = ast.Expr(value=a)
+		body.append(a)
+	elif isinstance(c, CWhileStatement):
+		body.append(astForCWhile(funcEnv, c))
+	elif isinstance(c, CForStatement):
+		body.append(astForCFor(funcEnv, c))
+	elif isinstance(c, CDoStatement):
+		body.append(astForCDoWhile(funcEnv, c))
+	elif isinstance(c, CIfStatement):
+		body.append(astForCIf(funcEnv, c))
+	elif isinstance(c, CSwitchStatement):
+		body.append(astForCSwitch(funcEnv, c))
+	elif isinstance(c, CReturnStatement):
+		body.append(astForCReturn(funcEnv, c))
+	else:
+		assert False, "cannot handle " + str(c)
 
+def cCodeToPyAstList(funcEnv, cBody, astBody):
+	if isinstance(cBody, CBody):
+		for c in cBody.contentlist:
+			cStatementToPyAst(funcEnv, c, astBody)
+	else:
+		cStatementToPyAst(funcEnv, cBody, astBody)
+		
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -792,7 +798,7 @@ class Interpreter:
 			# Hack for now: ignore :)
 			print "XXX:", func.name, "is not loaded yet"
 		else:
-			codeContentToBody(base, func.body.contentlist, base.astNode.body)
+			cCodeToPyAstList(base, func.body, base.astNode.body)
 		base.popScope()
 		if isSameType(self._cStateWrapper, func.type, CVoidType()):
 			returnValueAst = NoneAstNode
