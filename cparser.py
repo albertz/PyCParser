@@ -1539,6 +1539,10 @@ class CFunc(_CBaseWithOptBody):
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
 
+def wrapCTypeClassIfNeeded(t):
+	if t.__base__ is _ctypes._SimpleCData: return wrapCTypeClass(t)
+	else: return t
+	
 def wrapCTypeClass(t):
 	class WrappedType(t): pass
 	WrappedType.__name__ = t.__name__
@@ -1556,9 +1560,9 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 			if len(c.arrayargs) != 1: raise Exception, str(c) + " has too many array args"
 			n = c.arrayargs[0].value
 			t = t * n
-		elif t.__base__ is _ctypes._SimpleCData and stateStruct.IndirectSimpleCTypes:
+		elif stateStruct.IndirectSimpleCTypes:
 			# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
-			t = wrapCTypeClass(t)
+			t = wrapCTypeClassIfNeeded(t)
 		if hasattr(c, "bitsize"):
 			fields += [(c.name, t, c.bitsize)]
 		else:
