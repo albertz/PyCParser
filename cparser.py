@@ -339,6 +339,8 @@ def getCType(t, stateStruct):
 			elif isinstance(t, CEnum): D = "enums"
 			t = getattr(stateStruct, D).get(t.name, t)
 		return t.getCType(stateStruct)
+	if isinstance(t, _CBaseWithOptBody):
+		return t.getCType(stateStruct)
 	if isinstance(t, CType):
 		return t.getCType(stateStruct)
 	raise Exception, str(t) + " cannot be converted to a C type"
