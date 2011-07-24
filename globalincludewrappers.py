@@ -4,11 +4,12 @@
 
 from cparser import *
 from interpreter import CWrapValue
-import ctypes
+import ctypes, _ctypes
 import errno, os
 
 def _fixCType(t):
-	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_char)
+	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
+	if t is ctypes.c_char: t = ctypes.c_byte
 	return wrapCTypeClassIfNeeded(t)
 
 def wrapCFunc(state, funcname, restype=None, argtypes=None):
@@ -21,7 +22,23 @@ def wrapCFunc(state, funcname, restype=None, argtypes=None):
 	if argtypes is not None:
 		f.argtypes = map(_fixCType, argtypes)
 	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
-	
+
+def _fixCArg(a):
+	if isinstance(a, unicode):
+		a = a.encode("utf-8")
+	if isinstance(a, str):
+		a = ctypes.c_char_p(a)
+	if isinstance(a, ctypes.c_char_p) or (isinstance(a, _ctypes._Pointer) and a._type_ is ctypes.c_char):
+		return ctypes.cast(a, ctypes.POINTER(ctypes.c_byte))
+	if isinstance(a, ctypes.c_char):
+		return ctypes.c_byte(ord(a.value))
+	return a
+
+def callCFunc(funcname, *args):
+	f = getattr(ctypes.pythonapi, funcname)
+	args = map(_fixCArg, args)
+	return f(*args)
+
 class Wrapper:
 	def handle_limits_h(self, state):
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
@@ -32,9 +49,9 @@ class Wrapper:
 		wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
 		wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
 		wrapCFunc(state, "fdopen", restype=FileP, argtypes=(ctypes.c_int, ctypes.c_char_p))
-		state.vars["stdin"] = CWrapValue(ctypes.pythonapi.fdopen(0, "r"))
-		state.vars["stdout"] = CWrapValue(ctypes.pythonapi.fdopen(1, "a"))
-		state.vars["stderr"] = CWrapValue(ctypes.pythonapi.fdopen(2, "a"))
+		state.vars["stdin"] = CWrapValue(callCFunc("fdopen", 0, "r"))
+		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"))
+		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"))
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
 		state.vars["errno"] = CWrapValue(0) # TODO
@@ -54,8 +71,8 @@ class Wrapper:
 		wrapCFunc(state, "malloc")
 		wrapCFunc(state, "free")
 		state.funcs["getenv"] = CWrapValue(
-			lambda x: ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value)),
-			returnType=CPointerType(ctypes.c_char))
+			lambda x: _fixCArg(ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value))),
+			returnType=CPointerType(ctypes.c_byte))
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):

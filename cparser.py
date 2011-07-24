@@ -354,7 +354,7 @@ class State:
 	CBuiltinTypes = {
 		("void",): CVoidType(),
 		("void", "*"): ctypes.c_void_p,
-		("char",): ctypes.c_char,
+		("char",): ctypes.c_byte,
 		("unsigned", "char"): ctypes.c_ubyte,
 		("short",): ctypes.c_short,
 		("unsigned", "short"): ctypes.c_ushort,
