@@ -128,6 +128,7 @@ def simple_escape_char(c):
 	elif c == "\n": return "\n"
 	elif c == '"': return '"'
 	elif c == "'": return "'"
+	elif c == "\\": return "\\"
 	else:
 		# Just to be sure so that users don't run into trouble.
 		assert False, "simple_escape_char: cannot handle " + repr(c) + " yet"
@@ -593,6 +594,12 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 					else:
 						stateStruct.error("preprocessor: '\"' not expected")
 						return
+				elif c == "'":
+					if laststr == "":
+						state = 22
+					else:
+						stateStruct.error("preprocessor: \"'\" not expected")
+						return
 				else:
 					laststr += c
 			elif state == 1: # in bracket
@@ -793,6 +800,21 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 			elif state == 21: # in escape in str
 				laststr += simple_escape_char(c)
 				state = 20
+			elif state == 22: # in char
+				if c == "\\": state = 23
+				elif c == "'":
+					state = 0
+					neweval = laststr
+					laststr = ""
+					if prefixOp is not None:
+						neweval = prefixOp(neweval)
+						prefixOp = None
+					if op is not None: lasteval = op(lasteval, neweval)
+					else: lasteval = neweval
+				else: laststr += c
+			elif state == 23: # in escape in char
+				laststr += simple_escape_char(c)
+				state = 22
 			else:
 				stateStruct.error("internal error in preprocessor evaluation: state " + str(state))
 				return
