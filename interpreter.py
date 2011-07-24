@@ -84,8 +84,11 @@ class GlobalScope:
 		name = self.names.get(id(decl), None)
 		if name is not None: return name
 		o = self.findIdentifier(decl.name)
-		if o is decl: return decl.name
-		return None
+		if o is None: return None
+		# Note: `o` might be a different object than `decl`.
+		# This can happen if `o` is the extern declaration and `decl`
+		# is the actual variable. Anyway, this is fine.
+		return o.name
 	
 	def registerExternVar(self, name_prefix, value=None):
 		if not isinstance(value, CWrapValue):
