@@ -2513,6 +2513,13 @@ CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToList, input_iter):
 	brackets = list(parentCObj._bracketlevel)
 	curCObj = _CBaseWithOptBody(parent=parentCObj)
+	def _finalizeCObj(o):
+		if not o.isDerived():
+			CStatement.overtake(o)
+			for t in o._type_tokens:
+				o._cpre3_handle_token(stateStruct, CIdentifier(t))
+			o._type_tokens = []
+		o.finalize(stateStruct, addToContent=False)
 	for token in input_iter:
 		if isinstance(token, CIdentifier):
 			if isinstance(curCObj, CStatement):
@@ -2576,7 +2583,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 				break
 			stateStruct.error("cpre3 parse statements in brackets: unexpected closing bracket '" + token.content + "' after " + str(curCObj) + " at bracket level " + str(brackets))
 		elif token == sepToken:
-			curCObj.finalize(stateStruct, addToContent=False)
+			_finalizeCObj(curCObj)
 			addToList.append(curCObj)
 			curCObj = _CBaseWithOptBody(parent=parentCObj)
 		elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
@@ -2595,7 +2602,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 			
 	# add also the last object
 	if curCObj:
-		curCObj.finalize(stateStruct, addToContent=False)
+		_finalizeCObj(curCObj)
 		addToList.append(curCObj)
 
 def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
