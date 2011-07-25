@@ -148,6 +148,8 @@ class GlobalsWrapper:
 			v = self.globalScope.interpreter.getFunc(name)
 		elif isinstance(decl, (CTypedef,CStruct,CUnion,CEnum)):
 			v = getCType(decl, self.globalScope.stateStruct)
+		elif isinstance(decl, CFuncPointerDecl):
+			v = getCType(decl, self.globalScope.stateStruct)
 		else:
 			assert False, "didn't expected " + str(decl)
 		self.__dict__[name] = v
