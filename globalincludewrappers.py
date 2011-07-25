@@ -82,6 +82,7 @@ class Wrapper:
 			returnType=CPointerType(ctypes.c_byte)
 		)
 	def handle_stdarg_h(self, state): pass
+	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
 		wrapCFunc(state, "strlen", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p,))
