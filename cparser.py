@@ -2805,7 +2805,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					elif isinstance(curCObj, CEnum): DictName = "enums"
 					if DictName is not None:
 						typeObj = findCObjTypeInNamespace(stateStruct, parentCObj, DictName, curCObj.name)
-						if typeObj is not None:
+						if typeObj is not None and typeObj.body is not None: # if body is None, we still wait for another decl
 							curCObj = CVarDecl(parent=parentCObj)
 							curCObj._type_tokens += [typeObj]
 				else:
