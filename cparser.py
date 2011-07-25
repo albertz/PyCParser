@@ -1130,7 +1130,7 @@ class _CBase:
 			setattr(self, k, v)
 	def __repr__(self):
 		if self.content is None: return "<" + self.__class__.__name__ + ">"
-		return "<" + self.__class__.__name__ + " " + str(self.content) + ">"
+		return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def __eq__(self, other):
 		return self.__class__ is other.__class__ and self.content == other.content
 	def __hash__(self): return hash(self.__class__) + 31 * hash(self.content)
