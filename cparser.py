@@ -1988,7 +1988,16 @@ class CStatement(_CBaseWithOptBody):
 			elif not isinstance(token, COp):
 				self._rightexpr._cpre3_handle_token(stateStruct, token)
 			else: # is COp
-				if opsDoLeftToRight(stateStruct, self._op.content, token.content):
+				if token.content == ":":
+					if self._op == COp("?"):
+						self._middleexpr = self._rightexpr
+						self._rightexpr = None
+						self._op = COp("?:")
+						self._state = 6
+					else:
+						self._rightexpr._cpre3_handle_token(stateStruct, token)
+						self._state = 8
+				elif opsDoLeftToRight(stateStruct, self._op.content, token.content):
 					import copy
 					subStatement = copy.copy(self)
 					self._leftexpr = subStatement
