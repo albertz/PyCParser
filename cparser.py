@@ -1981,7 +1981,7 @@ class CStatement(_CBaseWithOptBody):
 				self._leftexpr.name = token.content
 				self._state = 5
 			else:
-				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr))
+				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr) + " in state " + str(self._state))
 		elif self._state == 40: # after cast_call((expr) x)
 			if token in (COp("."),COp("->")):
 				self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
@@ -1996,6 +1996,13 @@ class CStatement(_CBaseWithOptBody):
 				self._rightexpr.args[0].finalize(stateStruct)
 				self._state = 7
 				self._cpre3_handle_token(stateStruct, token) # redo handling
+		elif self._state == 22: # after expr + op + expr with attrib/ptr access
+			if isinstance(token, CIdentifier):
+				assert isinstance(self._rightexpr, (CAttribAccessRef,CPtrAccessRef))
+				self._rightexpr.name = token.content
+				self._state = 7
+			else:
+				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr) + " in state " + str(self._state))
 		else:
 			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
