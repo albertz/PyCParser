@@ -1834,6 +1834,10 @@ def getConstValue(stateStruct, obj):
 
 class CSizeofSymbol: pass
 
+class CArrayArgs(_CBaseWithOptBody):
+	# args is a list of CStatement
+	NameIsRelevant = False
+
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
 	_leftexpr = None
@@ -2038,6 +2042,14 @@ class CStatement(_CBaseWithOptBody):
 		else:
 			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
+		if self._state == 0 and openingBracketToken.content == "{": # array args
+			arrayArgs = CArrayArgs(parent=self)
+			arrayArgs._bracketlevel = list(openingBracketToken.brackets)
+			cpre3_parse_statements_in_brackets(stateStruct, arrayArgs, COp(","), arrayArgs.args, input_iter)
+			arrayArgs.finalize(stateStruct)
+			self._state = 5
+			return
+		
 		if self._state in (5,7): # after expr or expr + op + expr
 			if self._state == 5:
 				ref = self._leftexpr
