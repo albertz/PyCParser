@@ -229,13 +229,13 @@ NoneAstNode = ast.Name(id="None", ctx=ast.Load())
 def getAstNodeAttrib(value, attrib, ctx=ast.Load()):
 	a = ast.Attribute(ctx=ctx)
 	if isinstance(value, (str,unicode)):
-		a.value = ast.Name(id=value, ctx=ctx)
+		a.value = ast.Name(id=str(value), ctx=ctx)
 	elif isinstance(value, ast.AST):
 		a.value = value
 	else:
 		assert False, str(value) + " has invalid type"
 	assert attrib is not None
-	a.attr = attrib
+	a.attr = str(attrib)
 	return a
 
 def getAstNodeForCTypesBasicType(t):
