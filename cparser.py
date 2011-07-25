@@ -1133,6 +1133,8 @@ class _CBase:
 		return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def __eq__(self, other):
 		return self.__class__ is other.__class__ and self.content == other.content
+	def __ne__(self, other):
+		return not self == other
 	def __hash__(self): return hash(self.__class__) + 31 * hash(self.content)
 	def asCCode(self): return self.content
 
