@@ -1808,11 +1808,11 @@ def opsDoLeftToRight(stateStruct, op1, op2):
 	
 	try: opprec1 = OpPrecedences[op1]
 	except:
-		stateStruct.error("internal error: statement parsing: op " + op1 + " unknown")
+		stateStruct.error("internal error: statement parsing: op1 " + repr(op1) + " unknown")
 		opprec1 = 100
 	try: opprec2 = OpPrecedences[op2]
 	except:
-		stateStruct.error("internal error: statement parsing: op " + op2 + " unknown")
+		stateStruct.error("internal error: statement parsing: op2 " + repr(op2) + " unknown")
 		opprec2 = 100
 	
 	if opprec1 < opprec2:
@@ -1949,7 +1949,10 @@ class CStatement(_CBaseWithOptBody):
 				self._state = 22
 				self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
 			elif isinstance(token, COp):
-				if self._op == COp("?") and token == COp(":"):
+				if token == COp(":"):
+					if self._op != COp("?"):
+						stateStruct.error("internal error: got ':' after " + repr(self) + " with " + repr(self._op))
+						# TODO: any better way to fix/recover? right now, we just assume '?' anyway
 					self._middleexpr = self._rightexpr
 					self._rightexpr = None
 					self._op = COp("?:")
