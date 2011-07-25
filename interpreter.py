@@ -890,9 +890,8 @@ def astForCReturn(funcEnv, stmnt):
 		assert isSameType(funcEnv.globalScope.stateStruct, funcEnv.func.type, CVoidType())
 		return ast.Return(value=None)
 	assert isinstance(stmnt.body, CStatement)
-	valueAst = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.body))
-	returnTypeAst = getAstNodeForVarType(funcEnv.globalScope.interpreter, funcEnv.func.type)
-	returnValueAst = makeAstNodeCall(returnTypeAst, valueAst)
+	valueAst, valueType = astAndTypeForCStatement(funcEnv, stmnt.body)
+	returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type, valueAst, valueType)
 	return ast.Return(value=returnValueAst)
 
 def cStatementToPyAst(funcEnv, c):
