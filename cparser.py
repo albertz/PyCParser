@@ -2647,9 +2647,6 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 				curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif isinstance(curCObj.body, CStatement):
 				curCObj.body._cpre3_parse_brackets(stateStruct, token, input_iter)
-			elif token.content == "{":
-				CCodeBlock.overtake(curCObj)
-				cpre3_parse_body(stateStruct, curCObj, input_iter)
 			elif not curCObj.isDerived():
 				CStatement.overtake(curCObj)
 				curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
