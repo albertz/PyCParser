@@ -1296,9 +1296,25 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					if macrobrackets:
 						if len(macroargs) == 0: macroargs = [""]
 						macroargs[-1] += c
+						if c == "'": state = 311
+						elif c == '"': state = 313
 					else:
 						state = 32
 						breakLoop = False
+			elif state == 311: # in 'str in macro
+				macroargs[-1] += c
+				if c == "'": state = 31
+				elif c == "\\": state = 312
+			elif state == 312: # in escape in 'str in macro
+				macroargs[-1] += c
+				state = 311
+			elif state == 313: # in "str in macro
+				macroargs[-1] += c
+				if c == '"': state = 31
+				elif c == "\\": state = 314
+			elif state == 314: # in escape in "str in macro
+				macroargs[-1] += c
+				state = 313
 			elif state == 32: # finalize macro
 				try:
 					resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
