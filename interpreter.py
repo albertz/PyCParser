@@ -298,6 +298,9 @@ def getAstNode_valueFromObj(objAst, objType):
 		astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
 		astValue = getAstNodeAttrib(astVoidP, "value")
 		return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+	elif isinstance(objType, CFuncPointerDecl):
+		# TODO...?
+		return objAst
 	else:
 		astValue = getAstNodeAttrib(objAst, "value")
 		return astValue		
@@ -556,8 +559,11 @@ def getAstForWrapValue(interpreter, wrapValue):
 	return v
 
 def astAndTypeForStatement(funcEnv, stmnt):
-	if isinstance(stmnt, (CVarDecl,CFuncArgDecl,CFunc)):
+	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
+	elif isinstance(stmnt, CFunc):
+		# TODO: specify type correctly
+		return funcEnv.getAstNodeForVarDecl(stmnt), CFuncPointerDecl()
 	elif isinstance(stmnt, CStatement):
 		return astAndTypeForCStatement(funcEnv, stmnt)
 	elif isinstance(stmnt, CAttribAccessRef):
