@@ -110,7 +110,12 @@ class GlobalScope:
 		assert isinstance(decl, CVarDecl)
 		if decl.body is not None:
 			bodyAst, t = astAndTypeForStatement(self, decl.body)
-			valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
+			if isPointerType(decl.type) and not isPointerType(t):
+				v = decl.body.getConstValue(self.stateStruct)
+				assert not v, "Global: Initializing pointer type " + str(decl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
+				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
+			else:
+				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
 		else:	
 			valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
 		v = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init>")
