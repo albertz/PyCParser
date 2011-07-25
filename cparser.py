@@ -534,8 +534,10 @@ def cpreprocess_evaluate_ifdef(state, arg):
 	return arg in state.macros
 
 def cpreprocess_evaluate_single(state, arg):
-	if arg == "": return None	
+	if arg == "": return None
 	try: return int(arg) # is integer?
+	except: pass
+	try: return int(arg, 16) # is hex?
 	except: pass
 	if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"': return arg[1:-1] # is string?
 	
