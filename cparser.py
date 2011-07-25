@@ -2853,7 +2853,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				CStatement.overtake(curCObj)
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
-			elif isinstance(curCObj.body, CStatement) and token.content != ",":
+			elif isinstance(curCObj.body, CStatement) and token.content != ",": # op(,) gets some extra handling. eg for CVarDecl
 				curCObj.body._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, CCaseStatement):
 				if token.content == ":":
@@ -2867,7 +2867,10 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj.finalize(stateStruct)
 				curCObj = _CBaseWithOptBody(parent=parentCObj)
 			elif isinstance(curCObj, _CControlStructure):
-				stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected op '" + token.content + "'")
+				if isinstance(curCObj.body, CStatement): # for example, because of op(,), we might have missed that above
+					curCObj.body._cpre3_handle_token(stateStruct, token)
+				else:	
+					stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected op '" + token.content + "'")
 			else:
 				if token.content == "*":
 					if isinstance(curCObj, (CStruct,CUnion,CEnum)):
