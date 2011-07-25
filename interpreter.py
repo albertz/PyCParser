@@ -554,7 +554,7 @@ def getAstForWrapValue(interpreter, wrapValue):
 	return v
 
 def astAndTypeForStatement(funcEnv, stmnt):
-	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
+	if isinstance(stmnt, (CVarDecl,CFuncArgDecl,CFunc)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
 	elif isinstance(stmnt, CStatement):
 		return astAndTypeForCStatement(funcEnv, stmnt)
