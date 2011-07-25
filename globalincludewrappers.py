@@ -73,10 +73,14 @@ class Wrapper:
 		wrapCFunc(state, "abort", restype=CVoidType, argtypes=())
 		wrapCFunc(state, "malloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_size_t,))
 		wrapCFunc(state, "free", restype=CVoidType, argtypes=(ctypes.c_void_p,))
-		wrapCFunc(state, "itoa", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
+		state.funcs["atoi"] = CWrapValue(
+			lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
+			returnType=ctypes.c_int
+		)
 		state.funcs["getenv"] = CWrapValue(
 			lambda x: _fixCArg(ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value))),
-			returnType=CPointerType(ctypes.c_byte))
+			returnType=CPointerType(ctypes.c_byte)
+		)
 	def handle_stdarg_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
