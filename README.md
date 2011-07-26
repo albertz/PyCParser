@@ -11,10 +11,20 @@ Some of the support may a bit incomplete or wrong at this point because I didn't
 Similar projects
 ----------------
 
+Parsers / `ctypes` interface generators:
+
 * [pyclibrary](https://launchpad.net/pyclibrary) ([Github fork](https://github.com/albertz/pyclibrary)). Is quite slow and didn't worked that well for me.
 * The equally named [pycparser](http://code.google.com/p/pycparser/). It depends on [Python Lex-Yacc](http://www.dabeaz.com/ply/). (I didn't really tested it yet.)
 * [ctypesgen](http://code.google.com/p/ctypesgen/). Also uses Lex+Yacc.
 * [codegen](http://starship.python.net/crew/theller/ctypes/old/codegen.html). Uses GCC-XML. See below about the disadvantages of such an aproach.
+
+Interpreters:
+
+*There aren't any in Python. So I list all I know about.*
+
+* [CINT](http://root.cern.ch/drupal/content/cint). Probably the most famous one.
+* [Ch](http://www.softintegration.com/). Is not really free.
+* [ups debugger](http://ups.sourceforge.net/main.html).
 
 Why this project?
 -----------------
