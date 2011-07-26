@@ -2,7 +2,7 @@ PyCParser
 =========
 <https://github.com/albertz/PyCParser>
 
-A **C** parser written in Python. Also includes an automatic ctypes interface generator.
+A **C** parser and interpreter written in Python. Also includes an automatic ctypes interface generator.
 
 It is looser than the C grammar, i.e. it should support a superset of the C language in general.
 
