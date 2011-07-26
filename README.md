@@ -39,19 +39,21 @@ Examples
 --------
 
 * [PySDL](https://github.com/albertz/PySDL). Also uses the automatic ctypes wrapper and maps it to a Python module.
+* [PyCPython](https://github.com/albertz/PyCPython). Interpret CPython in Python.
 
-Parsed without (fatal) errors but not much checked otherwise:
+Also see the *tests/test_interpreter.{c,py}* 'Hello world' example.
 
-* `zlib.h`, `readline.h`, `Python.h`
-
-TODOs / further directions
---------------------------
+Current state
+-------------
 
 * I'm quite sure that function pointer typedefs are handled incorrectly. E.g. `typedef void f();` and `typedef void (*f)();` are just the same right now. See `cpre3_parse_typedef` and do some testing if you want to fix this.
-* More testing.
-* Complete C support. Right now, most of the stuff in the function body is not really supported, i.e. function calls, expressions, if/while/for/etc control structure, and so on. Only very simple statements can be evaluated so far and it completely ignores operator priority right now. Operator priority is also ignored for C preprocessor expressions. 
-* With complete C support, it is not so difficult anymore to write a C interpreter.
-* Maybe C++ support. :)
+* goto-labels aren't correctly parsed.
+* `goto`s are not handled by the interpreter.
+* Function pointers don't work quite correct in the interpreter.
+* Many functions from the standard C library are still missing.
+* There might be some bugs. :)
+* C++ isn't supported yet. :)
+
 
 --- Albert Zeyer, <http://www.az2000.de>
 
