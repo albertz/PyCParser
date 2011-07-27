@@ -786,7 +786,13 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							if OpPrecedences[opstr] >= 6: # +,-,==, etc
 								# WARNING/HACK: guess that the following has lower or equal precedence :)
 								# HACK: add "()"
-								condstr = condstr[:i] + "(" + condstr[i:] + ")"
+								for j in xrange(i, len(condstr)):
+									if condstr[j] in OpChars:
+										while j < len(condstr) and condstr[j] in OpChars:
+											j += 1
+										if j < len(condstr):
+											condstr = condstr[:j] + "(" + condstr[j:] + ")"
+										break
 						elif opstr in OpPrefixFuncs:
 							newprefixop = OpPrefixFuncs[opstr]
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
