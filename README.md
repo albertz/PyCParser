@@ -41,6 +41,7 @@ Examples
 
 * [PySDL](https://github.com/albertz/PySDL). Also uses the automatic ctypes wrapper and maps it to a Python module.
 * [PyCPython](https://github.com/albertz/PyCPython). Interpret CPython in Python.
+* [PyLua](https://github.com/albertz/PyLua). Interpret Lua in Python.
 
 Also see the *tests/test_interpreter.{c,py}* 'Hello world' example.
 
