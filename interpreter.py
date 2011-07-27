@@ -793,8 +793,30 @@ def astForCWhile(funcEnv, stmnt):
 	return whileAst
 
 def astForCFor(funcEnv, stmnt):
-	# TODO
-	return PyAstNoOp
+	assert isinstance(stmnt, CForStatement)
+	assert stmnt.body is not None
+	assert len(stmnt.args) == 3
+	assert isinstance(stmnt.args[1], CStatement) # second arg is the check; we must be able to evaluate that
+
+	# introduce dummy 'if' AST so that we have a scope for the for-loop (esp. the first statement)
+	ifAst = ast.If(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+	funcEnv.pushScope(ifAst.body)
+	cStatementToPyAst(funcEnv, stmnt.args[0])
+	
+	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+	ifAst.body.append(whileAst)
+
+	ifTestAst = ast.If(body=[ast.Pass()], orelse=[ast.Break()])
+	ifTestAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[1]))
+	whileAst.body.append(ifTestAst)
+	
+	funcEnv.pushScope(whileAst.body)	
+	cCodeToPyAstList(funcEnv, stmnt.body)
+	cStatementToPyAst(funcEnv, stmnt.args[2])	
+	funcEnv.popScope() # whileAst / main for-body
+	
+	funcEnv.popScope() # ifAst
+	return ifAst
 
 def astForCDoWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CDoStatement)
@@ -808,7 +830,6 @@ def astForCDoWhile(funcEnv, stmnt):
 	
 	funcEnv.pushScope(whileAst.body)
 	cCodeToPyAstList(funcEnv, stmnt.body)
-	if not whileAst.body: whileAst.body.append(ast.Pass())
 	funcEnv.popScope()
 
 	ifAst = ast.If(body=[ast.Continue()], orelse=[ast.Break()])
