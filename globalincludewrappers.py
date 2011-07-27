@@ -72,6 +72,8 @@ class Wrapper:
 		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
 		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 	def handle_stdlib_h(self, state):
+		state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
+		state.macros["EXIT_FAILURE"] = Macro(rightside="1")
 		wrapCFunc(state, "abort", restype=CVoidType, argtypes=())
 		wrapCFunc(state, "malloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_size_t,))
 		wrapCFunc(state, "free", restype=CVoidType, argtypes=(ctypes.c_void_p,))
