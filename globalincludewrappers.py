@@ -43,6 +43,7 @@ def callCFunc(funcname, *args):
 class Wrapper:
 	def handle_limits_h(self, state):
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
+		state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1)))
 	def handle_stdio_h(self, state):
 		state.macros["NULL"] = Macro(rightside="0")
 		wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
