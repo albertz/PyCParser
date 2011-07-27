@@ -138,7 +138,6 @@ def escape_cstr(s):
 	return s.replace('"', '\\"')
 
 def parse_macro_def_rightside(stateStruct, argnames, input):
-	assert argnames is not None
 	assert input is not None
 	if stateStruct is None:
 		class Dummy:
@@ -146,7 +145,7 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 		stateStruct = Dummy()
 
 	def f(*args):
-		args = dict(map(lambda i: (argnames[i], args[i]), range(len(argnames))))
+		args = dict(map(lambda i: (argnames[i], args[i]), range(len(argnames or ()))))
 		
 		ret = ""
 		state = 0
@@ -235,7 +234,7 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 class Macro:
 	def __init__(self, state=None, macroname=None, args=None, rightside=None):
 		self.name = macroname
-		self.args = args if (args is not None) else ()
+		self.args = args
 		self.rightside = rightside if (rightside is not None) else ""
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
 		self._tokens = None
@@ -244,7 +243,7 @@ class Macro:
 	def __repr__(self):
 		return "<Macro: " + str(self) + ">"
 	def eval(self, state, args):
-		if len(args) != len(self.args): raise TypeError, "invalid number of args (" + str(args) + ") for " + repr(self)
+		if len(args) != len(self.args or ()): raise TypeError, "invalid number of args (" + str(args) + ") for " + repr(self)
 		func = parse_macro_def_rightside(state, self.args, self.rightside)
 		return func(*args)
 	def __call__(self, *args):
@@ -888,13 +887,15 @@ def cpreprocess_handle_include(state, arg):
 def cpreprocess_handle_def(stateStruct, arg):
 	state = 0
 	macroname = ""
-	args = []
+	args = None
 	rightside = ""
 	for c in arg:
 		if state == 0:
 			if c in SpaceChars:
 				if macroname != "": state = 3
-			elif c == "(": state = 2
+			elif c == "(":
+				state = 2
+				args = []
 			else: macroname += c
 		elif state == 2: # after "("
 			if c in SpaceChars: pass
@@ -1269,7 +1270,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 						macroargs = []
 						macrobrackets = []
 						state = 31
-						if len(stateStruct.macros[macroname].args) == 0:
+						if stateStruct.macros[macroname].args is None:
 							state = 32 # finalize macro directly. there can't be any args
 						breakLoop = False
 					else:
