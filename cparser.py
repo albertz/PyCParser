@@ -2023,10 +2023,13 @@ class CStatement(_CBaseWithOptBody):
 				self._state = 40
 		elif self._state == 6: # after expr + op
 			if isinstance(token, CIdentifier):
-				obj = findObjInNamespace(stateStruct, self.parent, token.content)
-				if obj is None:
-					stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
-					obj = CUnknownType(name=token.content)
+				if token.content == "sizeof":
+					obj = CSizeofSymbol()
+				else:
+					obj = findObjInNamespace(stateStruct, self.parent, token.content)
+					if obj is None:
+						stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
+						obj = CUnknownType(name=token.content)
 				self._state = 7
 			elif isinstance(token, (CNumber,CStr,CChar)):
 				obj = token
