@@ -546,6 +546,8 @@ def cpreprocess_evaluate_single(state, arg):
 	if arg == "": return None
 	try: return int(arg) # is integer?
 	except: pass
+	try: return long(arg) # is long?
+	except: pass
 	try: return int(arg, 16) # is hex?
 	except: pass
 	if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"': return arg[1:-1] # is string?
@@ -713,7 +715,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							neweval = macroname in stateStruct.macros
 					else:
 						if not is_valid_defname(macroname):
-							stateStruct.error("preprocessor eval call: '" + macroname + "' is not a valid macro name")
+							stateStruct.error("preprocessor eval call: '" + macroname + "' is not a valid macro name in " + repr(condstr))
 							return
 						if arg not in stateStruct.macros:
 							stateStruct.error("preprocessor eval call: '" + macroname + "' is unknown")
