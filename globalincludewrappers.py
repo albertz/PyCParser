@@ -98,6 +98,7 @@ class Wrapper:
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state): pass
+	def handle_signal_h(self, state): pass
 
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
