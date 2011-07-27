@@ -2286,7 +2286,7 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 		if isinstance(token, CClosingBracket):
 			if token.brackets == bracketLevel:
 				return
-			if not _isBracketLevelOk(bracketlevel, token.brackets):
+			if not _isBracketLevelOk(bracketLevel, token.brackets):
 				stateStruct.error("cpre3 parse func pointer name: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
 
 		if state == 0:
