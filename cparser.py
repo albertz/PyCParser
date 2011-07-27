@@ -297,12 +297,16 @@ class CType:
 	def __hash__(self): return hash(self.__class__) + 31 * hash(tuple(sorted(self.__dict__.iteritems())))
 	def getCType(self, stateStruct):
 		raise NotImplementedError, str(self) + " getCType is not implemented"
+	def asCCode(self, indent=""):
+		raise NotImplementedError, str(self) + " asCCode not implemented"
 
-class CUnknownType(CType): pass
+class CUnknownType(CType):
+	def asCCode(self, indent=""): return indent + "/* unknown */ int"
 class CVoidType(CType):
 	def __repr__(self): return "void"
 	def getCType(self, stateStruct): return None
-
+	def asCCode(self, indent=""): return indent + "void"
+	
 class CPointerType(CType):
 	def __init__(self, ptr): self.pointerOf = ptr
 	def getCType(self, stateStruct):
@@ -313,19 +317,23 @@ class CPointerType(CType):
 		except Exception, e:
 			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
 		return ctypes.c_void_p
+	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
 class CBuiltinType(CType):
 	def __init__(self, builtinType): self.builtinType = builtinType
 	def getCType(self, stateStruct): return getCType(self.builtinType, stateStruct)
-
+	def asCCode(self, indent=""): return indent + " ".join(self.builtinType)
+	
 class CStdIntType(CType):
 	def __init__(self, name): self.name = name
 	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
+	def asCCode(self, indent=""): return indent + self.name
 
 class CTypedefType(CType):
 	def __init__(self, name): self.name = name
 	def getCType(self, stateStruct):
 		return getCType(stateStruct.typedefs[self.name], stateStruct)
+	def asCCode(self, indent=""): return indent + self.name
 		
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
@@ -1136,20 +1144,20 @@ class _CBase:
 	def __ne__(self, other):
 		return not self == other
 	def __hash__(self): return hash(self.__class__) + 31 * hash(self.content)
-	def asCCode(self): return self.content
+	def asCCode(self, indent=""): return indent + self.content
 
 class CStr(_CBase):
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
-	def asCCode(self): return '"' + escape_cstr(self.content) + '"'
+	def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
 class CChar(_CBase):
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
-	def asCCode(self): return "'" + escape_cstr(self.content) + '"'
+	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
 class CNumber(_CBase):
-	def asCCode(self): return self.rawstr
+	def asCCode(self, indent=""): return indent + self.rawstr
 class CIdentifier(_CBase): pass
 class COp(_CBase): pass
 class CSemicolon(_CBase):
-	def asCCode(self): return ";"	
+	def asCCode(self, indent=""): return indent + ";"	
 class COpeningBracket(_CBase): pass
 class CClosingBracket(_CBase): pass
 
@@ -1398,7 +1406,21 @@ class CBody:
 		self.contentlist = []
 	def __str__(self): return str(self.contentlist)
 	def __repr__(self): return "<CBody " + str(self) + ">"
-
+	def asCCode(self, indent=""):
+		s = indent + "{\n"
+		for c in self.contentlist:
+			s += asCCode(c, indent + "\t", fullDecl=True) + ";\n"
+		s += indent + "}"
+		return s
+	
+class CEnumBody(CBody):
+	def asCCode(self, indent=""):
+		s = indent + "{\n"
+		for c in self.contentlist:
+			s += asCCode(c, indent + "\t") + ",\n"
+		s += indent + "}"
+		return s
+		
 def findIdentifierInBody(body, name):
 	if name in body.enumconsts:
 		return body.enumconsts[name]
@@ -1421,6 +1443,16 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 		t = None
 	return t
 
+def asCCode(stmnt, indent="", fullDecl=False):
+	if not fullDecl:
+		if isinstance(stmnt, CFunc): return indent + stmnt.name
+		if isinstance(stmnt, CStruct): return indent + "struct " + stmnt.name
+		if isinstance(stmnt, CUnion): return indent + "union " + stmnt.name
+		if isinstance(stmnt, CEnum): return indent + "enum " + stmnt.name
+	if hasattr(stmnt, "asCCode"):
+		return stmnt.asCCode(indent)
+	assert False, "don't know how to handle " + str(stmnt)
+	
 class _CBaseWithOptBody:
 	NameIsRelevant = True
 	AutoAddToContent = True
@@ -1524,6 +1556,9 @@ class _CBaseWithOptBody:
 			if c.name == attrib: return c
 		return None
 	
+	def asCCode(self, indent=""):
+		raise NotImplementedError, str(self) + " asCCode not implemented"
+	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
 		if self._finalized:
@@ -1542,6 +1577,8 @@ class CTypedef(_CBaseWithOptBody):
 
 		self.parent.body.typedefs[self.name] = self.type
 	def getCType(self, stateStruct): return getCType(self.type, stateStruct)
+	def asCCode(self, indent=""):
+		return indent + "typedef\n" + asCCode(self.type, indent, fullDecl=True) + " " + self.name
 	
 class CFuncPointerDecl(_CBaseWithOptBody):
 	def finalize(self, stateStruct, addToContent=None):
@@ -1559,7 +1596,9 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		restype = getCType(self.type, stateStruct)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
-		
+	def asCCode(self, indent=""):
+		return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
+
 def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToContent=None):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
@@ -1595,13 +1634,25 @@ class CFunc(_CBaseWithOptBody):
 		restype = getCType(self.type, stateStruct)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
-		
+	def asCCode(self, indent=""):
+		s = indent + asCCode(self.type) + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
+		if self.body is None: return s
+		s += "\n"
+		s += asCCode(self.body, indent)
+		return s
+
 class CVarDecl(_CBaseWithOptBody):
 	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="vars", **kwargs)
 	def clearDeclForNextVar(self):
 		if hasattr(self, "bitsize"): delattr(self, "bitsize")
 		while self._type_tokens and self._type_tokens[-1] in ("*",):
 			self._type_tokens.pop()
+	def asCCode(self, indent=""):
+		s = indent + asCCode(self.type) + " " + self.name
+		if self.body is None: return s
+		s += " = "
+		s += asCCode(self.body)
+		return s
 	
 def wrapCTypeClassIfNeeded(t):
 	if t.__base__ is _ctypes._SimpleCData: return wrapCTypeClass(t)
@@ -1640,11 +1691,19 @@ class CStruct(_CBaseWithOptBody):
 	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Structure, self, stateStruct)
-
+	def asCCode(self, indent=""):
+		s = indent + "struct " + self.name
+		if self.body is None: return s
+		return s + "\n" + asCCode(self.body, indent)
+		
 class CUnion(_CBaseWithOptBody):
 	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="unions", **kwargs)
 	def getCType(self, stateStruct):
 		return _getCTypeStruct(ctypes.Union, self, stateStruct)
+	def asCCode(self, indent=""):
+		s = indent + "union " + self.name
+		if self.body is None: return s
+		return s + "\n" + asCCode(self.body, indent)
 
 def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True):
 	if b is None: b = a
@@ -1688,6 +1747,10 @@ class CEnum(_CBaseWithOptBody):
 			if hasattr(EnumType, c.name): continue
 			setattr(EnumType, c.name, c.value)
 		return EnumType
+	def asCCode(self, indent=""):
+		s = indent + "enum " + self.name
+		if self.body is None: return s
+		return s + "\n" + asCCode(self.body, indent)
 	
 class CEnumConst(_CBaseWithOptBody):
 	def finalize(self, stateStruct, addToContent=None):
@@ -1709,6 +1772,8 @@ class CEnumConst(_CBaseWithOptBody):
 			self.parent.parent.body.enumconsts[self.name] = self
 	def getConstValue(self, stateStruct):
 		return self.value
+	def asCCode(self, indent=""):
+		return indent + self.name + " = " + str(self.value)
 	
 class CFuncArgDecl(_CBaseWithOptBody):
 	AutoAddToContent = False	
@@ -1724,7 +1789,11 @@ class CFuncArgDecl(_CBaseWithOptBody):
 			self.parent.args += [self]
 	def getCType(self, stateStruct):
 		return getCType(self.type, stateStruct)
-
+	def asCCode(self, indent=""):
+		s = indent + asCCode(self.type)
+		if self.name: s += " " + self.name
+		return s
+	
 def _isBracketLevelOk(parentLevel, curLevel):
 	if parentLevel is None: parentLevel = []
 	if len(parentLevel) > len(curLevel): return False
@@ -1791,10 +1860,18 @@ class _CStatementCall(_CBaseWithOptBody):
 			s += " args: " + str(self.args)
 		return s
 	
-class CFuncCall(_CStatementCall): pass # base(args) or (base)args; i.e. can also be a simple cast
-class CArrayIndexRef(_CStatementCall): pass # base[args]
-class CAttribAccessRef(_CStatementCall): pass # base.name
-class CPtrAccessRef(_CStatementCall): pass # base->name
+class CFuncCall(_CStatementCall): # base(args) or (base)args; i.e. can also be a simple cast
+	def asCCode(self, indent=""):
+		return indent + asCCode(self.base) + "(" + ", ".join(map(asCCode, self.args)) + ")"
+class CArrayIndexRef(_CStatementCall): # base[args]
+	def asCCode(self, indent=""):
+		return indent + asCCode(self.base) + "[" + ", ".join(map(asCCode, self.args)) + "]"
+class CAttribAccessRef(_CStatementCall): # base.name
+	def asCCode(self, indent=""):
+		return indent + asCCode(self.base) + "." + self.name
+class CPtrAccessRef(_CStatementCall): # base->name
+	def asCCode(self, indent=""):
+		return indent + asCCode(self.base) + "->" + self.name
 
 def _create_cast_call(stateStruct, parent, base, token):
 	funcCall = CFuncCall(parent=parent)
@@ -1837,6 +1914,8 @@ class CSizeofSymbol: pass
 class CArrayArgs(_CBaseWithOptBody):
 	# args is a list of CStatement
 	NameIsRelevant = False
+	def asCCode(self, indent=""):
+		return indent + "{" + ", ".join(map(asCCode, self.args)) + "}"
 
 class CStatement(_CBaseWithOptBody):
 	NameIsRelevant = False
@@ -2169,8 +2248,19 @@ class CStatement(_CBaseWithOptBody):
 	def getCType(self, stateStruct):
 		return getCType(self.asType(), stateStruct)
 
+	def asCCode(self, indent=""):
+		if self._leftexpr is None: # prefixed only
+			return indent + "(" + self._op.content + asCCode(self._rightexpr) + ")"
+		if self._op is None or self._rightexpr is None:
+			return indent + asCCode(self._leftexpr) # no brackets. we do them outside
+		if self._op == COp("?:"):
+			return indent + "(" + asCCode(self._leftexpr) + " ? " + asCCode(self._middleexpr) + " : " + asCCode(self._rightexpr) + ")"
+		return indent + "(" + asCCode(self._leftexpr) + " " + self._op.content + " " + asCCode(self._rightexpr) + ")"
+
 # only real difference is that this is inside of '[]'
-class CArrayStatement(CStatement): pass
+class CArrayStatement(CStatement):
+	def asCCode(self, indent=""):
+		return indent + "[" + CStatement.asCCode(self) + "]"
 	
 def cpre3_parse_struct(stateStruct, curCObj, input_iter):
 	curCObj.body = CBody(parent=curCObj.parent.body)
@@ -2223,7 +2313,7 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 	stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))	
 
 def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
-	parentCObj.body = CBody(parent=parentCObj.parent.body)
+	parentCObj.body = CEnumBody(parent=parentCObj.parent.body)
 	curCObj = CEnumConst(parent=parentCObj)
 	valueStmnt = None
 	state = 0
@@ -2458,7 +2548,11 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 
 class CCodeBlock(_CBaseWithOptBody):
 	NameIsRelevant = False
-class CGotoLabel(_CBaseWithOptBody): pass
+	def asCCode(self, indent=""):
+		return asCCode(self.body, indent)
+class CGotoLabel(_CBaseWithOptBody):
+	def asCCode(self, indent=""):
+		return indent + self.name + ":"
 
 def _getLastCBody(base):
 	last = None
@@ -2489,6 +2583,13 @@ class _CControlStructure(_CBaseWithOptBody):
 		("body", None, None, lambda x: "<...>"),
 		("defPos", None, "@", str),
 	]
+	def asCCode(self, indent=""):
+		s = indent + self.Keyword
+		if self.args: s += "(" + "; ".join(map(asCCode, self.args)) + ")"
+		if self.body: s += "\n" + asCCode(self.body, indent)
+		if hasattr(self, "whilePart"): s += "\n" + asCCode(self.whilePart, indent)
+		if hasattr(self, "elsePart"): s += "\n" + asCCode(self.elsePart, indent)
+		return s
 class CForStatement(_CControlStructure):
 	Keyword = "for"
 class CDoStatement(_CControlStructure):
