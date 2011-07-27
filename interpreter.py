@@ -625,12 +625,20 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				return makeAstNodeCall(astCast, astVoidP, aTypeAst), aType
 			else:
 				return makeAstNodeCall(aTypeAst, bValueAst), aType
+		elif isinstance(stmnt.base, CStatement):
+			# func ptr call
+			a = ast.Call(keywords=[], starargs=None, kwargs=None)
+			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
+			assert isinstance(pType, CFuncPointerDecl)
+			a.func = getAstNode_valueFromObj(pAst, pType)
+			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			return a, pType.type
 		elif isinstance(stmnt.base, CWrapValue):
 			# expect that we just wrapped a callable function/object
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt.base), "value")
 			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.base.returnType
+			return a, stmnt.base.returnType			
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
@@ -705,8 +713,14 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content == "--":
 			return getAstNode_prefixDec(rightAstNode, rightType), rightType
 		elif stmnt._op.content == "*":
-			assert isinstance(rightType, CPointerType)
-			return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
+			while isinstance(rightType, CTypedefType):
+				rightType = funcEnv.globalScope.stateStruct.typedefs[rightType.name]
+			if isinstance(rightType, CPointerType):
+				return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
+			elif isinstance(rightType, CFuncPointerDecl):
+				return rightAstNode, rightType # we cannot really dereference a funcptr with ctypes ...
+			else:
+				assert False, str(stmnt) + " has bad type " + str(rightType)
 		elif stmnt._op.content == "&":
 			return makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode), CPointerType(rightType)
 		elif stmnt._op.content in OpUnary:
