@@ -26,5 +26,13 @@ int main(int argc, char** argv) {
 		} while(i < 10);
 	}
 	
+	{
+		int i = 0;
+		int y = 0;
+		y = (y ? i + 1 : 0);
+		y = (argv[i+1] != 0 ? i+1 : 0);
+		y = (argv[i+1] != NULL ? i+1 : 0);
+	}
+	
 	return 0;
 }
