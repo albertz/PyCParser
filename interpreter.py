@@ -185,6 +185,9 @@ class FuncEnv:
 		self.astNode = ast.FunctionDef(
 			args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
 			body=[], decorator_list=[])
+	def __repr__(self):
+		try: return "<" + self.__class__.__name__ + " of " + self.astNode.name + ">"
+		except: return "<" + self.__class__.__name__ + " in invalid state>"			
 	def _registerNewVar(self, varName, varDecl):
 		if varDecl is not None:
 			assert id(varDecl) not in self.varNames
