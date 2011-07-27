@@ -25,6 +25,7 @@ Interpreters:
 * [CINT](http://root.cern.ch/drupal/content/cint). Probably the most famous one.
 * [Ch](http://www.softintegration.com/). Is not really free.
 * [ups debugger](http://ups.sourceforge.net/main.html).
+* [PicoC](http://code.google.com/p/picoc/). "A very small C interpreter."
 
 Why this project?
 -----------------
