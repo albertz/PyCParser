@@ -797,8 +797,25 @@ def astForCFor(funcEnv, stmnt):
 	return PyAstNoOp
 
 def astForCDoWhile(funcEnv, stmnt):
-	# TODO
-	return PyAstNoOp
+	assert isinstance(stmnt, CDoStatement)
+	assert stmnt.body is not None
+	assert isinstance(stmnt.whilePart, CWhileStatement)
+	assert stmnt.whilePart.body is None
+	assert len(stmnt.args) == 0
+	assert len(stmnt.whilePart.args) == 1
+	assert isinstance(stmnt.whilePart.args[0], CStatement)
+	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+	
+	funcEnv.pushScope(whileAst.body)
+	cCodeToPyAstList(funcEnv, stmnt.body)
+	if not whileAst.body: whileAst.body.append(ast.Pass())
+	funcEnv.popScope()
+
+	ifAst = ast.If(body=[ast.Continue()], orelse=[ast.Break()])
+	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.whilePart.args[0]))
+	whileAst.body.append(ifAst)
+	
+	return whileAst
 
 def astForCIf(funcEnv, stmnt):
 	assert isinstance(stmnt, CIfStatement)
