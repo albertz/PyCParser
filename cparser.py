@@ -2001,7 +2001,7 @@ class CStatement(_CBaseWithOptBody):
 					stateStruct.error("statement parsing: " + TName + " '" + token.content + "' unknown")
 					obj = CUnknownType(name=token.content)
 				self._leftexpr = obj
-				self._state = 10
+				self._state = 5
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
 		elif self._state == 5: # after expr
