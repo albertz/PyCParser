@@ -781,20 +781,22 @@ PyAstNoOp = ast.Assert(test=ast.Name(id="True", ctx=ast.Load()), msg=None)
 
 def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CWhileStatement)
-	assert stmnt.body is not None
 	assert len(stmnt.args) == 1
 	assert isinstance(stmnt.args[0], CStatement)
+
 	whileAst = ast.While(body=[], orelse=[])
 	whileAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+
 	funcEnv.pushScope(whileAst.body)
-	cCodeToPyAstList(funcEnv, stmnt.body)
+	if stmnt.body is not None:
+		cCodeToPyAstList(funcEnv, stmnt.body)
 	if not whileAst.body: whileAst.body.append(ast.Pass())
 	funcEnv.popScope()
+
 	return whileAst
 
 def astForCFor(funcEnv, stmnt):
 	assert isinstance(stmnt, CForStatement)
-	assert stmnt.body is not None
 	assert len(stmnt.args) == 3
 	assert isinstance(stmnt.args[1], CStatement) # second arg is the check; we must be able to evaluate that
 
@@ -810,8 +812,9 @@ def astForCFor(funcEnv, stmnt):
 	ifTestAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[1]))
 	whileAst.body.append(ifTestAst)
 	
-	funcEnv.pushScope(whileAst.body)	
-	cCodeToPyAstList(funcEnv, stmnt.body)
+	funcEnv.pushScope(whileAst.body)
+	if stmnt.body is not None:
+		cCodeToPyAstList(funcEnv, stmnt.body)
 	cStatementToPyAst(funcEnv, stmnt.args[2])	
 	funcEnv.popScope() # whileAst / main for-body
 	
@@ -820,7 +823,6 @@ def astForCFor(funcEnv, stmnt):
 
 def astForCDoWhile(funcEnv, stmnt):
 	assert isinstance(stmnt, CDoStatement)
-	assert stmnt.body is not None
 	assert isinstance(stmnt.whilePart, CWhileStatement)
 	assert stmnt.whilePart.body is None
 	assert len(stmnt.args) == 0
@@ -829,7 +831,8 @@ def astForCDoWhile(funcEnv, stmnt):
 	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	
 	funcEnv.pushScope(whileAst.body)
-	cCodeToPyAstList(funcEnv, stmnt.body)
+	if stmnt.body is not None:
+		cCodeToPyAstList(funcEnv, stmnt.body)
 	funcEnv.popScope()
 
 	ifAst = ast.If(body=[ast.Continue()], orelse=[ast.Break()])
@@ -840,14 +843,15 @@ def astForCDoWhile(funcEnv, stmnt):
 
 def astForCIf(funcEnv, stmnt):
 	assert isinstance(stmnt, CIfStatement)
-	assert stmnt.body is not None
 	assert len(stmnt.args) == 1
 	assert isinstance(stmnt.args[0], CStatement)
 
 	ifAst = ast.If(body=[], orelse=[])
 	ifAst.test = getAstNode_valueFromObj(*astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+
 	funcEnv.pushScope(ifAst.body)
-	cCodeToPyAstList(funcEnv, stmnt.body)
+	if stmnt.body is not None:
+		cCodeToPyAstList(funcEnv, stmnt.body)
 	if not ifAst.body: ifAst.body.append(ast.Pass())
 	funcEnv.popScope()
 	
