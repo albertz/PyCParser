@@ -124,6 +124,11 @@ OpBinFuncs = {
 def simple_escape_char(c):
 	if c == "n": return "\n"
 	elif c == "t": return "\t"
+	elif c == "a": return "\a"
+	elif c == "b": return "\b"
+	elif c == "f": return "\f"
+	elif c == "r": return "\r"
+	elif c == "v": return "\v"
 	elif c == "0": return "\0"
 	elif c == "\n": return "\n"
 	elif c == '"': return '"'
