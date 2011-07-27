@@ -1590,14 +1590,14 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 			d.append(obj)
 
 class CFunc(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="funcs")
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="funcs", **kwargs)
 	def getCType(self, stateStruct):
 		restype = getCType(self.type, stateStruct)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 		
 class CVarDecl(_CBaseWithOptBody):
-	finalize = lambda *args: _finalizeBasicType(*args, dictName="vars")	
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="vars", **kwargs)
 	def clearDeclForNextVar(self):
 		if hasattr(self, "bitsize"): delattr(self, "bitsize")
 		while self._type_tokens and self._type_tokens[-1] in ("*",):
