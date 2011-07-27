@@ -1893,8 +1893,6 @@ def _create_cast_call(stateStruct, parent, base, token):
 	return funcCall
 
 def opsDoLeftToRight(stateStruct, op1, op2):
-	if op1 == "?": return False
-	
 	try: opprec1 = OpPrecedences[op1]
 	except:
 		stateStruct.error("internal error: statement parsing: op1 " + repr(op1) + " unknown")
