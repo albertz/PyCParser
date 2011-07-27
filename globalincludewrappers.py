@@ -98,8 +98,11 @@ class Wrapper:
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state): pass
-	def handle_signal_h(self, state): pass
-
+	def handle_signal_h(self, state):
+		wrapCFunc(state, "signal")
+		state.macros["SIGINT"] = Macro(rightside="2")
+		state.macros["SIG_DFL"] = Macro(rightside="(void (*)(int))0")
+		
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
 		return getattr(self, funcname, None)
