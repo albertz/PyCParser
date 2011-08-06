@@ -57,7 +57,10 @@ class Wrapper:
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
 		wrapCFunc(state, "fgets", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_int, FileP))
+		wrapCFunc(state, "fread", restype=ctypes.c_size_t, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, FileP))		
 		wrapCFunc(state, "fflush", restype=ctypes.c_int, argtypes=(FileP,))
+		wrapCFunc(state, "ftell", restype=ctypes.c_long, argtypes=(FileP,))
+		wrapCFunc(state, "rewind", restype=CVoidType, argtypes=(FileP,))
 		state.vars["errno"] = CWrapValue(0) # TODO
 		state.macros["EOF"] = Macro(rightside="-1") # TODO?
 		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
