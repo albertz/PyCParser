@@ -434,6 +434,7 @@ class State:
 	
 	def autoSetupSystemMacros(self):
 		import sys
+		self.macros["__attribute__"] = Macro(args=("x",), rightside="")
 		self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
 		self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
 		if sys.platform == "darwin":
