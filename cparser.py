@@ -1965,9 +1965,29 @@ class CStatement(_CBaseWithOptBody):
 	def overtake(cls, obj):
 		obj.__class__ = cls
 		obj._initStatement()
+	def _handlePushedErrorForUnknown(self, stateStruct):
+		if isinstance(self._leftexpr, CUnknownType):
+			s = getattr(self, "_pushedErrorForUnknown", False)
+			if not s:
+				stateStruct.error("statement parsing: identifier '" + self._leftexpr.name + "' unknown")
+				self._pushedErrorForUnknown = True
+	def finalize(self, stateStruct, addToContent=None):
+		self._handlePushedErrorForUnknown(stateStruct)
+		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 	def _cpre3_handle_token(self, stateStruct, token):
 		self._tokens += [token]
 		
+		if self._state == 5 and token == COp(":"):
+			if isinstance(self._leftexpr, CUnknownType):
+				CGotoLabel.overtake(self)
+				self.name = self._leftexpr.name
+				self._type_tokens[:] = []
+			else:
+				stateStruct.error("statement parsing: got ':' after " + repr(self._leftexpr) + "; looks like a goto-label but is not")
+			self.finalize(stateStruct)
+			return
+
+		self._handlePushedErrorForUnknown(stateStruct)
 		obj = None
 		if self._state == 0:
 			if isinstance(token, (CIdentifier,CNumber,CStr,CChar)):
@@ -1986,8 +2006,9 @@ class CStatement(_CBaseWithOptBody):
 					else:
 						obj = findObjInNamespace(stateStruct, self.parent, token.content)
 						if obj is None:
-							stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
 							obj = CUnknownType(name=token.content)
+							self._pushedErrorForUnknown = False
+							# we print an error later. it still could be a goto-label.
 				else:
 					obj = token
 				self._leftexpr = obj
@@ -2138,7 +2159,10 @@ class CStatement(_CBaseWithOptBody):
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr) + " in state " + str(self._state))
 		else:
 			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
+
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
+		self._handlePushedErrorForUnknown(stateStruct)
+
 		if self._state == 0 and openingBracketToken.content == "{": # array args
 			arrayArgs = CArrayArgs(parent=self)
 			arrayArgs._bracketlevel = list(openingBracketToken.brackets)
@@ -3005,6 +3029,8 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				CStatement.overtake(curCObj)
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
+				if curCObj._finalized: # might have been finalized internally. e.g. in case it was a goto-loop
+					curCObj = _CBaseWithOptBody(parent=parentCObj)					
 			elif isinstance(curCObj.body, CStatement) and token.content != ",": # op(,) gets some extra handling. eg for CVarDecl
 				curCObj.body._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj, CCaseStatement):
@@ -3044,12 +3070,6 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				elif token.content == ":" and curCObj and curCObj._type_tokens and curCObj.name:
 					CVarDecl.overtake(curCObj)
 					curCObj.bitsize = None
-				elif token.content == ":" and len(curCObj._type_tokens) == 1 and isinstance(curCObj._type_tokens[0], (str,unicode)) and not curCObj.isDerived():
-					CGotoLabel.overtake(curCObj)
-					curCObj.name = curCObj._type_tokens[0]
-					curCObj._type_tokens[:] = []
-					curCObj.finalize(stateStruct)
-					curCObj = _CBaseWithOptBody(parent=parentCObj)					
 				elif token.content == "=" and curCObj and (isinstance(curCObj, CVarDecl) or not curCObj.isDerived()):
 					if not curCObj.isDerived():
 						CVarDecl.overtake(curCObj)
