@@ -2100,7 +2100,7 @@ class CStatement(_CBaseWithOptBody):
 		elif self._state == 8: # right-to-left chain, pull down
 			assert isinstance(self._rightexpr, CStatement)
 			self._rightexpr._cpre3_handle_token(stateStruct, token)
-			if self._rightexpr._state in (5,7):
+			if self._rightexpr._state in (5,7,9):
 				self._state = 9
 		elif self._state == 9: # right-to-left chain after op + expr
 			assert isinstance(self._rightexpr, CStatement)
