@@ -72,7 +72,7 @@ class Wrapper:
 		struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
 		struct_stat.body = CBody(parent=struct_stat)
 		CVarDecl(parent=struct_stat, name="st_mode", type=ctypes.c_int).finalize(state)
-		state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=CVoidType()) # TODO
+		state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int) # TODO
 		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
 		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 	def handle_stdlib_h(self, state):
