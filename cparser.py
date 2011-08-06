@@ -598,7 +598,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						state = 10
 						breakLoop = False
 				elif c == ")":
-					stateStruct.error("preprocessor: runaway ')'")
+					stateStruct.error("preprocessor: runaway ')' in " + repr(condstr))
 					return
 				elif c in SpaceChars:
 					if laststr == "defined": state = 5 
@@ -792,13 +792,29 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							if OpPrecedences[opstr] >= 6: # +,-,==, etc
 								# WARNING/HACK: guess that the following has lower or equal precedence :)
 								# HACK: add "()"
-								for j in xrange(i, len(condstr)):
+								j = i
+								while j < len(condstr):
+									if condstr[j] == "'":
+										j += 1
+										while j < len(condstr):
+											if condstr[j] == "'": break
+											if condstr[j] == "\\": j += 1
+											j += 1
+										continue
+									if condstr[j] == '"':
+										j += 1
+										while j < len(condstr):
+											if condstr[j] == '"': break
+											if condstr[j] == "\\": j += 1
+											j += 1
+										continue
 									if condstr[j] in OpChars:
 										while j < len(condstr) and condstr[j] in OpChars:
 											j += 1
 										if j < len(condstr):
 											condstr = condstr[:j] + "(" + condstr[j:] + ")"
 										break
+									j += 1
 						elif opstr in OpPrefixFuncs:
 							newprefixop = OpPrefixFuncs[opstr]
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
