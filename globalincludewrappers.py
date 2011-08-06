@@ -116,6 +116,8 @@ class Wrapper:
 		wrapCFunc(state, "signal")
 		state.macros["SIGINT"] = Macro(rightside="2")
 		state.macros["SIG_DFL"] = Macro(rightside="(void (*)(int))0")
+		state.macros["SIG_IGN"] = Macro(rightside="(void (*)(int))1")
+		state.macros["SIG_ERR"] = Macro(rightside="((void (*)(int))-1)")
 		
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
