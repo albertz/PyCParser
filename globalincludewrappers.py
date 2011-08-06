@@ -109,7 +109,9 @@ class Wrapper:
 	def handle_time_h(self, state): pass
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
-	def handle_assert_h(self, state): pass
+	def handle_assert_h(self, state):
+		def assert_wrap(x): assert x
+		state.funcs["assert"] = CWrapValue(assert_wrap)
 	def handle_signal_h(self, state):
 		wrapCFunc(state, "signal")
 		state.macros["SIGINT"] = Macro(rightside="2")
