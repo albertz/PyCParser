@@ -90,6 +90,9 @@ def set_linecache(filename, source):
 	import linecache
 	linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 
+if "raw_input" not in globals():
+	raw_input = input
+
 def simple_debug_shell(globals, locals):
 	try: import readline
 	except: pass # ignore
@@ -98,24 +101,24 @@ def simple_debug_shell(globals, locals):
 		try:
 			s = raw_input("> ")
 		except:
-			print "breaked debug shell:", sys.exc_info()[0].__name__
+			print("breaked debug shell: " + sys.exc_info()[0].__name__)
 			break
 		try:
 			c = compile(s, COMPILE_STRING_FN, "single")
-		except Exception, e:
-			print e.__class__.__name__, ":", str(e), "in", repr(s)
+		except Exception as e:
+			print("%s : %s in %r" % (e.__class__.__name__, str(e), s))
 		else:
 			set_linecache(COMPILE_STRING_FN, s)
 			try:
-				ret = eval(c, globals=globals, locals=locals)
+				ret = eval(c, globals, locals)
 			except:
-				print "Error executing", repr(s)
+				print("Error executing %r" % s)
 				better_exchook(*sys.exc_info(), autodebugshell=False)
 			else:
 				try:
-					if ret is not None: print ret
+					if ret is not None: print(ret)
 				except:
-					print "Error printing return value of", repr(s)
+					print("Error printing return value of %r" % s)
 					better_exchook(*sys.exc_info(), autodebugshell=False)
 		
 def debug_shell(user_ns, user_global_ns):
@@ -130,7 +133,7 @@ def debug_shell(user_ns, user_global_ns):
 	else:
 		simple_debug_shell(user_global_ns, user_ns)						
 
-def output(s): print s
+def output(s): print(s)
 
 def output_limit():
 	return 300
@@ -192,7 +195,7 @@ def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 			if old is not None: return old
 			try: return prefix + func()
 			except KeyError: return old
-			except Exception, e:
+			except Exception as e:
 				return prefix + "!" + e.__class__.__name__ + ": " + str(e)
 		while _tb is not None and (limit is None or n < limit):
 			f = _tb.tb_frame
@@ -232,7 +235,7 @@ def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 			_tb = _tb.tb_next
 			n += 1
 
-	except Exception, e:
+	except Exception as e:
 		output("ERROR: cannot get more detailed exception info because:")
 		import traceback
 		for l in traceback.format_exc().split("\n"): output("   " + l)
@@ -251,7 +254,7 @@ def better_exchook(etype, value, tb, debugshell=False, autodebugshell=True):
 			line = "%s: %s" % (etype, valuestr)
 		return line
 	if (isinstance(etype, BaseException) or
-		isinstance(etype, types.InstanceType) or
+		(hasattr(types, "InstanceType") and isinstance(etype, types.InstanceType)) or
 		etype is None or type(etype) is str):
 		output(_format_final_exc_line(etype, value))
 	else:
