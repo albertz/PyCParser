@@ -2,6 +2,8 @@
 # by Albert Zeyer, 2011
 # code under LGPL
 
+import ctypes
+
 class CStateDictWrapper:
 	def __init__(self, dicts):
 		self._dicts = dicts
@@ -30,7 +32,7 @@ class CStateDictWrapper:
 		return self.__contains__(k)
 	def __repr__(self): return "CStateDictWrapper(" + repr(self._dicts) + ")"
 	def __str__(self): return "CStateDictWrapper(" + str(self._dicts) + ")"
-	
+
 class CStateWrapper:
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
 	LocalAttribs = ("_cwrapper")
@@ -59,6 +61,11 @@ class CStateWrapper:
 		self.__dict__[k] = v
 	def __getstate__(self):
 		assert False, "this is not really prepared/intended to be pickled"
+
+def _castArg(value):
+	if isinstance(value, (str,unicode)):
+		return ctypes.cast(ctypes.c_char_p(value), ctypes.POINTER(ctypes.c_byte))
+	return value
 	
 class CWrapper:
 	def __init__(selfWrapper):
@@ -79,7 +86,7 @@ class CWrapper:
 		self.stateStructs.append(stateStruct)
 		def iterAllAttribs():
 			for attrib in stateStruct.macros:
-				if len(stateStruct.macros[attrib].args) > 0: continue
+				if stateStruct.macros[attrib].args is not None: continue
 				yield attrib
 			for attrib in stateStruct.typedefs:
 				yield attrib
@@ -98,12 +105,12 @@ class CWrapper:
 		wrappedStateStruct = self._wrappedStateStruct
 		for stateStruct in self.stateStructs:
 			attrib = _attrib
-			while attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
+			while attrib in stateStruct.macros and stateStruct.macros[attrib].args is None:
 				stateStruct.macros[attrib]._parseTokens(stateStruct)
 				resolvedMacro = stateStruct.macros[attrib].getSingleIdentifer(wrappedStateStruct)
 				if resolvedMacro is not None: attrib = str(resolvedMacro)
 				else: break
-			if attrib in stateStruct.macros and len(stateStruct.macros[attrib].args) == 0:
+			if attrib in stateStruct.macros and stateStruct.macros[attrib].args is None:
 				t = stateStruct.macros[attrib].getCValue(wrappedStateStruct)
 			elif attrib in stateStruct.typedefs:
 				t = stateStruct.typedefs[attrib].getCType(wrappedStateStruct)
@@ -111,7 +118,8 @@ class CWrapper:
 				t = stateStruct.enumconsts[attrib].value
 			elif attrib in stateStruct.funcs:
 				t = stateStruct.funcs[attrib].getCType(wrappedStateStruct)
-				t = t((attrib, stateStruct.clib))
+				f = t((attrib, stateStruct.clib))
+				t = lambda *args: f(*map(_castArg, args))			
 			else:
 				continue
 			cache[_attrib] = t

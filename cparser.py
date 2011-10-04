@@ -244,7 +244,10 @@ class Macro:
 		self.defPos = state.curPosAsStr() if state else "<unknown>"
 		self._tokens = None
 	def __str__(self):
-		return "(" + ", ".join(self.args) + ") -> " + self.rightside
+		if self.args is not None:
+			return "(" + ", ".join(self.args) + ") -> " + self.rightside
+		else:
+			return "_ -> " + self.rightside
 	def __repr__(self):
 		return "<Macro: " + str(self) + ">"
 	def eval(self, state, args):
@@ -258,7 +261,7 @@ class Macro:
 		return self.args == other.args and self.rightside == other.rightside
 	def __ne__(self, other): return not self == other
 	def _parseTokens(self, stateStruct):
-		assert len(self.args) == 0
+		assert self.args is None
 		if self._tokens is not None: return
 		preprocessed = stateStruct.preprocess(self.rightside, None, repr(self))
 		self._tokens = list(cpre2_parse(stateStruct, preprocessed))		
