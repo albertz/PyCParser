@@ -9,7 +9,7 @@ LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"
 OpChars = "&|=!+-*/%<>^~?:,."
-LongOps = map(lambda c: c+"=", "&|=+-*/%<>^~!") + ["--","++","->","<<",">>","&&","||","<<=",">>=","::",".*","->*"]
+LongOps = [c+"=" for c in  "&|=+-*/%<>^~!"] + ["--","++","->","<<",">>","&&","||","<<=",">>=","::",".*","->*"]
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
 
@@ -251,7 +251,7 @@ class Macro:
 	def __repr__(self):
 		return "<Macro: " + str(self) + ">"
 	def eval(self, state, args):
-		if len(args) != len(self.args or ()): raise TypeError, "invalid number of args (" + str(args) + ") for " + repr(self)
+		if len(args) != len(self.args or ()): raise TypeError("invalid number of args (" + str(args) + ") for " + repr(self))
 		func = parse_macro_def_rightside(state, self.args, self.rightside)
 		return func(*args)
 	def __call__(self, *args):
@@ -293,7 +293,7 @@ class Macro:
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType:
 	def __init__(self, **kwargs):
-		for k,v in kwargs.iteritems():
+		for k,v in kwargs.items():
 			setattr(self, k, v)
 	def __repr__(self):
 		return self.__class__.__name__ + " " + str(self.__dict__)
@@ -301,11 +301,11 @@ class CType:
 		if not hasattr(other, "__class__"): return False
 		return self.__class__ is other.__class__ and self.__dict__ == other.__dict__
 	def __ne__(self, other): return not self == other
-	def __hash__(self): return hash(self.__class__) + 31 * hash(tuple(sorted(self.__dict__.iteritems())))
+	def __hash__(self): return hash(self.__class__) + 31 * hash(tuple(sorted(self.__dict__.items())))
 	def getCType(self, stateStruct):
-		raise NotImplementedError, str(self) + " getCType is not implemented"
+		raise NotImplementedError(str(self) + " getCType is not implemented")
 	def asCCode(self, indent=""):
-		raise NotImplementedError, str(self) + " asCCode not implemented"
+		raise NotImplementedError(str(self) + " asCCode not implemented")
 
 class CUnknownType(CType):
 	def asCCode(self, indent=""): return indent + "/* unknown */ int"
@@ -321,7 +321,7 @@ class CPointerType(CType):
 			t = getCType(self.pointerOf, stateStruct)
 			ptrType = ctypes.POINTER(t)
 			return ptrType
-		except Exception, e:
+		except Exception as e:
 			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
 		return ctypes.c_void_p
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
@@ -359,7 +359,7 @@ def getCType(t, stateStruct):
 		return t.getCType(stateStruct)
 	if isinstance(t, CType):
 		return t.getCType(stateStruct)
-	raise Exception, str(t) + " cannot be converted to a C type"
+	raise Exception(str(t) + " cannot be converted to a C type")
 
 def isSameType(stateStruct, type1, type2):
 	ctype1 = getCType(type1, stateStruct)
@@ -497,7 +497,7 @@ class State:
 		try:
 			import codecs
 			f = codecs.open(fullfilename, "r", "utf-8")
-		except Exception, e:
+		except Exception as e:
 			self.error("cannot open local include-file '" + filename + "': " + str(e))
 			return "", None
 		
@@ -569,7 +569,7 @@ def cpreprocess_evaluate_single(state, arg):
 		return 0
 	try:
 		resolved = state.macros[arg]()
-	except Exception, e:
+	except Exception as e:
 		state.error("preprocessor eval single error on '" + arg + "': " + str(e))
 		return 0
 	return cpreprocess_evaluate_cond(state, resolved)
@@ -732,7 +732,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						macro = stateStruct.macros[macroname]
 						try:
 							resolved = macro.eval(stateStruct, args)
-						except Exception, e:
+						except Exception as e:
 							stateStruct.error("preprocessor eval call on '" + macroname + "': error " + str(e))
 							return
 						neweval = cpreprocess_evaluate_cond(stateStruct, resolved)
@@ -1170,7 +1170,7 @@ class _CBase:
 	def __init__(self, content=None, rawstr=None, **kwargs):
 		self.content = content
 		self.rawstr = rawstr
-		for k,v in kwargs.iteritems():
+		for k,v in kwargs.items():
 			setattr(self, k, v)
 	def __repr__(self):
 		if self.content is None: return "<" + self.__class__.__name__ + ">"
@@ -1201,19 +1201,19 @@ def cpre2_parse_number(stateStruct, s):
 	if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
 		try:
 			return long(s, 8)
-		except Exception, e:
+		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like octal but got error " + str(e))
 			return 0
 	if len(s) > 1 and s[0] == "0" and s[1] in "xX":
 		try:
 			return long(s, 16)
-		except Exception, e:
+		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
 			return 0
 	try:
 		s = s.rstrip("ULul")
 		return long(s)
-	except Exception, e:
+	except Exception as e:
 		stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
 		return 0
 
@@ -1368,7 +1368,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
 					for t in cpre2_parse(stateStruct, resolved, brackets):
 						yield t
-				except Exception, e:
+				except Exception as e:
 					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + str(e))
 				state = 0
 				breakLoop = False
@@ -1514,7 +1514,7 @@ class _CBaseWithOptBody:
 		self.body = None
 		self.value = None
 		self.parent = None
-		for k,v in kwargs.iteritems():
+		for k,v in kwargs.items():
 			setattr(self, k, v)
 			
 	@classmethod
@@ -1543,7 +1543,7 @@ class _CBaseWithOptBody:
 		return \
 			self.__class__.__name__ + " " + \
 			name + \
-			", ".join(map(lambda (a,b): a + ": " + str(b), l))
+			", ".join(map((lambda a: a[0] + ": " + str(a[1])), l))
 
 	def __repr__(self): return "<" + str(self) + ">"
 
@@ -1577,7 +1577,7 @@ class _CBaseWithOptBody:
 		return copy.deepcopy(self, memo={id(self.parent): self.parent})
 
 	def getCType(self, stateStruct):
-		raise Exception, str(self) + " cannot be converted to a C type"
+		raise Exception(str(self) + " cannot be converted to a C type")
 
 	def findAttrib(self, stateStruct, attrib):
 		if self.body is None:
@@ -1593,7 +1593,7 @@ class _CBaseWithOptBody:
 		return None
 	
 	def asCCode(self, indent=""):
-		raise NotImplementedError, str(self) + " asCCode not implemented"
+		raise NotImplementedError(str(self) + " asCCode not implemented")
 	
 class CTypedef(_CBaseWithOptBody):
 	def finalize(self, stateStruct):
@@ -1710,7 +1710,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 		if not isinstance(c, CVarDecl): continue
 		t = getCType(c.type, stateStruct)
 		if c.arrayargs:
-			if len(c.arrayargs) != 1: raise Exception, str(c) + " has too many array args"
+			if len(c.arrayargs) != 1: raise Exception(str(c) + " has too many array args")
 			n = c.arrayargs[0].value
 			t = t * n
 		elif stateStruct.IndirectSimpleCTypes:
@@ -1768,7 +1768,7 @@ class CEnum(_CBaseWithOptBody):
 		a,b = self.getNumRange()
 		t = minCIntTypeForNums(a, b)
 		if t is None:
-			raise Exception, str(self) + " has a too high number range " + str((a,b))
+			raise Exception(str(self) + " has a too high number range " + str((a,b)))
 		t = stateStruct.StdIntTypes[t]
 		class EnumType(t):
 			_typeStruct = self
@@ -2303,7 +2303,7 @@ class CStatement(_CBaseWithOptBody):
 			if self._op.content in ("*","&"):
 				t = CPointerType(t)
 			else:
-				raise Exception, "postfix op " + str(self._op) + " unknown for pointer type " + str(self._leftexpr)
+				raise Exception("postfix op " + str(self._op) + " unknown for pointer type " + str(self._leftexpr))
 		return t
 		
 	def getCType(self, stateStruct):
@@ -2950,7 +2950,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			if not curCObj:
 				stateStruct._cpre3_atBaseLevel = True
 
-		try: token = input_iter.next()
+		try: token = next(input_iter)
 		except StopIteration: break
 		
 		if isinstance(token, CIdentifier):

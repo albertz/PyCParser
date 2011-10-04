@@ -3,6 +3,7 @@
 # code under LGPL
 
 import ctypes
+from cparser_utils import *
 
 class CStateDictWrapper:
 	def __init__(self, dicts):
@@ -51,8 +52,7 @@ class CStateWrapper:
 		attr = getattr(stateStruct, k)
 		import types
 		if isinstance(attr, types.MethodType):
-			# rebound
-			attr = types.MethodType(attr.im_func, self, self.__class__)
+			attr = rebound_instance_method(attr, self)
 		return attr
 	def __repr__(self):
 		return "<CStateWrapper of " + repr(self._cwrapper) + ">"

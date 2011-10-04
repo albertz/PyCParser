@@ -14,8 +14,10 @@
 #     of all files and if everything matches, use the cache.
 
 import cparser
+from cparser_utils import *
 import os, os.path
 import types
+import sys
 
 # Note: It might make sense to make this somehow configureable.
 # However, for now, I'd like to keep things as simple as possible.
@@ -35,24 +37,32 @@ CACHING_DIR = os.path.expanduser("~/.cparser_caching/")
 def sha1(obj):
 	import hashlib
 	h = hashlib.sha1()
-	if isinstance(obj, (str,unicode)):
-		h.update(obj)
-	elif isinstance(obj, dict):
-		h.update("{")
-		for k,v in sorted(obj.iteritems()):
-			h.update(sha1(k))
-			h.update(":")
-			h.update(sha1(v))
-			h.update(",")
-		h.update("}")
-	elif isinstance(obj, (list,tuple)):
-		h.update("[")
-		for v in sorted(obj):
-			h.update(sha1(v))
-			h.update(",")
-		h.update("]")
+	if sys.version_info.major == 2:
+		def h_update(s): h.update(s)
 	else:
-		h.update(str(obj))
+		def h_update(s):
+			if isinstance(s, str): h.update(s.encode("utf-8"))
+			else: h.update(s)
+	if isinstance(obj, unicode):
+		h_update(obj.encode("utf-8"))
+	elif isinstance(obj, str):
+		h_update(obj)
+	elif isinstance(obj, dict):
+		h_update("{")
+		for k,v in sorted(obj.items()):
+			h_update(sha1(k))
+			h_update(":")
+			h_update(sha1(v))
+			h_update(",")
+		h_update("}")
+	elif isinstance(obj, (list,tuple)):
+		h_update("[")
+		for v in sorted(obj):
+			h_update(sha1(v))
+			h_update(",")
+		h_update("]")
+	else:
+		h_update(str(obj))
 	return h.hexdigest()
 
 class MyDict(dict):
@@ -74,7 +84,7 @@ class DbObj:
 	@classmethod
 	def Load(cls, key, create=False):
 		fn = cls.GetFilePath(key)
-		try: f = open(fn)
+		try: f = open(fn, "b")
 		except:
 			if create:
 				obj = cls()
@@ -95,7 +105,7 @@ class DbObj:
 		fn = self.GetFilePath(self._key)
 		try: os.makedirs(os.path.dirname(fn))
 		except: pass # ignore file-exists or other errors
-		f = open(fn, "w")
+		f = open(fn, "wb")
 		import pickle
 		pickle.dump(self, f)
 		f.close()
@@ -136,7 +146,7 @@ class FileCache(DbObj, MyDict):
 		obj.additions = cache_data.additions
 		return obj
 	def apply(self, stateStruct):
-		for k,l in self.additions.iteritems():
+		for k,l in self.additions.items():
 			a = getattr(stateStruct, k)
 			if isinstance(a, (list,StateListWrapper)):
 				a.extend(l)
@@ -182,7 +192,7 @@ def save_cache(cache_data, full_filename):
 def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	if not full_filename:
 		# shortcut. we cannot use caching if we don't have the full filename.
-		for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
+		for c in generic_class_method(cparser.State.preprocess)(stateStruct, reader, full_filename, filename):
 			yield c
 		return
 	
@@ -192,8 +202,8 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 			if cached_entry is not None:
 				cached_entry.apply(stateStruct)
 				return
-		except Exception, e:
-			print "(Safe to ignore) Error while reading C parser cache for", filename, ":", e
+		except Exception as e:
+			print("(Safe to ignore) Error while reading C parser cache for %s : %s" % (filename, str(e)))
 			# Try to delete old references if possible. Otherwise we might always hit this.
 			try: FileCacheRefs.Delete(full_filename)
 			except: pass
@@ -201,7 +211,7 @@ def State__cached_preprocess(stateStruct, reader, full_filename, filename):
 	assert isinstance(stateStruct, StateWrapper)
 	stateStruct.cache_pushLevel()
 	stateStruct._filenames.add(full_filename)
-	for c in cparser.State.preprocess.im_func(stateStruct, reader, full_filename, filename):
+	for c in generic_class_method(cparser.State.preprocess)(stateStruct, reader, full_filename, filename):
 		yield c
 	cache_data = stateStruct.cache_popLevel()
 	
@@ -229,7 +239,7 @@ class StateDictWrapper:
 		return self._dict[k]
 	def __contains__(self, k): return self.has_key(k)
 	def has_key(self, k):
-		haskey = self._dict.has_key(k)
+		haskey = self._dict.__contains__(k)
 		if haskey and self._accessSet is not None:
 			assert self._addSet is not None
 			if not k in self._addSet: # we only care about it if we didn't add it ourself
@@ -282,8 +292,7 @@ class StateWrapper:
 				return StateListWrapper(getattr(self._stateStruct, k), addList=self._additions[k])
 		attr = getattr(self._stateStruct, k)
 		if isinstance(attr, types.MethodType):
-			# rebound
-			attr = types.MethodType(attr.im_func, self, self.__class__)
+			attr = rebound_instance_method(attr, self)
 		return attr
 	def __repr__(self):
 		return "<StateWrapper of " + repr(self._stateStruct) + ">"
@@ -359,4 +368,4 @@ def test():
 	return state
 
 if __name__ == '__main__':
-	print test()
+	print(test())
