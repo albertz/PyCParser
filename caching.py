@@ -13,11 +13,15 @@
 #  when opening a new file, macro-dependencies, check the last change time
 #     of all files and if everything matches, use the cache.
 
-import cparser
-from cparser_utils import *
-import os, os.path
-import types
 import sys
+import os, os.path
+if sys.version_info.major == 2:
+	import cparser
+	from cparser_utils import *
+else:
+	from . import cparser
+	from .cparser_utils import *
+import types
 
 # Note: It might make sense to make this somehow configureable.
 # However, for now, I'd like to keep things as simple as possible.

@@ -3,7 +3,11 @@
 # code under LGPL
 
 import ctypes
-from cparser_utils import *
+import sys
+if sys.version_info.major == 2:
+	from cparser_utils import *
+else:
+	from .cparser_utils import *
 
 class CStateDictWrapper:
 	def __init__(self, dicts):
@@ -21,7 +25,7 @@ class CStateDictWrapper:
 		if found:
 			# fallback, noone has body set.
 			return found[0]
-		raise KeyError, str(k) + " not found in C wrapped state " + str(self)
+		raise KeyError(str(k) + " not found in C wrapped state " + str(self))
 	def __contains__(self, k):
 		for d in self._dicts:
 			if k in d: return True
@@ -47,7 +51,7 @@ class CStateWrapper:
 
 		# fallback to first stateStruct
 		if len(self._cwrapper.stateStructs) == 0:
-			raise AttributeError, "CStateWrapper " + str(self) + " doesn't have any state structs set yet"		
+			raise AttributeError("CStateWrapper " + str(self) + " doesn't have any state structs set yet")
 		stateStruct = self._cwrapper.stateStructs[0]
 		attr = getattr(stateStruct, k)
 		import types
@@ -125,7 +129,7 @@ class CWrapper:
 			cache[_attrib] = t
 			return t
 			
-		raise AttributeError, _attrib + " not found in " + str(self)
+		raise AttributeError(_attrib + " not found in " + str(self))
 	
 	def __repr__(self):
 		return "<" + self.__class__.__name__  + " of " + repr(self.stateStructs) + ">"
