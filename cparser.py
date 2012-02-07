@@ -1797,7 +1797,10 @@ class CEnumConst(_CBaseWithOptBody):
 		if self.value is None:
 			if self.parent.body.contentlist:
 				last = self.parent.body.contentlist[-1]
-				self.value = last.value + 1
+				if isinstance(last.value, (str,unicode)):
+					self.value = unichr(ord(last.value) + 1)
+				else:
+					self.value = last.value + 1
 			else:
 				self.value = 0
 
