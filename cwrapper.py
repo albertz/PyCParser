@@ -2,6 +2,7 @@
 # by Albert Zeyer, 2011
 # code under LGPL
 
+import cparser
 import ctypes
 import sys
 if sys.version_info.major == 2:
@@ -80,9 +81,12 @@ def _castArg(value):
 	
 class CWrapper:
 	__doc__ = """Provides easy access to symbols to be used by Python.
-	Functions are directly callable given the ctypes DLL.
+	Wrapped functions are directly callable given the ctypes DLL.
 	Use register() to register a new set of (parsed-header-state,dll).
-	Use get() to get a symbol.
+	Use get() to get a symbol-ref (cparser type).
+	Use getWrapped() to get a wrapped symbol. In case of a function, this is a
+	callable object. In case of some other const, it is its value. In case
+	of some type (struct, typedef, enum, ...), it is its ctypes type.
 	Use wrapped as an object where its __getattrib__ basically wraps to get().
 	"""
 
@@ -94,7 +98,7 @@ class CWrapper:
 				if attrib == "_cwrapper": return selfWrapper
 				if attrib in ("__dict__","__class__"):
 					return object.__getattribute__(self, attrib)
-				return selfWrapper.get(attrib)
+				return selfWrapper.getWrapped(attrib)
 		selfWrapper.wrapped = Wrapped()
 		selfWrapper._wrappedStateStruct = CStateWrapper(selfWrapper)
 		selfWrapper._errors = []
@@ -117,33 +121,47 @@ class CWrapper:
 			if not hasattr(wrappedClass, attrib):
 				setattr(wrappedClass, attrib, None)
 	
-	def get(self, _attrib):
-		cache = self._cache
-		if _attrib in cache: return cache[_attrib]
-		wrappedStateStruct = self._wrappedStateStruct
+	def resolveMacro(self, stateStruct, macro):
+		macro._parseTokens(stateStruct)
+		resolvedMacro = macro.getSingleIdentifer(self._wrappedStateStruct) # or just stateStruct?
+		if resolvedMacro is not None: self.get(str(resolvedMacro))
+		return macro
+		
+	def get(self, attrib, resolveMacros = True):
 		for stateStruct in self.stateStructs:
-			attrib = _attrib
-			while attrib in stateStruct.macros and stateStruct.macros[attrib].args is None:
-				stateStruct.macros[attrib]._parseTokens(stateStruct)
-				resolvedMacro = stateStruct.macros[attrib].getSingleIdentifer(wrappedStateStruct)
-				if resolvedMacro is not None: attrib = str(resolvedMacro)
-				else: break
 			if attrib in stateStruct.macros and stateStruct.macros[attrib].args is None:
-				t = stateStruct.macros[attrib].getCValue(wrappedStateStruct)
+				if resolveMacros: return self.resolveMacro(stateStruct, stateStruct.macros[attrib])
+				else: return stateStruct.macros[attrib]
 			elif attrib in stateStruct.typedefs:
-				t = stateStruct.typedefs[attrib].getCType(wrappedStateStruct)
+				return stateStruct.typedefs[attrib]
 			elif attrib in stateStruct.enumconsts:
-				t = stateStruct.enumconsts[attrib].value
+				return stateStruct.enumconsts[attrib]
 			elif attrib in stateStruct.funcs:
-				t = stateStruct.funcs[attrib].getCType(wrappedStateStruct)
-				f = t((attrib, stateStruct.clib))
-				t = lambda *args: f(*map(_castArg, args))			
-			else:
-				continue
-			cache[_attrib] = t
-			return t
-			
-		raise AttributeError(_attrib + " not found in " + str(self))
+				return stateStruct.funcs[attrib]		
+		raise AttributeError(attrib + " not found in " + str(self))
+		
+	def getWrapped(self, attrib):
+		cache = self._cache
+		if attrib in cache: return cache[attrib]
+
+		s = self.get(attrib)
+		assert s
+		wrappedStateStruct = self._wrappedStateStruct
+		if isinstance(s, cparser.Macro):
+			t = s.getCValue(wrappedStateStruct)
+		elif isinstance(s, (cparser.CType,cparser.CTypedef)):
+			t = s.getCType(wrappedStateStruct)
+		elif isinstance(s, cparser.CEnumConst):
+			t = s.value
+		elif isinstance(s, cparser.CFunc):
+			clib = s.parent.body.clib # s.parent.body is supposed to be the stateStruct
+			t = s.getCType(wrappedStateStruct)
+			f = t((attrib, clib))
+			t = lambda *args: f(*map(_castArg, args))			
+		else:
+			raise AttributeError(attrib + " has unknown type " + repr(s))
+		cache[attrib] = t
+		return t
 	
 	def __repr__(self):
 		return "<" + self.__class__.__name__  + " of " + repr(self.stateStructs) + ">"
