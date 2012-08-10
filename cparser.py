@@ -1194,9 +1194,10 @@ class CStr(_CBase):
 	def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
 class CChar(_CBase):
 	def __init__(self, content=None, rawstr=None, **kwargs):
-		assert isinstance(content, int)
-		assert 0 <= content <= 255
-		_CBase.__init__(content, rawstr, **kwargs)
+		if isinstance(content, (unicode,str)): content = ord(content)
+		assert isinstance(content, int), "CChar expects int, got " + repr(content)
+		assert 0 <= content <= 255, "CChar expects number in range 0-255, got " + str(content)
+		_CBase.__init__(self, content, rawstr, **kwargs)
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
 class CNumber(_CBase):
