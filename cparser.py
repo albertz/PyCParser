@@ -1157,6 +1157,7 @@ def cpreprocess_parse(stateStruct, input):
 				if c == "\n":
 					state = statebeforecomment
 					statebeforecomment = None
+					breakLoop = False # rehandle return
 				else: pass
 			else:
 				stateStruct.error("internal error: invalid state " + str(state))
