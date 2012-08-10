@@ -77,7 +77,7 @@ OpsRightToLeft = set([
 
 OpPrefixFuncs = {
 	"+": (lambda x: +x),
-	"-": (lambda x: +x),
+	"-": (lambda x: -x),
 	"&": (lambda x: ctypes.pointer(x)),
 	"*": (lambda x: x.content),
 	"++": (lambda x: ++x),
