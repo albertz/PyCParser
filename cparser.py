@@ -1733,9 +1733,9 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 			# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
 			t = wrapCTypeClassIfNeeded(t)
 		if hasattr(c, "bitsize"):
-			fields += [(c.name, t, c.bitsize)]
+			fields += [(str(c.name), t, c.bitsize)]
 		else:
-			fields += [(c.name, t)]	
+			fields += [(str(c.name), t)]	
 	ctype._fields_ = fields
 	return ctype
 	
