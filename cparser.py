@@ -331,7 +331,9 @@ class CBuiltinType(CType):
 	def __init__(self, builtinType):
 		assert isinstance(builtinType, tuple)
 		self.builtinType = builtinType
-	def getCType(self, stateStruct): return stateStruct.CBuiltinTypes[self.builtinType]
+	def getCType(self, stateStruct):
+		t = stateStruct.CBuiltinTypes[self.builtinType]
+		return getCType(t, stateStruct)
 	def asCCode(self, indent=""): return indent + " ".join(self.builtinType)
 	
 class CStdIntType(CType):
