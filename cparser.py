@@ -328,8 +328,10 @@ class CPointerType(CType):
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
 class CBuiltinType(CType):
-	def __init__(self, builtinType): self.builtinType = builtinType
-	def getCType(self, stateStruct): return getCType(self.builtinType, stateStruct)
+	def __init__(self, builtinType):
+		assert isinstance(builtinType, tuple)
+		self.builtinType = builtinType
+	def getCType(self, stateStruct): return stateStruct.CBuiltinTypes[self.builtinType]
 	def asCCode(self, indent=""): return indent + " ".join(self.builtinType)
 	
 class CStdIntType(CType):
@@ -1470,7 +1472,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
 		t = type_tokens[0]
 	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
-		t = CBuiltinType(stateStruct.CBuiltinTypes[tuple(type_tokens)])
+		t = CBuiltinType(tuple(type_tokens))
 	elif len(type_tokens) > 1 and type_tokens[-1] == "*":
 		t = CPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
@@ -1673,7 +1675,7 @@ class CFunc(_CBaseWithOptBody):
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 	def asCCode(self, indent=""):
-		s = indent + asCCode(self.type) + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
+		s = indent + asCCode(self.type) + " " + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
 		if self.body is None: return s
 		s += "\n"
 		s += asCCode(self.body, indent)
@@ -1823,7 +1825,7 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 		
-		if self.type != CBuiltinType(CVoidType()):
+		if self.type != CBuiltinType(("void",)):
 			self.parent.args += [self]
 	def getCType(self, stateStruct):
 		return getCType(self.type, stateStruct)
