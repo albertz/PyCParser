@@ -10,6 +10,10 @@ else:
 	from .cparser_utils import *
 
 class CStateDictWrapper:
+	__doc__ = """generic dict wrapper
+	This is a generic dict wrapper to merge multiple dicts to a single one.
+	It is intended mostly to merge different dicts from different cparser.State."""
+	
 	def __init__(self, dicts):
 		self._dicts = dicts
 	def __setitem__(self, k, v):
@@ -39,6 +43,9 @@ class CStateDictWrapper:
 	def __str__(self): return "CStateDictWrapper(" + str(self._dicts) + ")"
 
 class CStateWrapper:
+	__doc__ = """cparser.State wrapper
+	Merges multiple cparser.State into a single one."""
+
 	WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
 	LocalAttribs = ("_cwrapper")
 	def __init__(self, cwrapper):
@@ -72,6 +79,13 @@ def _castArg(value):
 	return value
 	
 class CWrapper:
+	__doc__ = """Provides easy access to symbols to be used by Python.
+	Functions are directly callable given the ctypes DLL.
+	Use register() to register a new set of (parsed-header-state,dll).
+	Use get() to get a symbol.
+	Use wrapped as an object where its __getattrib__ basically wraps to get().
+	"""
+
 	def __init__(selfWrapper):
 		selfWrapper._cache = {}
 		selfWrapper.stateStructs = []
