@@ -410,6 +410,7 @@ class State:
 		"wchar_t": ctypes.c_wchar,
 		"size_t": ctypes.c_size_t,
 		"ptrdiff_t": ctypes.c_long,
+		"intptr_t": ctypes.POINTER(ctypes.c_int),
 		"FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
 	}
 	Attribs = [
@@ -419,6 +420,7 @@ class State:
 		"register",
 		"volatile",
 		"__inline__",
+		"inline",
 	]
 	
 	def __init__(self):
@@ -443,6 +445,7 @@ class State:
 		self.macros["__attribute__"] = Macro(args=("x",), rightside="")
 		self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
 		self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
+		#self.macros["UINT64_C"] = Macro(args=("C"), rightside= "C##ui64") # or move to stdint.h handler?
 		if sys.platform == "darwin":
 			self.macros["__APPLE__"] = self.EmptyMacro
 			self.macros["__MACH__"] = self.EmptyMacro
@@ -729,7 +732,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						if not is_valid_defname(macroname):
 							stateStruct.error("preprocessor eval call: '" + macroname + "' is not a valid macro name in " + repr(condstr))
 							return
-						if arg not in stateStruct.macros:
+						if macroname not in stateStruct.macros:
 							stateStruct.error("preprocessor eval call: '" + macroname + "' is unknown")
 							return
 						macro = stateStruct.macros[macroname]
@@ -1190,6 +1193,10 @@ class CStr(_CBase):
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
 class CChar(_CBase):
+	def __init__(self, content=None, rawstr=None, **kwargs):
+		assert isinstance(content, int)
+		assert 0 <= content <= 255
+		_CBase.__init__(content, rawstr, **kwargs)
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
 class CNumber(_CBase):
@@ -1204,12 +1211,14 @@ class CClosingBracket(_CBase): pass
 def cpre2_parse_number(stateStruct, s):
 	if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
 		try:
+			s = s.rstrip("ULul")
 			return long(s, 8)
 		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like octal but got error " + str(e))
 			return 0
 	if len(s) > 1 and s[0] == "0" and s[1] in "xX":
 		try:
+			s = s.rstrip("ULul")
 			return long(s, 16)
 		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
@@ -1373,7 +1382,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					for t in cpre2_parse(stateStruct, resolved, brackets):
 						yield t
 				except Exception as e:
-					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + str(e))
+					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + repr(e))
 				state = 0
 				breakLoop = False
 			elif state == 40: # op
