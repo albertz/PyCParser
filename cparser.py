@@ -105,6 +105,7 @@ OpBinFuncs = {
 	"|": (lambda a,b: a | b),
 	"&&": (lambda a,b: a and b),
 	"||": (lambda a,b: a or b),
+	",": (lambda a,b: b),
 	# NOTE: These assignment ops don't really behave like maybe expected
 	# but they return the somewhat expected.
 	"=": (lambda a,b: b),
