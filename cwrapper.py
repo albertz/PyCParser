@@ -149,7 +149,7 @@ class CWrapper:
 		wrappedStateStruct = self._wrappedStateStruct
 		if isinstance(s, cparser.Macro):
 			t = s.getCValue(wrappedStateStruct)
-		elif isinstance(s, (cparser.CType,cparser.CTypedef)):
+		elif isinstance(s, (cparser.CType,cparser.CTypedef,cparser.CStruct,cparser.CEnum)):
 			t = s.getCType(wrappedStateStruct)
 		elif isinstance(s, cparser.CEnumConst):
 			t = s.value
