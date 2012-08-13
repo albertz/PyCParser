@@ -1791,7 +1791,7 @@ class CEnum(_CBaseWithOptBody):
 			def __repr__(self):
 				v = self._typeStruct.getEnumConst(self.value)
 				if v is None: v = self.value
-				return "<" + str(v) + ">"
+				return "<EnumType " + str(v) + ">"
 			def __cmp__(self, other):
 				return cmp(self.value, other)
 		for c in self.body.contentlist:
