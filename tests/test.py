@@ -19,10 +19,11 @@ def main():
 		m = {}
 		eval(c, m)
 
-def newState(testcode, testfn = "test.c"):
+def newState(testcode, testfn = "test.c", withSystemMacros=True, withGlobalIncludeWrappers=False):
 	state = cparser.State()
-	state.autoSetupSystemMacros()
-	
+	if withSystemMacros: state.autoSetupSystemMacros()
+	if withGlobalIncludeWrappers: state.autoSetupGlobalIncludeWrappers()
+		
 	origReadLocal = state.readLocalInclude
 	def readLocalIncludeWrapper(fn):
 		if fn == testfn:
@@ -36,8 +37,8 @@ def newState(testcode, testfn = "test.c"):
 	
 	return state
 
-def parse(testcode):
-	state = newState(testcode)
+def parse(testcode, **kwargs):
+	state = newState(testcode, **kwargs)
 	cparser.parse("test.c", state)
 	if state._errors:
 		print "parsing errors:"
