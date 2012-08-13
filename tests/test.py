@@ -5,6 +5,7 @@ mydir = os.path.dirname(__file__)
 sys.path += [mydir + "/.."]
 
 import cparser
+from pprint import pprint
 
 def main():
 	import types
@@ -14,9 +15,6 @@ def main():
 		c = compile(open(f).read(), os.path.basename(f), "exec")
 		m = {}
 		eval(c, m)
-		for name,obj in m.items():
-			if name.startswith("test") and isinstance(obj, types.FunctionType):
-				obj()
 
 def newState(testcode, testfn = "test.c"):
 	state = cparser.State()
@@ -33,6 +31,15 @@ def newState(testcode, testfn = "test.c"):
 		return origReadLocal(fn)
 	state.readLocalInclude = readLocalIncludeWrapper
 	
+	return state
+
+def parse(testcode):
+	state = newState(testcode)
+	cparser.parse("test.c", state)
+	if state._errors:
+		print "parsing errors:"
+		pprint(state._errors)
+		assert False, "there are parsing errors"
 	return state
 
 if __name__ == '__main__':

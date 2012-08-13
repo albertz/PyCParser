@@ -7,12 +7,7 @@ testcode = """
 	int16_t (*motion_val[2])[2];
 """
 
-state = test.newState(testcode)
+state = test.parse(testcode)	
 
-def test():
-	cparser.parse("test.c", state)
-	pprint(state._errors)
-	
-if __name__ == '__main__':
-	test()
-	
+pprint(state.contentlist)
+pprint(state.vars)
