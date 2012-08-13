@@ -7,6 +7,7 @@ import test
 testcode = """
 	int16_t (*f)();
 	int16_t (*g)(char a, void*);
+	int (*h);
 """
 
 state = test.parse(testcode)	
@@ -29,3 +30,6 @@ assert gargs[0].type == CBuiltinType(("char",))
 assert gargs[1].name is None
 assert gargs[1].type == CBuiltinType(("void","*"))
 
+# TODO: actually, I'm not sure. what is h?
+#h = state.vars["h"]
+#pprint(h)
