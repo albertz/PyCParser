@@ -4,6 +4,9 @@ import sys, os
 mydir = os.path.dirname(__file__)
 sys.path += [mydir + "/.."]
 
+import better_exchook
+better_exchook.install()
+
 import cparser
 from pprint import pprint
 

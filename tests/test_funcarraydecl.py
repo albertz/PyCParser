@@ -9,5 +9,6 @@ testcode = """
 
 state = test.parse(testcode)	
 
-pprint(state.contentlist)
-pprint(state.vars)
+v = state.vars["motion_val"]
+
+pprint((v, v.type))
