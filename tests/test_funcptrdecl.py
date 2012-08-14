@@ -8,6 +8,11 @@ testcode = """
 	int16_t (*f)();
 	int16_t (*g)(char a, void*);
 	int (*h);
+	
+	// ISO/IEC 9899:TC3 : C99 standard
+	int fx(void), *fip(), (*pfi)(); // example 1, page 120
+	int (*apfi[3])(int *x, int *y); // example 2, page 120
+	int (*fpfi(int (*)(long), int))(int, ...); // example 3, page 120
 """
 
 state = test.parse(testcode)	
@@ -30,6 +35,26 @@ assert gargs[0].type == CBuiltinType(("char",))
 assert gargs[1].name is None
 assert gargs[1].type == CBuiltinType(("void","*"))
 
-# TODO: actually, I'm not sure. what is h?
-#h = state.vars["h"]
-#pprint(h)
+h = state.vars["h"]
+assert h.type == CPointerType(CBuiltinType(("int",)))
+
+fx = state.funcs["fx"] # fx is a function `int (void)`
+assert fx.type == CBuiltinType(("int",))
+assert fx.args == []
+
+fip = state.funcs["fip"] # fip is a function `int* (void)`
+assert fip.type == CPointerType(CBuiltinType(("int",)))
+assert fip.args == []
+
+pfi = state.vars["pfi"] # pfi is a function-ptr to `int ()`
+assert isinstance(pfi.type, CFuncPointerDecl)
+assert pfi.type.type == CBuiltinType(("int",))
+assert pfi.type.args == []
+
+apfi = state.vars["apfi"] # apfi is an array of three function-ptrs `int (int*,int*)`
+# ...
+
+fpfi = state.funcs["fpfi"] # function which returns a func-ptr
+# the function has the parameters `int(*)(long), int`
+# the func-ptr func returns `int`
+# the func-ptr func has the parameters `int, ...`
