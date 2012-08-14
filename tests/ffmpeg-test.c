@@ -6,6 +6,8 @@
 // https://github.com/FFmpeg/FFmpeg/blob/master/doc/examples/filtering_audio.c
 // http://code.google.com/p/chromium-source-browsing/source/browse/ffmpeg.c?repo=third-party--ffmpeg
 // http://dranger.com/ffmpeg/tutorial03.html
+// http://ffmpeg.org/doxygen/trunk/ffplay_8c-source.html
+// https://github.com/FFmpeg/FFmpeg/blob/master/ffplay.c
 
 // void av_register_all(void);
 // void avcodec_register_all(void);
