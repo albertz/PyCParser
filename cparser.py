@@ -77,7 +77,7 @@ OpsRightToLeft = set([
 
 OpPrefixFuncs = {
 	"+": (lambda x: +x),
-	"-": (lambda x: +x),
+	"-": (lambda x: -x),
 	"&": (lambda x: ctypes.pointer(x)),
 	"*": (lambda x: x.content),
 	"++": (lambda x: ++x),
@@ -105,6 +105,7 @@ OpBinFuncs = {
 	"|": (lambda a,b: a | b),
 	"&&": (lambda a,b: a and b),
 	"||": (lambda a,b: a or b),
+	",": (lambda a,b: b),
 	# NOTE: These assignment ops don't really behave like maybe expected
 	# but they return the somewhat expected.
 	"=": (lambda a,b: b),
@@ -327,8 +328,12 @@ class CPointerType(CType):
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
 class CBuiltinType(CType):
-	def __init__(self, builtinType): self.builtinType = builtinType
-	def getCType(self, stateStruct): return getCType(self.builtinType, stateStruct)
+	def __init__(self, builtinType):
+		assert isinstance(builtinType, tuple)
+		self.builtinType = builtinType
+	def getCType(self, stateStruct):
+		t = stateStruct.CBuiltinTypes[self.builtinType]
+		return getCType(t, stateStruct)
 	def asCCode(self, indent=""): return indent + " ".join(self.builtinType)
 	
 class CStdIntType(CType):
@@ -407,6 +412,7 @@ class State:
 		"wchar_t": ctypes.c_wchar,
 		"size_t": ctypes.c_size_t,
 		"ptrdiff_t": ctypes.c_long,
+		"intptr_t": ctypes.POINTER(ctypes.c_int),
 		"FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
 	}
 	Attribs = [
@@ -416,6 +422,7 @@ class State:
 		"register",
 		"volatile",
 		"__inline__",
+		"inline",
 	]
 	
 	def __init__(self):
@@ -440,6 +447,7 @@ class State:
 		self.macros["__attribute__"] = Macro(args=("x",), rightside="")
 		self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
 		self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
+		#self.macros["UINT64_C"] = Macro(args=("C"), rightside= "C##ui64") # or move to stdint.h handler?
 		if sys.platform == "darwin":
 			self.macros["__APPLE__"] = self.EmptyMacro
 			self.macros["__MACH__"] = self.EmptyMacro
@@ -726,7 +734,7 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 						if not is_valid_defname(macroname):
 							stateStruct.error("preprocessor eval call: '" + macroname + "' is not a valid macro name in " + repr(condstr))
 							return
-						if arg not in stateStruct.macros:
+						if macroname not in stateStruct.macros:
 							stateStruct.error("preprocessor eval call: '" + macroname + "' is unknown")
 							return
 						macro = stateStruct.macros[macroname]
@@ -1157,6 +1165,7 @@ def cpreprocess_parse(stateStruct, input):
 				if c == "\n":
 					state = statebeforecomment
 					statebeforecomment = None
+					breakLoop = False # rehandle return
 				else: pass
 			else:
 				stateStruct.error("internal error: invalid state " + str(state))
@@ -1186,6 +1195,11 @@ class CStr(_CBase):
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
 class CChar(_CBase):
+	def __init__(self, content=None, rawstr=None, **kwargs):
+		if isinstance(content, (unicode,str)): content = ord(content)
+		assert isinstance(content, int), "CChar expects int, got " + repr(content)
+		assert 0 <= content <= 255, "CChar expects number in range 0-255, got " + str(content)
+		_CBase.__init__(self, content, rawstr, **kwargs)
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
 class CNumber(_CBase):
@@ -1200,12 +1214,14 @@ class CClosingBracket(_CBase): pass
 def cpre2_parse_number(stateStruct, s):
 	if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
 		try:
+			s = s.rstrip("ULul")
 			return long(s, 8)
 		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like octal but got error " + str(e))
 			return 0
 	if len(s) > 1 and s[0] == "0" and s[1] in "xX":
 		try:
+			s = s.rstrip("ULul")
 			return long(s, 16)
 		except Exception as e:
 			stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
@@ -1369,7 +1385,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					for t in cpre2_parse(stateStruct, resolved, brackets):
 						yield t
 				except Exception as e:
-					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + str(e))
+					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + repr(e))
 				state = 0
 				breakLoop = False
 			elif state == 40: # op
@@ -1468,7 +1484,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
 		t = type_tokens[0]
 	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
-		t = CBuiltinType(stateStruct.CBuiltinTypes[tuple(type_tokens)])
+		t = CBuiltinType(tuple(type_tokens))
 	elif len(type_tokens) > 1 and type_tokens[-1] == "*":
 		t = CPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
@@ -1671,7 +1687,7 @@ class CFunc(_CBaseWithOptBody):
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 	def asCCode(self, indent=""):
-		s = indent + asCCode(self.type) + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
+		s = indent + asCCode(self.type) + " " + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
 		if self.body is None: return s
 		s += "\n"
 		s += asCCode(self.body, indent)
@@ -1717,9 +1733,9 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 			# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
 			t = wrapCTypeClassIfNeeded(t)
 		if hasattr(c, "bitsize"):
-			fields += [(c.name, t, c.bitsize)]
+			fields += [(str(c.name), t, c.bitsize)]
 		else:
-			fields += [(c.name, t)]	
+			fields += [(str(c.name), t)]	
 	ctype._fields_ = fields
 	return ctype
 	
@@ -1775,7 +1791,7 @@ class CEnum(_CBaseWithOptBody):
 			def __repr__(self):
 				v = self._typeStruct.getEnumConst(self.value)
 				if v is None: v = self.value
-				return "<" + str(v) + ">"
+				return "<EnumType " + str(v) + ">"
 			def __cmp__(self, other):
 				return cmp(self.value, other)
 		for c in self.body.contentlist:
@@ -1824,7 +1840,7 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 		
-		if self.type != CBuiltinType(CVoidType()):
+		if self.type != CBuiltinType(("void",)):
 			self.parent.args += [self]
 	def getCType(self, stateStruct):
 		return getCType(self.type, stateStruct)

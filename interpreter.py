@@ -247,13 +247,13 @@ def getAstNodeForCTypesBasicType(t):
 	if t is None: return NoneAstNode
 	if t is CVoidType: return NoneAstNode
 	if not inspect.isclass(t) and isinstance(t, CVoidType): return NoneAstNode
-	if issubclass(t, CVoidType): return None
+	if inspect.isclass(t) and issubclass(t, CVoidType): return None
 	assert issubclass(t, getattr(ctypes, t.__name__))
 	return getAstNodeAttrib("ctypes", t.__name__)
 
 def getAstNodeForVarType(interpreter, t):
 	if isinstance(t, CBuiltinType):
-		return getAstNodeForCTypesBasicType(t.builtinType)
+		return getAstNodeForCTypesBasicType(State.CBuiltinTypes[t.builtinType])
 	elif isinstance(t, CStdIntType):
 		return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
 	elif isinstance(t, CPointerType):
