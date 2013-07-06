@@ -15,6 +15,7 @@ Parsers / `ctypes` interface generators:
 
 * [pyclibrary](https://launchpad.net/pyclibrary) ([Github fork](https://github.com/albertz/pyclibrary)). Is quite slow and didn't worked that well for me.
 * The equally named [pycparser](http://code.google.com/p/pycparser/). It depends on [Python Lex-Yacc](http://www.dabeaz.com/ply/). (I didn't really tested it yet.)
+* [pycparser](https://github.com/eliben/pycparser). Another complete C99 parse in pure Python. (I didn't tested it yet. Seems to make good progress.)
 * [ctypesgen](http://code.google.com/p/ctypesgen/). Also uses Lex+Yacc.
 * [codegen](http://starship.python.net/crew/theller/ctypes/old/codegen.html). Uses GCC-XML. See below about the disadvantages of such an aproach.
 
