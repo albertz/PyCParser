@@ -19,7 +19,7 @@ import cparser
 
 input = sys.stdin
 
-def input_reader_hanlder(state):
+def input_reader_handler(state):
 	oldErrNum = len(state._errors)
 	oldContentListNum = len(state.contentlist)
 	
@@ -41,7 +41,7 @@ def prepareState():
 	state.autoSetupGlobalIncludeWrappers()	
 	def readInclude(fn):
 		if fn == "<input>":
-			reader = input_reader_hanlder(state)
+			reader = input_reader_handler(state)
 			return reader, None
 		return cparser.State.readLocalInclude(state, fn)
 	state.readLocalInclude = readInclude
