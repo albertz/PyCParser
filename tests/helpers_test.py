@@ -1,23 +1,11 @@
 #!/usr/bin/python
 
-import sys, os
-mydir = os.path.dirname(__file__)
-sys.path += [mydir + "/.."]
-
 import better_exchook
 better_exchook.install()
+better_exchook.replace_traceback_format_tb()
 
 import cparser
 from pprint import pprint
-
-def main():
-	import types
-	
-	from glob import glob
-	for f in glob(mydir + "/test_*.py"):
-		c = compile(open(f).read(), os.path.basename(f), "exec")
-		m = {}
-		eval(c, m)
 
 def newState(testcode, testfn = "test.c", withSystemMacros=True, withGlobalIncludeWrappers=False):
 	state = cparser.State()
@@ -45,6 +33,3 @@ def parse(testcode, **kwargs):
 		pprint(state._errors)
 		assert False, "there are parsing errors"
 	return state
-
-if __name__ == '__main__':
-	main()
