@@ -2,6 +2,30 @@
 from cparser import *
 import helpers_test
 
+
+def test_parse1():
+	helpers_test.parse("int16_t (*f)();")
+
+def test_parse2():
+	helpers_test.parse("int16_t (*g)(char a, void*);")
+
+def test_parse3():
+	helpers_test.parse("int (*h);")
+
+def test_parse4():
+	helpers_test.parse("int fx(void), *fip(), (*pfi)();")
+
+def test_parse5():
+	helpers_test.parse("int (*apfi[3])(int *x, int *y);")
+
+def test_parse6():
+	helpers_test.parse("int (*fpfi(int (*)(long), int))(int, ...);")
+
+def test_parse6_a():
+	helpers_test.parse("int (*fpfi(int (*)(long), int))(int);")
+
+
+
 def test_funcptrdecl():
 	testcode = """
 		int16_t (*f)();
