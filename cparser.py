@@ -442,13 +442,13 @@ class State:
 		self._preprocessIncludeLevel = []
 		self._errors = []
 	
-	def autoSetupSystemMacros(self):
+	def autoSetupSystemMacros(self, system_specific=False):
 		import sys
 		self.macros["__attribute__"] = Macro(args=("x",), rightside="")
 		self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
 		self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
 		#self.macros["UINT64_C"] = Macro(args=("C"), rightside= "C##ui64") # or move to stdint.h handler?
-		if sys.platform == "darwin":
+		if system_specific and sys.platform == "darwin":
 			self.macros["__APPLE__"] = self.EmptyMacro
 			self.macros["__MACH__"] = self.EmptyMacro
 			self.macros["__MACOSX__"] = self.EmptyMacro
@@ -483,6 +483,9 @@ class State:
 	
 	def error(self, s):
 		self._errors.append(self.curPosAsStr() + ": " + s)
+
+	def log(self, *args):
+		print(self.curPosAsStr() + ": " + " ".join(map(str, args)))
 
 	def findIncludeFullFilename(self, filename, local):
 		if local:
@@ -800,32 +803,35 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
 							if lasteval: return lasteval
 						elif opstr in OpBinFuncs:
 							op = OpBinFuncs[opstr]
-							if OpPrecedences[opstr] >= 6: # +,-,==, etc
-								# WARNING/HACK: guess that the following has lower or equal precedence :)
-								# HACK: add "()"
-								j = i
-								while j < len(condstr):
-									if condstr[j] == "'":
-										j += 1
-										while j < len(condstr):
-											if condstr[j] == "'": break
-											if condstr[j] == "\\": j += 1
-											j += 1
-										continue
-									if condstr[j] == '"':
-										j += 1
-										while j < len(condstr):
-											if condstr[j] == '"': break
-											if condstr[j] == "\\": j += 1
-											j += 1
-										continue
-									if condstr[j] in OpChars:
-										while j < len(condstr) and condstr[j] in OpChars:
-											j += 1
-										if j < len(condstr):
-											condstr = condstr[:j] + "(" + condstr[j:] + ")"
-										break
+							# HACK: add "()" in some way...
+							j = i
+							while j < len(condstr):
+								if condstr[j] == "'":
 									j += 1
+									while j < len(condstr):
+										if condstr[j] == "'": break
+										if condstr[j] == "\\": j += 1
+										j += 1
+									continue
+								if condstr[j] == '"':
+									j += 1
+									while j < len(condstr):
+										if condstr[j] == '"': break
+										if condstr[j] == "\\": j += 1
+										j += 1
+									continue
+								if condstr[j] in OpChars:
+									nextopstr = ""
+									while j < len(condstr) and condstr[j] in OpChars:
+										nextopstr += condstr[j]
+										j += 1
+									if nextopstr in OpBinFuncs:
+										if OpPrecedences[opstr] > OpPrecedences[nextopstr]:
+											condstr = condstr[:i] + "(" + condstr[i:] + ")"
+									#if j < len(condstr):
+									#	condstr = condstr[:j] + "(" + condstr[j:] + ")"
+									break
+								j += 1
 						elif opstr in OpPrefixFuncs:
 							newprefixop = OpPrefixFuncs[opstr]
 							if prefixOp: prefixOp = lambda x: prefixOp(newprefixop(x))
