@@ -55,6 +55,7 @@ class Wrapper:
 		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"))
 		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"))
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
+		wrapCFunc(state, "vfprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p, ctypes.c_void_p)) # TODO
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
 		wrapCFunc(state, "fgets", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_int, FileP))
 		wrapCFunc(state, "fread", restype=ctypes.c_size_t, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, FileP))		
@@ -90,7 +91,10 @@ class Wrapper:
 			lambda x: _fixCArg(ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value))),
 			returnType=CPointerType(ctypes.c_byte)
 		)
-	def handle_stdarg_h(self, state): pass
+	def handle_stdarg_h(self, state):
+		state.macros["va_list"] = Macro(rightside="void*")
+		state.macros["va_start"] = Macro(args=("list", "last"), rightside="")
+		state.macros["va_end"] = Macro(args=("list",), rightside="")
 	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
