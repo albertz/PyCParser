@@ -5,6 +5,7 @@
 from cparser import *
 from cwrapper import CStateWrapper
 
+import ctypes
 import _ctypes
 import ast
 import sys
@@ -12,6 +13,8 @@ import inspect
 
 class CWrapValue:
 	def __init__(self, value, decl=None, **kwattr):
+		if isinstance(value, int):
+			value = ctypes.c_int(value)
 		self.value = value
 		self.decl = decl
 		for k,v in kwattr.iteritems():
