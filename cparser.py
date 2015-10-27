@@ -537,6 +537,10 @@ class State:
 		for c in self.preprocess(reader, fullfilename, filename):
 			yield c
 
+	def preprocess_source_code(self, source_code, dummy_filename="<input>"):
+		for c in self.preprocess(source_code, dummy_filename, dummy_filename):
+			yield c
+
 	def preprocess(self, reader, fullfilename, filename):
 		self.incIncludeLineChar(fullfilename=fullfilename, inc=filename)
 		for c in cpreprocess_parse(self, reader):
@@ -1048,6 +1052,11 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 	state._preprocessIgnoreCurrent = any(map(lambda x: x != 1, state._preprocessIfLevels))
 
 def cpreprocess_parse(stateStruct, input):
+	"""
+	:type stateStruct: State
+	:param str | iterable[char] input: not-yet preprocessed C code
+	:returns preprocessed C code, iterator of chars
+	"""
 	cmd = ""
 	arg = ""
 	state = 0
@@ -1240,6 +1249,12 @@ def cpre2_parse_number(stateStruct, s):
 		return 0
 
 def cpre2_parse(stateStruct, input, brackets = None):
+	"""
+	:type stateStruct: State
+	:param str | iterable[char] input:
+	:param list[str] | None brackets: opening brackets stack
+	:returns token iterator
+	"""
 	state = 0
 	if brackets is None: brackets = []
 	laststr = ""
@@ -3267,7 +3282,7 @@ def cpre3_parse(stateStruct, input):
 	parentObj.body = stateStruct
 	cpre3_parse_body(stateStruct, parentObj, input_iter)
 
-def parse(filename, state = None):
+def parse(filename, state=None):
 	if state is None:
 		state = State()
 		state.autoSetupSystemMacros()
@@ -3277,7 +3292,19 @@ def parse(filename, state = None):
 	cpre3_parse(state, tokens)
 	
 	return state
-	
+
+def parse_code(source_code, state=None):
+	if state is None:
+		state = State()
+		state.autoSetupSystemMacros()
+
+	preprocessed = state.preprocess_source_code(source_code)
+	tokens = cpre2_parse(state, preprocessed)
+	cpre3_parse(state, tokens)
+
+	return state
+
+
 def test(*args):
 	import better_exchook
 	better_exchook.install()
