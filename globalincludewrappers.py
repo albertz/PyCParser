@@ -44,6 +44,7 @@ class Wrapper:
 	def handle_limits_h(self, state):
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
 		state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1)))
+		state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
 	def handle_stdio_h(self, state):
 		state.macros["NULL"] = Macro(rightside="0")
 		wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
@@ -83,6 +84,7 @@ class Wrapper:
 		wrapCFunc(state, "exit", restype=CVoidType, argtypes=(ctypes.c_int,))
 		wrapCFunc(state, "malloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_size_t,))
 		wrapCFunc(state, "free", restype=CVoidType, argtypes=(ctypes.c_void_p,))
+		wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
 		state.funcs["atoi"] = CWrapValue(
 			lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
 			returnType=ctypes.c_int
@@ -110,12 +112,21 @@ class Wrapper:
 		wrapCFunc(state, "strstr", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
 		wrapCFunc(state, "strdup", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,))
 		wrapCFunc(state, "strerror", restype=ctypes.c_char_p, argtypes=(ctypes.c_int,))
+		wrapCFunc(state, "memset", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t))
 	def handle_time_h(self, state): pass
 	def handle_ctype_h(self, state): pass
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
 		def assert_wrap(x): assert x
 		state.funcs["assert"] = CWrapValue(assert_wrap)
+	def handle_fcntl_h(self, state):
+		state.macros["O_RDONLY"] = Macro(rightside="0x0000")
+		wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
+		wrapCFunc(state, "read", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))  # normally <unistd.h>
+		wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))  # normally <unistd.h>
+		# TODO: these are on OSX. cross-platform? probably not...
+		state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
+		state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
 	def handle_signal_h(self, state):
 		wrapCFunc(state, "signal")
 		state.macros["SIGINT"] = Macro(rightside="2")
