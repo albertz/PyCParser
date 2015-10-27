@@ -616,7 +616,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		v = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=str(stmnt.content)))
 		return getAstNode_newTypeInstance(funcEnv.interpreter, t, v, t), t
 	elif isinstance(stmnt, CChar):
-		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_byte"), ast.Num(ord(str(stmnt.content)))), ctypes.c_byte
+		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_byte"), ast.Num(stmnt.content)), ctypes.c_byte
 	elif isinstance(stmnt, CFuncCall):
 		if isinstance(stmnt.base, CFunc):
 			assert stmnt.base.name is not None
