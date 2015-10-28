@@ -135,6 +135,9 @@ def evalValueAst(funcEnv, valueAst, srccode_name=None):
 
 class GlobalsWrapper:
 	def __init__(self, globalScope):
+		"""
+		:type globalScope: GlobalScope
+		"""
 		self.globalScope = globalScope
 	
 	def __setattr__(self, name, value):
@@ -262,7 +265,7 @@ def getAstNodeForVarType(interpreter, t):
 	elif isinstance(t, CPointerType):
 		a = getAstNodeAttrib("ctypes", "POINTER")
 		return makeAstNodeCall(a, getAstNodeForVarType(interpreter, t.pointerOf))
-	elif isinstance(t, CTypedefType):
+	elif isinstance(t, CTypedef):
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
 		if t.name is None:
@@ -275,7 +278,7 @@ def getAstNodeForVarType(interpreter, t):
 		return getAstNodeAttrib("structs", t.name)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
-		except: pass
+		except Exception: pass
 	assert False, "cannot handle " + str(t)
 
 def findHelperFunc(f):
@@ -322,8 +325,8 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 	elif isValueType(objType):
 		astValue = getAstNodeAttrib(objAst, "value")
 		return astValue
-	elif isinstance(objType, CTypedefType):
-		t = stateStruct.typedefs[objType.name]
+	elif isinstance(objType, CTypedef):
+		t = objType.type
 		return getAstNode_valueFromObj(stateStruct, objAst, t)
 	else:
 		assert False, "bad type: " + str(objType)
@@ -594,8 +597,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		a = ast.Attribute(ctx=ast.Load())
 		a.value, t = astAndTypeForStatement(funcEnv, stmnt.base)
 		a.attr = stmnt.name
-		while isinstance(t, CTypedefType):
-			t = funcEnv.globalScope.stateStruct.typedefs[t.name]
+		while isinstance(t, CTypedef):
+			t = t.type
 		assert isinstance(t, (CStruct,CUnion))
 		attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, a.attr)
 		assert attrDecl is not None, "attrib " + str(a.attr) + " not found"
@@ -736,8 +739,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content == "--":
 			return getAstNode_prefixDec(rightAstNode, rightType), rightType
 		elif stmnt._op.content == "*":
-			while isinstance(rightType, CTypedefType):
-				rightType = funcEnv.globalScope.stateStruct.typedefs[rightType.name]
+			while isinstance(rightType, CTypedef):
+				rightType = rightType.type
 			if isinstance(rightType, CPointerType):
 				return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
 			elif isinstance(rightType, CFuncPointerDecl):

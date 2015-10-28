@@ -341,17 +341,11 @@ class CStdIntType(CType):
 	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
 	def asCCode(self, indent=""): return indent + self.name
 
-class CTypedefType(CType):
-	def __init__(self, name): self.name = name
-	def getCType(self, stateStruct):
-		return getCType(stateStruct.typedefs[self.name], stateStruct)
-	def asCCode(self, indent=""): return indent + self.name
-		
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
 	try:
 		if issubclass(t, _ctypes._SimpleCData): return t
-	except: pass # e.g. typeerror or so
+	except Exception: pass # e.g. typeerror or so
 	if isinstance(t, (CStruct,CUnion,CEnum)):
 		if t.body is None:
 			# it probably is the pre-declaration. but we might find the real-one
@@ -1477,8 +1471,8 @@ class CBody:
 		self.vars = {}
 		self.enumconsts = {}
 		self.contentlist = []
-	def __str__(self): return str(self.contentlist)
-	def __repr__(self): return "<CBody " + str(self) + ">"
+	def __str__(self): return "CBody %s" % self.contentlist
+	def __repr__(self): return "<%s>" % self
 	def asCCode(self, indent=""):
 		s = indent + "{\n"
 		for c in self.contentlist:
@@ -1511,7 +1505,7 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
 		t = CStdIntType(type_tokens[0])
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.typedefs:
-		t = CTypedefType(type_tokens[0])
+		t = stateStruct.typedefs[type_tokens[0]]
 	else:
 		t = None
 	return t
@@ -1648,7 +1642,7 @@ class CTypedef(_CBaseWithOptBody):
 			stateStruct.error("finalize typedef " + str(self) + ": name is unset")
 			return
 
-		self.parent.body.typedefs[self.name] = self.type
+		self.parent.body.typedefs[self.name] = self
 	def getCType(self, stateStruct): return getCType(self.type, stateStruct)
 	def asCCode(self, indent=""):
 		return indent + "typedef\n" + asCCode(self.type, indent, fullDecl=True) + " " + self.name
@@ -1892,6 +1886,11 @@ def _obj_parent_chain(stateStruct, parentCObj):
 		parentCObj = parentCObj.parent
 		
 def getObjInBody(body, name):
+	"""
+	:type body: CBody | State
+	:type name: str
+	:return: object, statement or type
+	"""
 	if name in body.funcs:
 		return body.funcs[name]
 	elif name in body.typedefs:
@@ -1901,9 +1900,9 @@ def getObjInBody(body, name):
 	elif name in body.enumconsts:
 		return body.enumconsts[name]
 	elif (name,) in getattr(body, "CBuiltinTypes", {}):
-		return body.CBuiltinTypes[(name,)]
+		return CBuiltinType((name,))
 	elif name in getattr(body, "StdIntTypes", {}):
-		return body.StdIntTypes[name]
+		return CStdIntType(name)
 	return None
 
 def findObjInNamespace(stateStruct, curCObj, name):
@@ -1960,11 +1959,11 @@ def _create_cast_call(stateStruct, parent, base, token):
 
 def opsDoLeftToRight(stateStruct, op1, op2):
 	try: opprec1 = OpPrecedences[op1]
-	except:
+	except KeyError:
 		stateStruct.error("internal error: statement parsing: op1 " + repr(op1) + " unknown")
 		opprec1 = 100
 	try: opprec2 = OpPrecedences[op2]
-	except:
+	except KeyError:
 		stateStruct.error("internal error: statement parsing: op2 " + repr(op2) + " unknown")
 		opprec2 = 100
 	
@@ -2034,6 +2033,10 @@ class CStatement(_CBaseWithOptBody):
 		self._handlePushedErrorForUnknown(stateStruct)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 	def _cpre3_handle_token(self, stateStruct, token):
+		"""
+		:type stateStruct: State
+		:type token: iterator
+		"""
 		self._tokens += [token]
 		
 		if self._state == 5 and token == COp(":"):
@@ -2104,8 +2107,12 @@ class CStatement(_CBaseWithOptBody):
 			elif isinstance(self._leftexpr, CStr) and isinstance(token, CStr):
 				self._leftexpr = CStr(self._leftexpr.content + token.content)
 			else:
-				self._leftexpr = _create_cast_call(stateStruct, self, self._leftexpr, token)
-				self._state = 40
+				if isinstance(self._leftexpr, CBuiltinType) and self._leftexpr.builtinType + (token.content,) in stateStruct.CBuiltinTypes:
+					self._leftexpr = CBuiltinType(self._leftexpr.builtinType + (token.content,))
+					# stay in same state
+				else:
+					self._leftexpr = _create_cast_call(stateStruct, self, self._leftexpr, token)
+					self._state = 40
 		elif self._state == 6: # after expr + op
 			if isinstance(token, CIdentifier):
 				if token.content == "sizeof":
@@ -2328,8 +2335,8 @@ class CStatement(_CBaseWithOptBody):
 		t = self._leftexpr
 		try:
 			if issubclass(t, _ctypes._SimpleCData): return True
-		except: pass # e.g. typeerror or so
-		if isinstance(t, (CType,CStruct,CUnion,CEnum)): return True
+		except Exception: pass # e.g. typeerror or so
+		if isinstance(t, (CType,CStruct,CUnion,CEnum,CTypedef)): return True
 		return False
 	
 	def asType(self):

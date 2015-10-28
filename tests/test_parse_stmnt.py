@@ -41,7 +41,7 @@ def test_parse_c_cast():
 	# TODO ...
 
 def test_parse_c_cast_ptr():
-	state = parse("int* v = (int*) 42;")
+	state = parse("unsigned int v = (unsigned int) 42;")
 	v = state.vars["v"]
 	assert isinstance(v.body, CStatement)
 	# TODO ...
