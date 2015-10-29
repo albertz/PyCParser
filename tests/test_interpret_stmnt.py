@@ -201,3 +201,35 @@ def test_interpret_var_init_wrap_value_2():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
+
+
+def test_interpret_call_void_func():
+	state = parse("""
+	int g() {}
+	int f() {
+		(void) g();
+		return 5;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	f = state.funcs["f"]
+	assert isinstance(f, CFunc)
+	assert isinstance(f.body, CBody)
+	assert len(f.body.contentlist) == 2
+	call_stmnt = f.body.contentlist[0]
+	print "Call statement:", call_stmnt
+	assert isinstance(call_stmnt, CStatement)
+	assert isinstance(call_stmnt._leftexpr, CFuncCall)
+	assert isinstance(call_stmnt._leftexpr.base, CStatement)
+	assert isinstance(call_stmnt._leftexpr.base._leftexpr, CBuiltinType)
+	assert call_stmnt._leftexpr.base._leftexpr.builtinType == ("void", )
+
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5

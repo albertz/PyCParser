@@ -42,6 +42,15 @@ class CWrapValue(CType):
 			value = value.value
 		return value
 
+class CWrapFuncType(CType):
+	def __init__(self, func):
+		"""
+		:type func: CFunc
+		"""
+		self.func = func
+	def getCType(self, stateStruct):
+		assert False
+
 
 def iterIdentifierNames():
 	S = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -354,6 +363,9 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 	elif isinstance(objType, CWrapValue):
 		# It's already the value. See astAndTypeForStatement().
 		return getAstNode_valueFromObj(stateStruct, objAst, objType.getCType(stateStruct))
+	elif isinstance(objType, CWrapFuncType):
+		# It's already the value. See astAndTypeForStatement().
+		return objAst
 	else:
 		assert False, "bad type: " + str(objType)
 		
@@ -632,6 +644,12 @@ def astForCast(funcEnv, new_type, arg_ast):
 
 
 def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
+	if required_arg_types and isinstance(required_arg_types[-1], CVariadicArgsType):
+		# CFunc will have CVariadicArgsType.
+		# CWrapValue to native functions will not have any indication for variadic args,
+		# even when it supports it.
+		# Thus, just remove it any assume we support it.
+		required_arg_types = required_arg_types[:-1]
 	assert len(stmnt_args) >= len(required_arg_types)
 	# variable num of args
 	required_arg_types = required_arg_types + [None] * (len(stmnt_args) - len(required_arg_types))
@@ -652,8 +670,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
 	elif isinstance(stmnt, CFunc):
-		# TODO: specify type correctly
-		return funcEnv.getAstNodeForVarDecl(stmnt), CFuncPointerDecl()
+		return funcEnv.getAstNodeForVarDecl(stmnt), CWrapFuncType(stmnt)
 	elif isinstance(stmnt, CStatement):
 		return astAndTypeForCStatement(funcEnv, stmnt)
 	elif isinstance(stmnt, CAttribAccessRef):
@@ -703,9 +720,12 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
 			# C static cast
 			assert len(stmnt.args) == 1
+			aType = stmnt.base.asType()
 			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
 			bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
-			aType = stmnt.base.asType()
+			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
+				# A void cast will discard the output.
+				return bAst, aType
 			return astForCast(funcEnv, aType, bValueAst), aType
 		elif isinstance(stmnt.base, CStatement):
 			# func ptr call
