@@ -131,7 +131,7 @@ def simple_escape_char(c):
 	elif c == "r": return "\r"
 	elif c == "v": return "\v"
 	elif c == "0": return "\0"
-	elif c == "\n": return "\n"
+	elif c == "\n": return ""
 	elif c == '"': return '"'
 	elif c == "'": return "'"
 	elif c == "\\": return "\\"
