@@ -314,7 +314,10 @@ class CVoidType(CType):
 	def __repr__(self): return "void"
 	def getCType(self, stateStruct): return None
 	def asCCode(self, indent=""): return indent + "void"
-	
+class CVariadicArgsType(CType):
+	def getCType(self, stateStruct): return None
+	def asCCode(self, indent=""): return indent + "..."
+
 class CPointerType(CType):
 	def __init__(self, ptr): self.pointerOf = ptr
 	def getCType(self, stateStruct):
@@ -1496,6 +1499,8 @@ def findIdentifierInBody(body, name):
 	return None
 
 def make_type_from_typetokens(stateStruct, type_tokens):
+	if not type_tokens:
+		return None
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
 		t = type_tokens[0]
 	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
@@ -1506,7 +1511,10 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 		t = CStdIntType(type_tokens[0])
 	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.typedefs:
 		t = stateStruct.typedefs[type_tokens[0]]
+	elif type_tokens == [".", ".", "."]:
+		t = CVariadicArgsType()
 	else:
+		stateStruct.error("type tokens not handled: %s" % type_tokens)
 		t = None
 	return t
 
@@ -3314,14 +3322,14 @@ def parse_code(source_code, state=None):
 	return state
 
 
-def test(*args):
+def demo_parse_file(filename):
 	import better_exchook
 	better_exchook.install()
-	
+	from pprint import pprint
+
 	state = State()
 	state.autoSetupSystemMacros()
 
-	filename = args[0] if args else "/Library/Frameworks/SDL.framework/Headers/SDL.h"
 	preprocessed = state.preprocess_file(filename, local=True)
 	tokens = cpre2_parse(state, preprocessed)
 	
@@ -3333,9 +3341,12 @@ def test(*args):
 	tokens = copy_hook(tokens, token_list)
 	
 	cpre3_parse(state, tokens)
-	
+	if state._errors:
+		print "parse errors:"
+		pprint(state._errors)
+
 	return state, token_list
 
 if __name__ == '__main__':
 	import sys
-	test(*sys.argv[1:])
+	demo_parse_file(sys.argv[1])
