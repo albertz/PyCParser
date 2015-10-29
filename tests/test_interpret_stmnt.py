@@ -149,3 +149,55 @@ def test_interpret_auto_cast_2():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
+
+def test_interpret_var_init_wrap_value():
+	state = cparser.State()
+	state.autoSetupGlobalIncludeWrappers()
+
+	cparser.parse_code("""
+	#include <stdio.h>  // stdout
+	int f() {
+		FILE* f = stdout;
+		return 5;
+	} """, state)
+	print "Parse errors:", state._errors
+	assert not state._errors
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
+def test_interpret_var_init_wrap_value_2():
+	state = cparser.State()
+	state.autoSetupGlobalIncludeWrappers()
+
+	cparser.parse_code("""
+	#include <stdio.h>  // stdout / stderr
+	int f() {
+		int v = 0;
+		FILE* f = v ? stdout : stderr;
+		return 5;
+	} """, state)
+	print "Parse errors:", state._errors
+	assert not state._errors
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5

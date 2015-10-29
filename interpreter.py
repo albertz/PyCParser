@@ -295,6 +295,8 @@ def getAstNodeForVarType(interpreter, t):
 			return getAstNodeAttrib(v, "value")
 		# TODO: this assumes the was previously declared globally.
 		return getAstNodeAttrib("structs", t.name)
+	elif isinstance(t, CWrapValue):
+		return getAstNodeForVarType(interpreter, t.getCType(None))
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
 		except DidNotFindCTypesBasicType: pass
@@ -356,9 +358,13 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 		assert False, "bad type: " + str(objType)
 		
 def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
+	"""
+	Create a new instance of type `objType`.
+	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
+	"""
 	typeAst = getAstNodeForVarType(interpreter, objType)
 
-	if isPointerType(objType) and isPointerType(argType, checkWrapValue=True):
+	if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
 		# We can have it simpler. This is even important in some cases
 		# were the pointer instance is temporary and the object
 		# would get freed otherwise!
@@ -376,7 +382,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 			# there is no really way to 'assert' this.
 			args += [argAst]
 
-	if isPointerType(objType) and argAst is not None:
+	if isPointerType(objType, checkWrapValue=True) and argAst is not None:
 		assert False, "not supported because unsafe! " + str(argAst)
 		return makeAstNodeCall(typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
