@@ -11,7 +11,7 @@ import ast
 import sys
 import inspect
 
-class CWrapValue:
+class CWrapValue(CType):
 	def __init__(self, value, decl=None, **kwattr):
 		if isinstance(value, int):
 			value = ctypes.c_int(value)
@@ -25,13 +25,24 @@ class CWrapValue:
 		s += repr(self.value)
 		s += ">"
 		return s
-	def getCType(self):
+	def getType(self):
 		if self.decl is not None: return self.decl.type
-		elif self.value is not None and hasattr(self.value, "__class__"):
-			return self.value.__class__
+		#elif self.value is not None and hasattr(self.value, "__class__"):
+			#for k, v in State.CBuiltinTypes  # TODO...
+		#	return self.value.__class__
 			#if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
 		return self	
-			
+	def getCType(self, stateStruct):
+		return self.value.__class__
+	def getConstValue(self, stateStruct):
+		value = self.value
+		if isinstance(value, _ctypes._Pointer):
+			value = ctypes.cast(value, ctypes.c_void_p)
+		if isinstance(value, ctypes._SimpleCData):
+			value = value.value
+		return value
+
+
 def iterIdentifierNames():
 	S = "abcdefghijklmnopqrstuvwxyz0123456789"
 	n = 0
@@ -249,11 +260,19 @@ def getAstNodeAttrib(value, attrib, ctx=ast.Load()):
 	a.attr = str(attrib)
 	return a
 
+class DidNotFindCTypesBasicType(Exception): pass
+
 def getAstNodeForCTypesBasicType(t):
 	if t is None: return NoneAstNode
 	if t is CVoidType: return NoneAstNode
 	if not inspect.isclass(t) and isinstance(t, CVoidType): return NoneAstNode
 	if inspect.isclass(t) and issubclass(t, CVoidType): return None
+	if not inspect.isclass(t): raise DidNotFindCTypesBasicType("not a class")
+	if issubclass(t, ctypes._Pointer):
+		base_type = t._type_
+		a = getAstNodeAttrib("ctypes", "POINTER")
+		return makeAstNodeCall(a, getAstNodeForCTypesBasicType(base_type))
+	if not issubclass(t, ctypes._SimpleCData): raise DidNotFindCTypesBasicType("unknown type")
 	assert issubclass(t, getattr(ctypes, t.__name__))
 	return getAstNodeAttrib("ctypes", t.__name__)
 
@@ -278,7 +297,7 @@ def getAstNodeForVarType(interpreter, t):
 		return getAstNodeAttrib("structs", t.name)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
-		except Exception: pass
+		except DidNotFindCTypesBasicType: pass
 	assert False, "cannot handle " + str(t)
 
 def findHelperFunc(f):
@@ -294,9 +313,11 @@ def makeAstNodeCall(func, *args):
 		func = getAstNodeAttrib("helpers", name)
 	return ast.Call(func=func, args=list(args), keywords=[], starargs=None, kwargs=None)
 
-def isPointerType(t):
+def isPointerType(t, checkWrapValue=False):
 	if isinstance(t, CPointerType): return True
 	if isinstance(t, CFuncPointerDecl): return True
+	if checkWrapValue and isinstance(t, CWrapValue):
+		return isPointerType(t.getCType(None), checkWrapValue=True)
 	from inspect import isclass
 	if isclass(t):
 		if issubclass(t, _ctypes._Pointer): return True
@@ -328,18 +349,21 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 	elif isinstance(objType, CTypedef):
 		t = objType.type
 		return getAstNode_valueFromObj(stateStruct, objAst, t)
+	elif isinstance(objType, CWrapValue):
+		# It's already the value. See astAndTypeForStatement().
+		return getAstNode_valueFromObj(stateStruct, objAst, objType.getCType(stateStruct))
 	else:
 		assert False, "bad type: " + str(objType)
 		
 def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	typeAst = getAstNodeForVarType(interpreter, objType)
 
-	if isPointerType(objType) and isPointerType(argType):
+	if isPointerType(objType) and isPointerType(argType, checkWrapValue=True):
 		# We can have it simpler. This is even important in some cases
 		# were the pointer instance is temporary and the object
 		# would get freed otherwise!
 		astCast = getAstNodeAttrib("ctypes", "cast")
-		return makeAstNodeCall(astCast, argAst, typeAst)		
+		return makeAstNodeCall(astCast, argAst, typeAst)
 		
 	args = []
 	if argAst is not None:
@@ -354,7 +378,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 
 	if isPointerType(objType) and argAst is not None:
 		assert False, "not supported because unsafe! " + str(argAst)
-		return makeAstNodeCall(typeAst)		
+		return makeAstNodeCall(typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 		#astCast = getAstNodeAttrib("ctypes", "cast")
 		#astVoidP = makeAstNodeCall(astVoidPT, *args)
@@ -381,12 +405,10 @@ class FuncCodeblockScope:
 		elif isinstance(varDecl, CVarDecl):
 			if varDecl.body is not None:
 				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
-				if isPointerType(varDecl.type) and not isPointerType(t):
-					v = varDecl.body.getConstValue(self.funcEnv.globalScope.stateStruct)
-					assert not v, "Initializing pointer type " + str(varDecl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(varDecl.body)
-					a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type)
-				else:
-					a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type, bodyAst, t)
+				v = getConstValue(self.funcEnv.globalScope.stateStruct, varDecl.body)
+				if v is not None and not v:
+					bodyAst = t = None
+				a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type, bodyAst, t)
 			else:	
 				a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type)
 		elif isinstance(varDecl, CFunc):
@@ -584,6 +606,42 @@ def getAstForWrapValue(interpreter, wrapValue):
 	v = getAstNodeArrayIndex("values", id(wrapValue))
 	return v
 
+def astForCast(funcEnv, new_type, arg_ast):
+	"""
+	:type new_type: _CBaseWithOptBody or derived
+	:param arg_ast: the value to be casted, already as an AST
+	:return: ast (of type new_type)
+	"""
+	aType = new_type
+	aTypeAst = getAstNodeForVarType(funcEnv.globalScope.interpreter, aType)
+	bValueAst = arg_ast
+
+	if isPointerType(aType):
+		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		astVoidP = makeAstNodeCall(astVoidPT, bValueAst)
+		return makeAstNodeCall(astCast, astVoidP, aTypeAst)
+	else:
+		return makeAstNodeCall(aTypeAst, bValueAst)
+
+
+def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
+	assert len(stmnt_args) >= len(required_arg_types)
+	# variable num of args
+	required_arg_types = required_arg_types + [None] * (len(stmnt_args) - len(required_arg_types))
+	r_args = []
+	for f_arg_type, s_arg in zip(required_arg_types, stmnt_args):
+		s_arg_ast, s_arg_type = astAndTypeForStatement(funcEnv, s_arg)
+		if f_arg_type is not None:
+			f_arg_ctype = getCType(f_arg_type, funcEnv.globalScope.stateStruct)
+			s_arg_ctype = getCType(s_arg_type, funcEnv.globalScope.stateStruct)
+			if s_arg_ctype != f_arg_ctype:
+				s_value_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, s_arg_ast, s_arg_type)
+				s_arg_ast = astForCast(funcEnv, f_arg_type, s_value_ast)
+		r_args += [s_arg_ast]
+	return r_args
+
+
 def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
@@ -611,7 +669,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		attrStmnt = CAttribAccessRef()
 		attrStmnt.base = derefStmnt
 		attrStmnt.name = stmnt.name
-		return astAndTypeForStatement(funcEnv, attrStmnt)		
+		return astAndTypeForStatement(funcEnv, attrStmnt)
 	elif isinstance(stmnt, CNumber):
 		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
@@ -628,43 +686,38 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert stmnt.base.name is not None
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib("g", stmnt.base.name)
-			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			a.args = autoCastArgs(funcEnv, [f_arg.type for f_arg in stmnt.base.args], stmnt.args)
 			return a, stmnt.base.type
 		elif isinstance(stmnt.base, CSizeofSymbol):
 			assert len(stmnt.args) == 1
 			t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
 			assert t is not None
 			s = ctypes.sizeof(t)
-			return ast.Num(s), ctypes.c_size_t
+			return ast.Num(s), CStdIntType("size_t")
 		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
 			# C static cast
 			assert len(stmnt.args) == 1
 			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
 			bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
 			aType = stmnt.base.asType()
-			aTypeAst = getAstNodeForVarType(funcEnv.globalScope.interpreter, aType)
-
-			if isPointerType(aType):
-				astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
-				astCast = getAstNodeAttrib("ctypes", "cast")
-				astVoidP = makeAstNodeCall(astVoidPT, bValueAst)
-				return makeAstNodeCall(astCast, astVoidP, aTypeAst), aType
-			else:
-				return makeAstNodeCall(aTypeAst, bValueAst), aType
+			return astForCast(funcEnv, aType, bValueAst), aType
 		elif isinstance(stmnt.base, CStatement):
 			# func ptr call
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
 			assert isinstance(pType, CFuncPointerDecl)
 			a.func = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType)
-			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			a.args = autoCastArgs(funcEnv, pType.args, stmnt.args)
 			return a, pType.type
 		elif isinstance(stmnt.base, CWrapValue):
 			# expect that we just wrapped a callable function/object
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt.base), "value")
-			a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.base.returnType			
+			if isinstance(stmnt.base.value, ctypes._CFuncPtr):
+				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
+			else:  # e.g. custom lambda / Python func
+				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			return a, stmnt.base.returnType
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
@@ -687,7 +740,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		#return getAstNodeArrayIndex(aAst, bValueAst), aType.pointerOf
 	elif isinstance(stmnt, CWrapValue):
 		v = getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt)
-		return getAstNodeAttrib(v, "value"), stmnt.getCType()
+		# Keep in sync with getAstNode_valueFromObj().
+		return getAstNodeAttrib(v, "value"), stmnt.getType()
 	else:
 		assert False, "cannot handle " + str(stmnt)
 

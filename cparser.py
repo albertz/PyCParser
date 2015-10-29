@@ -344,7 +344,7 @@ class CStdIntType(CType):
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
 	try:
-		if issubclass(t, _ctypes._SimpleCData): return t
+		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer)): return t
 	except Exception: pass # e.g. typeerror or so
 	if isinstance(t, (CStruct,CUnion,CEnum)):
 		if t.body is None:
@@ -1976,10 +1976,12 @@ def opsDoLeftToRight(stateStruct, op1, op2):
 	return True
 
 def getConstValue(stateStruct, obj):
+	"""
+	Evaluates the obj, in case it is a expression which can be evaluated at compile time.
+	"""
 	if hasattr(obj, "getConstValue"): return obj.getConstValue(stateStruct)
 	if isinstance(obj, (CNumber,CStr,CChar)):
 		return obj.content
-	stateStruct.error("don't know how to get const value from " + str(obj))
 	return None
 
 class CSizeofSymbol: pass

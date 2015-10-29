@@ -13,15 +13,15 @@ def _fixCType(t, wrap=False):
 	if wrap: return wrapCTypeClassIfNeeded(t)
 	return t
 
-def wrapCFunc(state, funcname, restype=None, argtypes=None):
+def wrapCFunc(state, funcname, restype, argtypes):
 	f = getattr(ctypes.pythonapi, funcname)
-	if restype is None: restype = ctypes.c_int
 	if restype is CVoidType:
 		f.restype = None
-	elif restype is not None:
+	else:
+		assert restype is not None
 		f.restype = restype = _fixCType(restype, wrap=True)
-	if argtypes is not None:
-		f.argtypes = map(_fixCType, argtypes)
+	assert argtypes is not None
+	f.argtypes = map(_fixCType, argtypes)
 	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
 
 def _fixCArg(a):
@@ -68,8 +68,8 @@ class Wrapper:
 		state.macros["EOF"] = Macro(rightside="-1") # TODO?
 		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "isatty", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
-		wrapCFunc(state, "fileno")
-		wrapCFunc(state, "getc")
+		wrapCFunc(state, "fileno", restype=ctypes.c_int, argtypes=(FileP,))
+		wrapCFunc(state, "getc", restype=ctypes.c_int, argtypes=(FileP,))
 		wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int,FileP))
 		struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
 		struct_stat.body = CBody(parent=struct_stat)
@@ -128,7 +128,7 @@ class Wrapper:
 		state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
 		state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
 	def handle_signal_h(self, state):
-		wrapCFunc(state, "signal")
+		wrapCFunc(state, "signal", restype=ctypes.c_void_p, argtypes=(ctypes.c_int, ctypes.c_void_p))  # it's actually a func ptr...
 		state.macros["SIGINT"] = Macro(rightside="2")
 		state.macros["SIG_DFL"] = Macro(rightside="(void (*)(int))0")
 		state.macros["SIG_IGN"] = Macro(rightside="(void (*)(int))1")

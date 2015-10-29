@@ -110,3 +110,42 @@ def test_interpret_c_cast_ptr_4():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
+
+
+def test_interpret_auto_cast():
+	state = parse("""
+	void g(unsigned long) {}
+	int f() {
+		g((long) 42);
+		return 5;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+def test_interpret_auto_cast_2():
+	state = parse("""
+	void g(const char*, const char*) {}
+	int f() {
+		g(0, "foo");
+		return 5;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
