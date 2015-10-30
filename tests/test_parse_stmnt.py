@@ -45,3 +45,22 @@ def test_parse_c_cast_ptr():
 	v = state.vars["v"]
 	assert isinstance(v.body, CStatement)
 	# TODO ...
+
+def test_parse_macro():
+	state = parse("""
+	#define macro(x) (x)
+	int v = 0;
+	if(macro(v)) {}
+	""")
+
+def test_parse_macro_2():
+	state = parse("""
+	#define Py_FORCE_DOUBLE(X) (X)
+	#define Py_IS_NAN(X) ((X) != (X))
+	#define Py_IS_INFINITY(X) ((X) &&                                   \
+	                          (Py_FORCE_DOUBLE(X)*0.5 == Py_FORCE_DOUBLE(X)))
+	#define Py_IS_FINITE(X) (!Py_IS_INFINITY(X) && !Py_IS_NAN(X))
+	int v = 0;
+	if(Py_IS_FINITE(v)) {}
+	""")
+

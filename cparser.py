@@ -3203,7 +3203,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 			elif isinstance(curCObj, _CControlStructure):
 				if token.content == "(":
 					cpre3_parse_statements_in_brackets(stateStruct, curCObj, sepToken=CSemicolon(), addToList=curCObj.args, input_iter=input_iter)
-					curCObj._bracketlevel = list(parentCObj._bracketlevel)
+					curCObj._bracketlevel = list(parentCObj._bracketlevel or [])
 					lasttoken = cpre3_parse_single_next_statement(stateStruct, curCObj, input_iter)
 					curCObj.finalize(stateStruct)
 					if isinstance(lasttoken, CClosingBracket) and lasttoken.brackets == parentCObj._bracketlevel:
