@@ -477,7 +477,15 @@ class State:
 		if len(self._preprocessIncludeLevel) == 0: return "<out-of-scope>"
 		l = self._preprocessIncludeLevel[-1]
 		return ":".join([l[1], str(l[2]), str(l[3])])
-	
+
+	def curFile(self):
+		if not self._preprocessIncludeLevel: return "<out-of-scope>"
+		return self._preprocessIncludeLevel[-1][1]
+
+	def curLine(self):
+		if not self._preprocessIncludeLevel: return -1
+		return self._preprocessIncludeLevel[-1][2]
+
 	def error(self, s):
 		self._errors.append(self.curPosAsStr() + ": " + s)
 
@@ -561,6 +569,7 @@ def cpreprocess_evaluate_ifdef(state, arg):
 	if not is_valid_defname(arg):
 		state.error("preprocessor: '" + arg + "' is not a valid macro name")
 		return False
+	if arg in ("__FILE__", "__LINE__"): return True
 	return arg in state.macros
 
 def cpreprocess_evaluate_single(state, arg):
@@ -1248,7 +1257,7 @@ def cpre2_parse_number(stateStruct, s):
 def cpre2_parse(stateStruct, input, brackets = None):
 	"""
 	:type stateStruct: State
-	:param str | iterable[char] input: chars of preprocessed C code
+	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution
 	:param list[str] | None brackets: opening brackets stack
 	:returns token iterator
 	"""
@@ -1324,7 +1333,11 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					if laststr in stateStruct.macros:
+					if laststr == "__FILE__":
+						yield CStr(stateStruct.curFile())
+					elif laststr == "__LINE__":
+						yield CNumber(stateStruct.curLine())
+					elif laststr in stateStruct.macros:
 						macroname = laststr
 						macroargs = []
 						macrobrackets = []
