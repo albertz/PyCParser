@@ -1923,6 +1923,8 @@ def findObjInNamespace(stateStruct, curCObj, name):
 				assert isinstance(arg, CFuncArgDecl)
 				if arg.name is not None and arg.name == name:
 					return arg
+			if cobj.name == name:
+				return cobj
 	return None
 
 def findCObjTypeInNamespace(stateStruct, curCObj, DictName, name):

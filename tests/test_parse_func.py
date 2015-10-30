@@ -32,3 +32,9 @@ def test_parse_variadic_args():
 	assert isinstance(arg0, CFuncArgDecl)
 	assert isinstance(arg0.type, CVariadicArgsType)
 
+def test_parse_void_func_self_call():
+	state = parse("void f() { f(); }")
+	assert "f" in state.funcs
+	f = state.funcs["f"]
+	print f
+	assert isinstance(f, CFunc)
