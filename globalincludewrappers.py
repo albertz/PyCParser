@@ -64,6 +64,7 @@ class Wrapper:
 		wrapCFunc(state, "ftell", restype=ctypes.c_long, argtypes=(FileP,))
 		wrapCFunc(state, "rewind", restype=CVoidType, argtypes=(FileP,))
 		wrapCFunc(state, "ferror", restype=ctypes.c_int, argtypes=(FileP,))
+		wrapCFunc(state, "clearerr", restype=CVoidType, argtypes=(FileP,))
 		state.vars["errno"] = CWrapValue(0) # TODO
 		state.macros["EOF"] = Macro(rightside="-1") # TODO?
 		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
