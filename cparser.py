@@ -566,11 +566,11 @@ def cpreprocess_evaluate_ifdef(state, arg):
 def cpreprocess_evaluate_single(state, arg):
 	if arg == "": return None
 	try: return int(arg) # is integer?
-	except: pass
+	except ValueError: pass
 	try: return long(arg) # is long?
-	except: pass
+	except ValueError: pass
 	try: return int(arg, 16) # is hex?
-	except: pass
+	except ValueError: pass
 	if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"': return arg[1:-1] # is string?
 	
 	if not is_valid_defname(arg):
@@ -1248,7 +1248,7 @@ def cpre2_parse_number(stateStruct, s):
 def cpre2_parse(stateStruct, input, brackets = None):
 	"""
 	:type stateStruct: State
-	:param str | iterable[char] input:
+	:param str | iterable[char] input: chars of preprocessed C code
 	:param list[str] | None brackets: opening brackets stack
 	:returns token iterator
 	"""
