@@ -151,8 +151,9 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 		stateStruct = Dummy()
 
 	def f(*args):
-		args = dict(map(lambda i: (argnames[i], args[i]), range(len(argnames or ()))))
-		
+		assert len(args) == len(argnames or ())
+		args = {k: v for (k, v) in zip(argnames or (), args)}
+
 		ret = ""
 		state = 0
 		lastidentifier = ""
