@@ -47,14 +47,44 @@ def test_parse_c_cast_ptr():
 	# TODO ...
 
 def test_parse_macro():
-	state = parse("""
+	parse("""
 	#define macro(x) (x)
 	int v = 0;
 	if(macro(v)) {}
 	""")
 
+def test_parse_aritmethic():
+	parse("""
+	if(0 * 0.5) {}
+	""")
+
+def test_parse_macro_2a():
+	state = cparser.State()
+	preprocessed = state.preprocess_source_code("""
+	#define Py_IS_INFINITY(X) ((X) * 0.5 == (X))
+	if(Py_IS_INFINITY(0)) {}
+	""")
+	# preproccessed code will *not* substitute macros. that's handled by cpre2_parse.
+	preprocessed = "".join(preprocessed)
+	preprocessed = [l.strip() for l in preprocessed.splitlines()]
+	preprocessed = "".join([l + "\n" for l in preprocessed if l])
+	print("preprocessed:")
+	pprint(preprocessed)
+	tokens = cpre2_parse(state, preprocessed)
+	if state._errors:
+		print("parse errors after cpre2_parse:")
+		pprint(state._errors)
+	tokens = list(tokens)
+	print("token list:")
+	pprint(tokens)
+	cpre3_parse(state, tokens)
+	if state._errors:
+		print("parse errors:")
+		pprint(state._errors)
+		assert False, "parse errors"
+
 def test_parse_macro_2():
-	state = parse("""
+	parse("""
 	#define Py_FORCE_DOUBLE(X) (X)
 	#define Py_IS_NAN(X) ((X) != (X))
 	#define Py_IS_INFINITY(X) ((X) &&                                   \
