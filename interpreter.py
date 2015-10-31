@@ -1156,7 +1156,7 @@ class Interpreter:
 		if func.body is None:
 			# TODO: search in other C files
 			# Hack for now: ignore :)
-			print "XXX:", func.name, "is not loaded yet"
+			print "TODO (missing C source code file):", func.name, "is not loaded yet"
 		else:
 			cCodeToPyAstList(base, func.body)
 		base.popScope()
