@@ -1300,8 +1300,14 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					state = 40
 					breakLoop = False
 				elif c == ";": yield CSemicolon()
+				elif c == "\\": state = 1
 				else:
-					stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
+					stateStruct.error("cpre2 parse: didn't expected char %r in state %i" % (c, state))
+			elif state == 1: # escape without context
+				if c != "\n":
+					stateStruct.error("cpre2 parse: didn't expected char %r in state %i" % (c, state))
+				# Just ignore it in any case.
+				state = 0
 			elif state == 10: # number (no correct float handling, will be [number, op("."), number])
 				if c in NumberChars: laststr += c
 				elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
