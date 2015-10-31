@@ -237,7 +237,7 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 
 	return f
 
-class Macro:
+class Macro(object):
 	def __init__(self, state=None, macroname=None, args=None, rightside=None):
 		self.name = macroname
 		self.args = args
@@ -292,7 +292,7 @@ class Macro:
 		return valueStmnt.getConstValue(stateStruct)
 
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
-class CType:
+class CType(object):
 	def __init__(self, **kwargs):
 		for k,v in kwargs.items():
 			setattr(self, k, v)
@@ -372,7 +372,7 @@ def getSizeOf(t, stateStruct):
 	t = getCType(t, stateStruct)
 	return ctypes.sizeof(t)
 
-class State:
+class State(object):
 	# See _getCTypeStruct for details.
 	IndirectSimpleCTypes = False
 	
@@ -1196,7 +1196,7 @@ def cpreprocess_parse(stateStruct, input):
 		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
 		else: stateStruct.incIncludeLineChar(char=1)
 
-class _CBase:
+class _CBase(object):
 	def __init__(self, content=None, rawstr=None, **kwargs):
 		self.content = content
 		self.rawstr = rawstr
@@ -1475,7 +1475,7 @@ def cpre2_tokenstream_asCCode(input):
 		else: needspace = True
 
 	
-class CBody:
+class CBody(object):
 	def __init__(self, parent):
 		self.parent = parent
 		self._bracketlevel = []
@@ -1541,7 +1541,7 @@ def asCCode(stmnt, indent="", fullDecl=False):
 		return stmnt.asCCode(indent)
 	assert False, "don't know how to handle " + str(stmnt)
 	
-class _CBaseWithOptBody:
+class _CBaseWithOptBody(object):
 	NameIsRelevant = True
 	AutoAddToContent = True
 	AlwaysNonZero = False
@@ -1623,10 +1623,29 @@ class _CBaseWithOptBody:
 		#print "finalize", self, "at", stateStruct.curPosAsStr()
 		if addToContent and self.parent is not None and self.parent.body and hasattr(self.parent.body, "contentlist"):
 			self.parent.body.contentlist.append(self)
-	
+
+	def _copy(self, value, parent=None, name=None):
+		if isinstance(value, (int, long, float, str, unicode)) or value is None:
+			return value
+		elif isinstance(value, list):
+			return [self._copy(v, parent=parent) for v in value]
+		elif isinstance(value, tuple):
+			return tuple([self._copy(v, parent=parent) for v in value])
+		elif isinstance(value, dict):
+			return {k: self._copy(v, parent=parent) for (k, v) in value.items()}
+		elif isinstance(value, (_CBase, _CBaseWithOptBody, CType, CBody)):
+			new = value.__class__.__new__(value.__class__)
+			for k, v in vars(value).items():
+				if k == "parent":
+					new.parent = parent
+				else:
+					setattr(new, k, self._copy(v, parent=new, name=k))
+			return new
+		else:
+			assert False, "dont know how to handle %r %r (%s)" % (name, value, value.__class__)
+
 	def copy(self):
-		import copy
-		return copy.deepcopy(self, memo={id(self.parent): self.parent})
+		return self._copy(self, parent=self.parent)
 
 	def getCType(self, stateStruct):
 		raise Exception(str(self) + " cannot be converted to a C type")
