@@ -84,6 +84,7 @@ class Wrapper:
 		wrapCFunc(state, "abort", restype=CVoidType, argtypes=())
 		wrapCFunc(state, "exit", restype=CVoidType, argtypes=(ctypes.c_int,))
 		wrapCFunc(state, "malloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_size_t,))
+		wrapCFunc(state, "realloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_size_t))
 		wrapCFunc(state, "free", restype=CVoidType, argtypes=(ctypes.c_void_p,))
 		wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
 		state.funcs["atoi"] = CWrapValue(
