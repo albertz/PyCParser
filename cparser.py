@@ -1302,7 +1302,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				elif c == ";": yield CSemicolon()
 				else:
 					stateStruct.error("cpre2 parse: didn't expected char '" + c + "'")
-			elif state == 10: # number
+			elif state == 10: # number (no correct float handling, will be [number, op("."), number])
 				if c in NumberChars: laststr += c
 				elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
 				else:
@@ -2121,8 +2121,11 @@ class CStatement(_CBaseWithOptBody):
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + TName)
 		elif self._state == 5: # after expr
 			if token == COp("."):
-				self._state = 20
-				self._leftexpr = CAttribAccessRef(parent=self, base=self._leftexpr)
+				if isinstance(self._leftexpr, CNumber):
+					self._state = 10
+				else:
+					self._state = 20
+					self._leftexpr = CAttribAccessRef(parent=self, base=self._leftexpr)
 			elif token == COp("->"):
 				self._state = 20
 				self._leftexpr = CPtrAccessRef(parent=self, base=self._leftexpr)
@@ -2158,8 +2161,11 @@ class CStatement(_CBaseWithOptBody):
 			self._rightexpr = obj
 		elif self._state == 7: # after expr + op + expr
 			if token == COp("."):
-				self._state = 22
-				self._rightexpr = CAttribAccessRef(parent=self, base=self._rightexpr)
+				if isinstance(self._rightexpr, CNumber):
+					self._state = 11
+				else:
+					self._state = 22
+					self._rightexpr = CAttribAccessRef(parent=self, base=self._rightexpr)
 			elif token == COp("->"):
 				self._state = 22
 				self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
@@ -2220,6 +2226,18 @@ class CStatement(_CBaseWithOptBody):
 				else:
 					self._rightexpr._cpre3_handle_token(stateStruct, token)
 					self._state = 8
+		elif self._state == 10: # after number + "."
+			if isinstance(token, CNumber):
+				self._leftexpr = CNumber(float("%s.%s" % (self._leftexpr.content, token.content)))
+			else:
+				stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
+			self._state = 5
+		elif self._state == 11: # after expr + op + number + "."
+			if isinstance(token, CNumber):
+				self._rightexpr = CNumber(float("%s.%s" % (self._rightexpr.content, token.content)))
+			else:
+				stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
+			self._state = 7
 		elif self._state == 20: # after attrib/ptr access
 			if isinstance(token, CIdentifier):
 				assert isinstance(self._leftexpr, (CAttribAccessRef,CPtrAccessRef))

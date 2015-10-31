@@ -53,10 +53,14 @@ def test_parse_macro():
 	if(macro(v)) {}
 	""")
 
-def test_parse_aritmethic():
-	parse("""
-	if(0 * 0.5) {}
-	""")
+def test_parse_aritmethic_1():
+	parse("if(0.5) {}")
+
+def test_parse_aritmethic_1a():
+	parse("if(0 == 0.5) {}")
+
+def test_parse_aritmethic_1b():
+	parse("if((0) * 0.5 == (0)) {}")
 
 def test_parse_macro_2a():
 	state = cparser.State()
