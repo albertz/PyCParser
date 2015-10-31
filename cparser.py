@@ -174,6 +174,13 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 			elif state == 1: # identifier
 				if c in LetterChars + NumberChars + "_":
 					lastidentifier += c
+				elif c == "#":
+					if lastidentifier in args:
+						ret += args[lastidentifier]
+					else:
+						ret += lastidentifier
+					lastidentifier = ""
+					state = 9
 				else:
 					if lastidentifier in args:
 						ret += args[lastidentifier]
@@ -227,7 +234,22 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
 				else:
 					lastidentifier = c
 					state = 1
-
+			elif state == 9: # after identifier + "#"
+				if c == "#": state = 10
+				else:
+					stateStruct.error("unfold macro: unexpected char %r after in state %i" % (c, state))
+					state = 0  # recover
+			elif state == 10: # after identifier + "##"
+				if c in LetterChars + "_":
+					lastidentifier = c
+					state = 1
+				else:
+					stateStruct.error("unfold macro: unexpected char %r after in state %i" % (c, state))
+					state = 0  # recover
+			else:
+				stateStruct.error("unfold macro: internal error, char %r, in state %i" % (c, state))
+				state = 0  # recover
+		# Final check.
 		if state == 1:
 			if lastidentifier in args:
 				ret += args[lastidentifier]
