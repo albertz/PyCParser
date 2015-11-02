@@ -98,3 +98,16 @@ def test_parse_macro_2():
 	if(Py_IS_FINITE(v)) {}
 	""")
 
+def test_parse_cast_ptr():
+	parse("""
+	typedef void *(*allocfunc)(void *, int);
+	typedef struct {
+		allocfunc tp_alloc;
+	} MetaType;
+	typedef struct {} PyTypeObject;
+	void foo() {
+		MetaType* metatype;
+		PyTypeObject* type = (PyTypeObject *)metatype->tp_alloc(0, 0);
+	}
+	""")
+

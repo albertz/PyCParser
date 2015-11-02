@@ -575,6 +575,9 @@ class State(object):
 			yield c		
 		self._preprocessIncludeLevel = self._preprocessIncludeLevel[:-1]		
 
+	def depth(self): return 0
+
+
 def is_valid_defname(defname):
 	if not defname: return False
 	gotValidPrefix = False
@@ -1676,6 +1679,10 @@ class _CBaseWithOptBody(object):
 	def copy(self):
 		return self._copy(self, parent=self.parent)
 
+	def depth(self):
+		if self.parent is None: return 1
+		return self.parent.depth() + 1
+
 	def getCType(self, stateStruct):
 		raise Exception(str(self) + " cannot be converted to a C type")
 
@@ -2100,7 +2107,7 @@ class CStatement(_CBaseWithOptBody):
 		if isinstance(self._leftexpr, CUnknownType):
 			s = getattr(self, "_pushedErrorForUnknown", False)
 			if not s:
-				stateStruct.error("statement parsing: identifier '" + self._leftexpr.name + "' unknown")
+				stateStruct.error("statement parsing: identifier %r unknown in state %i in handle pushed error" % (self._leftexpr.name, self._state))
 				self._pushedErrorForUnknown = True
 	def finalize(self, stateStruct, addToContent=None):
 		self._handlePushedErrorForUnknown(stateStruct)
@@ -2111,7 +2118,7 @@ class CStatement(_CBaseWithOptBody):
 		:type token: iterator
 		"""
 		self._tokens += [token]
-		
+
 		if self._state == 5 and token == COp(":"):
 			if isinstance(self._leftexpr, CUnknownType):
 				CGotoLabel.overtake(self)
@@ -2196,7 +2203,7 @@ class CStatement(_CBaseWithOptBody):
 				else:
 					obj = findObjInNamespace(stateStruct, self.parent, token.content)
 					if obj is None:
-						stateStruct.error("statement parsing: identifier '" + token.content + "' unknown")
+						stateStruct.error("statement parsing: identifier %r unknown in state %i" % (token.content, self._state))
 						obj = CUnknownType(name=token.content)
 				self._state = 7
 			elif isinstance(token, (CNumber,CStr,CChar)):
@@ -2294,14 +2301,18 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr) + " in state " + str(self._state))
 		elif self._state == 40: # after cast_call((expr) x)
-			if token in (COp("."),COp("->")):
+			if self._leftexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
+				self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
+			elif token in (COp("."),COp("->")):
 				self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
 			else:
 				self._leftexpr.args[0].finalize(stateStruct)
 				self._state = 5
 				self._cpre3_handle_token(stateStruct, token) # redo handling
 		elif self._state == 45: # after expr + op + cast_call((expr) x)
-			if token in (COp("."),COp("->")):
+			if self._rightexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
+				self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
+			elif token in (COp("."),COp("->")):
 				self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
 			else:
 				self._rightexpr.args[0].finalize(stateStruct)
