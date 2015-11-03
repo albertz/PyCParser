@@ -1285,7 +1285,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 	:type stateStruct: State
 	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution
 	:param list[str] | None brackets: opening brackets stack
-	:returns token iterator
+	:returns token iterator. this will also substitute macros
 	"""
 	state = 0
 	if brackets is None: brackets = []
@@ -3155,9 +3155,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					curCObj.body = CStatement(parent=curCObj)
 			elif (token.content,) in stateStruct.CBuiltinTypes:
 				curCObj._type_tokens += [token.content]
-			elif token.content in stateStruct.StdIntTypes:
+			elif not curCObj._type_tokens and token.content in stateStruct.StdIntTypes:
 				curCObj._type_tokens += [token.content]
-			elif token.content in stateStruct.typedefs:
+			elif not curCObj._type_tokens and token.content in stateStruct.typedefs:
 				curCObj._type_tokens += [token.content]
 			else:
 				if curCObj._finalized:

@@ -98,7 +98,7 @@ def test_parse_macro_2():
 	if(Py_IS_FINITE(v)) {}
 	""")
 
-def test_parse_cast_ptr():
+def test_parse_cast_ptr_attrib_access():
 	parse("""
 	typedef void *(*allocfunc)(void *, int);
 	typedef struct {
@@ -111,3 +111,31 @@ def test_parse_cast_ptr():
 	}
 	""")
 
+def test_parse_cmp_null():
+	parse("""
+	#define NULL 0
+	void* foo() {
+		void* x;
+		if(x == NULL) {}
+	}
+	""")
+
+def test_parse_var_decl_existing_typedef():
+	parse("""
+	typedef struct {} PyObject;
+	typedef struct {} state;
+	void foo() {
+		PyObject *state;
+	}
+	""")
+
+def test_parse_var_decl_existing_typedef_asign():
+	parse("""
+	typedef struct {} PyObject;
+	typedef struct {} state;
+	void foo() {
+		PyObject *state;
+		state = 42;
+		if(state * state == 0) {}
+	}
+	""")
