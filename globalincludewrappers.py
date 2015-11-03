@@ -123,7 +123,7 @@ class Wrapper:
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
 		def assert_wrap(x): assert x
-		state.funcs["assert"] = CWrapValue(assert_wrap)
+		state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType)
 	def handle_fcntl_h(self, state):
 		state.macros["O_RDONLY"] = Macro(rightside="0x0000")
 		wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
