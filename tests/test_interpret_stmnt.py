@@ -233,3 +233,48 @@ def test_interpret_call_void_func():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
+
+
+def test_interpret_goto_forward():
+	state = parse("""
+	int f() {
+		goto final;
+		return 3;
+	final:
+		return 5;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
+def test_interpret_goto_backward():
+	state = parse("""
+	int f() {
+		int x = 0;
+	again:
+		if(x > 0)
+			return 42;
+		x += 1;
+		goto again;
+		return 5;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
