@@ -120,6 +120,7 @@ class Wrapper:
 	def handle_ctype_h(self, state):
 		wrapCFunc(state, "isalpha", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 		wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+		wrapCFunc(state, "isspace", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
 		def assert_wrap(x): assert x
