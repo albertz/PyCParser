@@ -504,7 +504,7 @@ def _astOpToFunc(op):
 	f = eval(code)
 	return f
 
-OpBinFuncs = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
+#OpBinFuncs = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues())) ??
 
 class Helpers:
 	@staticmethod

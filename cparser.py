@@ -2830,7 +2830,7 @@ class CWhileStatement(_CControlStructure):
 
 		if isinstance(self.parent.body, CBody) and self.parent.body.contentlist:
 			last = _getLastCBody(self.parent)
-			if isinstance(last, CDoStatement):
+			if isinstance(last, CDoStatement) and not last.whilePart:
 				if self.body is not None:
 					stateStruct.error("'while' " + str(self) + " as part of 'do' " + str(last) + " has another body")
 				last.whilePart = self

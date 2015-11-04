@@ -139,3 +139,21 @@ def test_parse_var_decl_existing_typedef_asign():
 		if(state * state == 0) {}
 	}
 	""")
+
+def test_parse_nested_body():
+	parse("void foo() {{ int x; }}")
+
+def test_parse_two_nested_bodies():
+	parse("void foo() { {int x;} {int x;} }")
+
+def test_parse_nested_body_after_while():
+	parse("void foo() { while(0) {int x;} {int x;} }")
+
+def test_parse_nested_body_after_do_while():
+	parse("void foo() { do {int x;} while(0); {int x;} }")
+
+def test_parse_nested_body_after_do_while_while():
+	parse("void foo() { do {} while(0); while(0) {} {} }")
+
+def test_parse_while_after_do_while():
+	parse("void foo() { do {} while(0); while(0) {} }")

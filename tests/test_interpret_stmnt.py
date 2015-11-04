@@ -278,3 +278,67 @@ def test_interpret_goto_backward():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+def test_interpret_do_while():
+	state = parse("""
+	int f() {
+		int x = 0;
+		do {
+			x += 1;
+		} while(0);
+		return x;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1
+
+def test_interpret_inplacce_add():
+	state = parse("""
+	int f() {
+		int x = 42;
+		x += 1;
+		return x;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 43
+
+def test_interpret_do_while_while():
+	state = parse("""
+	int f() {
+		int x = 0;
+		do {
+			x += 1;
+		} while(0);
+		while(x < 3) {
+			x++;
+		}
+		return x;
+	} """)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
