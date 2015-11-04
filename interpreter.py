@@ -504,7 +504,7 @@ def _astOpToFunc(op):
 	f = eval(code)
 	return f
 
-#OpBinFuncs = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues())) ??
+OpBinFuncsByOp = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
 
 class Helpers:
 	@staticmethod
@@ -587,7 +587,7 @@ class Helpers:
 		op = OpBin[op]
 		bValue *= ctypes.sizeof(a._type_)
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
-		aPtr.contents.value = OpBinFuncs[op](aPtr.contents.value, bValue)
+		aPtr.contents.value = OpBinFuncsByOp[op](aPtr.contents.value, bValue)
 		return a
 
 	@staticmethod
