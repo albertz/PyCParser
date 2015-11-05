@@ -342,3 +342,28 @@ def test_interpret_do_while_while():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
+
+def test_interpret_goto_label_single_stmnt():
+	state = parse("""
+	int f() {
+		int x = 0;
+		if(1) {}
+		else
+			label:
+				x = 1;
+		if(x == 0)
+			goto label;
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1

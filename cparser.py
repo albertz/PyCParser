@@ -1656,6 +1656,13 @@ class _CBaseWithOptBody(object):
 		if addToContent and self.parent is not None and self.parent.body and hasattr(self.parent.body, "contentlist"):
 			self.parent.body.contentlist.append(self)
 
+	def addToBody(self, obj):
+		if self.body is None:
+			self.body = obj
+		else:
+			assert isinstance(self.body, CBody)
+			self.body.contentlist.append(obj)
+
 	def _copy(self, value, parent=None, name=None):
 		if isinstance(value, (int, long, float, str, unicode)) or value is None:
 			return value
@@ -3024,7 +3031,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 					curCObj._bracketlevel = list(parentCObj._bracketlevel)
 					lasttoken = cpre3_parse_single_next_statement(stateStruct, curCObj, input_iter)
 					curCObj.finalize(stateStruct)
-					parentCObj.body = curCObj
+					parentCObj.addToBody(curCObj)
 					return lasttoken
 				elif token.content == "[":
 					stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got unexpected '['")
@@ -3035,7 +3042,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 						stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got multiple bodies")
 					cpre3_parse_body(stateStruct, curCObj, input_iter)
 					curCObj.finalize(stateStruct)
-					parentCObj.body = curCObj
+					parentCObj.addToBody(curCObj)
 					return
 				else:
 					stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got unexpected/unknown opening bracket '" + token.content + "'")
@@ -3053,7 +3060,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 				CVarDecl.overtake(curCObj)
 			if curCObj is not None:
 				curCObj.finalize(stateStruct)
-				parentCObj.body = curCObj
+				parentCObj.addToBody(curCObj)
 			return token
 		elif curCObj is None and isinstance(token, CIdentifier) and token.content in CControlStructures:
 			curCObj = CControlStructures[token.content](parent=parentCObj)
@@ -3064,7 +3071,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 				# We finalize in any way, also for 'do'. We don't do any semantic checks here
 				# if there is a correct 'while' following or neither if the 'else' has a previous 'if'.
 				curCObj.finalize(stateStruct)
-				parentCObj.body = curCObj
+				parentCObj.addToBody(curCObj)
 				return lasttoken
 			elif isinstance(curCObj, CReturnStatement):
 				curCObj.body = CStatement(parent=curCObj)
@@ -3075,16 +3082,20 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 				stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got second identifier '" + token.content + "'")
 		elif isinstance(curCObj, CStatement):
 			curCObj._cpre3_handle_token(stateStruct, token)
+			if isinstance(curCObj, CGotoLabel):
+				if parentCObj.body is None:
+					parentCObj.body = CBody(parent=parentCObj.parent.body)
+				parentCObj.addToBody(curCObj)
+				curCObj = None
 		elif curCObj is not None and isinstance(curCObj.body, CStatement):
 			curCObj.body._cpre3_handle_token(stateStruct, token)
 		elif isinstance(curCObj, _CControlStructure):
 			stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected identifier '" + token.content + "'")
+		elif curCObj is None:
+			curCObj = CStatement(parent=parentCObj)
+			curCObj._cpre3_handle_token(stateStruct, token)
 		else:
-			if curCObj is None:
-				curCObj = CStatement(parent=parentCObj)
-				curCObj._cpre3_handle_token(stateStruct, token)
-			else:
-				stateStruct.error("cpre3 parse single: got unexpected token " + str(token))
+			stateStruct.error("cpre3 parse single: got unexpected token %s after %s" % (token, curCObj))
 	stateStruct.error("cpre3 parse single: runaway")
 	return
 

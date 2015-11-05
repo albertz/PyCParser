@@ -157,3 +157,22 @@ def test_parse_nested_body_after_do_while_while():
 
 def test_parse_while_after_do_while():
 	parse("void foo() { do {} while(0); while(0) {} }")
+
+def test_parse_goto_label():
+	parse("""
+	void foo() {
+		label:
+		int x = 1;
+	}
+	""")
+
+def test_parse_goto_label_single_stmnt():
+	parse("""
+	void foo() {
+		int x = 0;
+		if(0) {}
+		else
+			label:
+				x = 1;
+	}
+	""")
