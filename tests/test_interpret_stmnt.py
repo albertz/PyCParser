@@ -367,3 +367,56 @@ def test_interpret_goto_label_single_stmnt():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 1
+
+def test_interpret_goto_in_nested():
+	state = parse("""
+	int f() {
+		int x = 0;
+		while(1) {
+			x = 1;
+		again:
+			if(x >= 5)
+				break;
+			x += 1;
+			goto again;
+		}
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+def test_interpret_goto_into_nested():
+	state = parse("""
+	int f() {
+		int x = 1;
+		goto here;
+		while(1) {
+			x += 3;
+			break;
+		here:
+			x *= 2;
+		}
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
