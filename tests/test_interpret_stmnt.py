@@ -1,4 +1,5 @@
 
+import helpers_test
 from cparser import *
 from interpreter import *
 from helpers_test import *
