@@ -434,11 +434,11 @@ def test_interpret_goto_into_nested_for_loop():
 	state = parse("""
 	int f() {
 		int x = 1;
-		//goto here;
+		goto here;
 		for(x=0; ; x++) {
 			x += 2;
 			break;
-		//here:
+		here:
 			x *= 2;
 		}
 		return x;
