@@ -2596,7 +2596,7 @@ def _cpre3_parse_skipbracketcontent(stateStruct, bracketlevel, input_iter):
 				return
 			if not _isBracketLevelOk(bracketlevel, token.brackets):
 				stateStruct.error("cpre3 parse skip brackets: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-	stateStruct.error("cpre3 parse: incomplete, missing closing bracket on level " + str(curCObj._bracketlevel))
+	stateStruct.error("cpre3 parse: incomplete, missing closing bracket on level " + str(bracketlevel))
 	
 def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 	curCObj = CFuncArgDecl(parent=parentCObj)
@@ -3035,7 +3035,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 					return lasttoken
 				elif token.content == "[":
 					stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got unexpected '['")
-					cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
+					_cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
 					return
 				elif token.content == "{":
 					if curCObj.body is not None:
@@ -3046,7 +3046,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 					return
 				else:
 					stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got unexpected/unknown opening bracket '" + token.content + "'")
-					cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
+					_cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
 					return
 			else:
 				stateStruct.error("cpre3 parse single: unexpected opening bracket '" + token.content + "' after " + str(curCObj))
@@ -3299,7 +3299,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					curCObj = _CBaseWithOptBody(parent=parentCObj)
 				elif token.content == "[":
 					stateStruct.error("cpre3 parse after " + str(curCObj) + ": got unexpected '['")
-					cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
+					_cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
 				elif token.content == "{":
 					if curCObj.body is not None:
 						stateStruct.error("cpre3 parse after " + str(curCObj) + ": got multiple bodies")
@@ -3308,7 +3308,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					curCObj = _CBaseWithOptBody(parent=parentCObj)
 				else:
 					stateStruct.error("cpre3 parse after " + str(curCObj) + ": got unexpected/unknown opening bracket '" + token.content + "'")
-					cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)					
+					_cpre3_parse_skipbracketcontent(stateStruct, list(token.brackets), input_iter)
 			elif token.content == "(":
 				if len(curCObj._type_tokens) == 0:
 					CStatement.overtake(curCObj)
