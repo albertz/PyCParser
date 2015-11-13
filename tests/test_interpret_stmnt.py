@@ -215,6 +215,13 @@ def test_interpret_call_void_func():
 	interpreter.register(state)
 	interpreter.registerFinalize()
 
+	print "Parsed funcs:"
+	pprint(state.funcs["g"])
+	pprint(state.funcs["g"].args)
+	pprint(state.funcs["g"].body)
+	pprint(state.funcs["f"])
+	pprint(state.funcs["f"].args)
+	pprint(state.funcs["f"].body)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	f = state.funcs["f"]
@@ -421,3 +428,80 @@ def test_interpret_goto_into_nested():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
+
+
+def test_interpret_goto_into_nested_for_loop():
+	state = parse("""
+	int f() {
+		int x = 1;
+		//goto here;
+		for(x=0; ; x++) {
+			x += 2;
+			break;
+		//here:
+			x *= 2;
+		}
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
+def test_interpret_for_loop_empty():
+	state = parse("""
+	int f() {
+		for(;;) {
+			break;
+		}
+		return 5;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Parsed func body:"
+	pprint(state.funcs["f"].body)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
+def test_interpret_nested_var():
+	state = parse("""
+	int f() {
+		int x = 1;
+		{
+			int x = 2;
+			x = 3;
+		}
+		x = 4;
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 4
+

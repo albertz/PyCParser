@@ -3006,7 +3006,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 				stateStruct.error("cpre3 parse statements in brackets: " + str(token) + " not expected after " + str(curCObj))
 			
 	# add also the last object
-	if curCObj:
+	if isinstance(sepToken, CSemicolon) or curCObj:
 		_finalizeCObj(curCObj)
 		addToList.append(curCObj)
 

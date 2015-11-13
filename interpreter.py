@@ -923,7 +923,8 @@ def astForCFor(funcEnv, stmnt):
 	# introduce dummy 'if' AST so that we have a scope for the for-loop (esp. the first statement)
 	ifAst = ast.If(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	funcEnv.pushScope(ifAst.body)
-	cStatementToPyAst(funcEnv, stmnt.args[0])
+	if stmnt.args[0]:  # could be empty
+		cStatementToPyAst(funcEnv, stmnt.args[0])
 	
 	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	ifAst.body.append(whileAst)
@@ -936,7 +937,8 @@ def astForCFor(funcEnv, stmnt):
 	funcEnv.pushScope(whileAst.body)
 	if stmnt.body is not None:
 		cCodeToPyAstList(funcEnv, stmnt.body)
-	cStatementToPyAst(funcEnv, stmnt.args[2])	
+	if stmnt.args[2]:  # could be empty
+		cStatementToPyAst(funcEnv, stmnt.args[2])
 	funcEnv.popScope() # whileAst / main for-body
 	
 	funcEnv.popScope() # ifAst
