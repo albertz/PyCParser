@@ -928,9 +928,10 @@ def astForCFor(funcEnv, stmnt):
 	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	ifAst.body.append(whileAst)
 
-	ifTestAst = ast.If(body=[ast.Pass()], orelse=[ast.Break()])
-	ifTestAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[1]))
-	whileAst.body.append(ifTestAst)
+	if stmnt.args[1]:  # non-empty statement
+		ifTestAst = ast.If(body=[ast.Pass()], orelse=[ast.Break()])
+		ifTestAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[1]))
+		whileAst.body.append(ifTestAst)
 	
 	funcEnv.pushScope(whileAst.body)
 	if stmnt.body is not None:
