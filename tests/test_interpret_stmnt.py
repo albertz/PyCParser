@@ -505,3 +505,89 @@ def test_interpret_nested_var():
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 4
 
+
+def test_interpret_ptr_array():
+	state = parse("""
+	typedef struct _object { long foo; } PyObject;
+	typedef struct _tuple {
+		PyObject *ob_item[1];
+	} PyTupleObject;
+	#define PyTuple_GET_ITEM(op, i) (((PyTupleObject *)(op))->ob_item[i])
+
+	PyObject tupleGlobal;
+
+	void* f() {
+		PyObject* tuple = &tupleGlobal;
+		PyObject* obj = PyTuple_GET_ITEM(tuple, 0);
+		return obj;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	print "PyTupleObject:", state.typedefs["PyTupleObject"]
+	assert isinstance(state.typedefs["PyTupleObject"].type, CStruct)
+	print "PyTupleObject body:"
+	assert isinstance(state.typedefs["PyTupleObject"].type.body, CBody)
+	pprint(state.typedefs["PyTupleObject"].type.body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_void_p)
+	assert r.value != 0
+
+
+def test_interpret_global_obj():
+	state = parse("""
+	typedef struct _object { long foo; } PyObject;
+	PyObject obj;
+	void* f() {
+		return &obj;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_void_p)
+	assert r.value != 0
+
+
+def test_interpret_array():
+	state = parse("""
+	int f() {
+		int a[5];
+		a[1] = 5;
+		a[2] = 13;
+		return a[1];
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	interpreter.registerFinalize()
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
