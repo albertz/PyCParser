@@ -10,6 +10,7 @@ import _ctypes
 import ast
 import sys
 import inspect
+import goto
 
 class CWrapValue(CType):
 	def __init__(self, value, decl=None, **kwattr):
@@ -208,6 +209,7 @@ class FuncEnv:
 		self.vars = {} # name -> varDecl
 		self.varNames = {} # id(varDecl) -> name
 		self.scopeStack = [] # FuncCodeblockScope
+		self.needGotoHandling = False
 		self.astNode = ast.FunctionDef(
 			args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
 			body=[], decorator_list=[])
@@ -219,16 +221,18 @@ class FuncEnv:
 			assert id(varDecl) not in self.varNames
 		for name in iterIdWithPostfixes(varName):
 			if not isValidVarName(name): continue
-			if self.searchVarName(name) is None:
-				self.vars[name] = varDecl
-				if varDecl is not None:
-					self.varNames[id(varDecl)] = name
-				return name
+			if self.searchVarName(name): continue
+			self.vars[name] = varDecl
+			if varDecl is not None:
+				self.varNames[id(varDecl)] = name
+			return name
 	def searchVarName(self, varName):
-		if varName in self.vars: return self.vars[varName]
-		return self.globalScope.findIdentifier(varName)
+		if varName in self.vars: return True
+		return self.globalScope.findIdentifier(varName) is not None
 	def registerNewVar(self, varName, varDecl=None):
 		return self.scopeStack[-1].registerNewVar(varName, varDecl)
+	def registerNewUnscopedVarName(self, varName):
+		return self._registerNewVar(varName, None)
 	def getAstNodeForVarDecl(self, varDecl):
 		assert varDecl is not None
 		if id(varDecl) in self.varNames:
@@ -1068,6 +1072,9 @@ def astForCReturn(funcEnv, stmnt):
 	return ast.Return(value=returnValueAst)
 
 def cStatementToPyAst(funcEnv, c):
+	"""
+	:type funcEnv: FuncEnv
+	"""
 	body = funcEnv.getBody()
 	if isinstance(c, (CVarDecl,CFunc)):
 		funcEnv.registerNewVar(c.name, c)
@@ -1096,6 +1103,12 @@ def cStatementToPyAst(funcEnv, c):
 		funcEnv.pushScope(body)
 		cCodeToPyAstList(funcEnv, c.body)
 		funcEnv.popScope()
+	elif isinstance(c, CGotoStatement):
+		funcEnv.needGotoHandling = True
+		body.append(goto.GotoStatement(c.name))
+	elif isinstance(c, CGotoLabel):
+		funcEnv.needGotoHandling = True
+		body.append(goto.GotoLabel(c.name))
 	else:
 		assert False, "cannot handle " + str(c)
 
@@ -1169,6 +1182,9 @@ class Interpreter:
 			returnTypeAst = getAstNodeForVarType(self, func.type)
 			returnValueAst = makeAstNodeCall(returnTypeAst)
 		base.astNode.body.append(ast.Return(value=returnValueAst))
+		if base.needGotoHandling:
+			gotoVarName = base.registerNewUnscopedVarName("goto")
+			base.astNode = goto.transform_goto(base.astNode, gotoVarName)
 		return base
 
 	@staticmethod

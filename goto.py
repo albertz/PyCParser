@@ -143,9 +143,10 @@ class _Flatten:
 		self.c += 1
 		return GotoStatement(label)
 
-	def flatten(self, body):
+	def flatten(self, body, breakJump=None):
 		"""
 		:type body: list[ast.AST]
+		:param breakJump: if we find some ast.Break in a while-loop, add this jump
 		:rtype: list[ast.AST]
 		"""
 		r = []
@@ -155,8 +156,17 @@ class _Flatten:
 				a.op = ast.Not()
 				a.operand = s.test
 				goto_final_stmnt = self.make_jump()
-				r += [ast.If(test=a, body=[goto_final_stmnt], orelse=[])]
-				r += self.flatten(s.body)
+				if s.orelse:
+					goto_orelse_stmnt = self.make_jump()
+					r += [ast.If(test=a, body=[goto_orelse_stmnt], orelse=[])]
+				else:
+					goto_orelse_stmnt = None
+					r += [ast.If(test=a, body=[goto_final_stmnt], orelse=[])]
+				r += self.flatten(s.body, breakJump=breakJump)
+				if s.orelse:
+					r += [goto_final_stmnt]
+					r += [GotoLabel(goto_orelse_stmnt.label)]
+					r += self.flatten(s.orelse, breakJump=breakJump)
 				r += [GotoLabel(goto_final_stmnt.label)]
 			elif isinstance(s, ast.While):
 				if s.orelse: raise NotImplementedError
@@ -167,13 +177,16 @@ class _Flatten:
 				a.operand = s.test
 				goto_final_stmnt = self.make_jump()
 				r += [ast.If(test=a, body=[goto_final_stmnt], orelse=[])]
-				r += self.flatten(s.body)
+				r += self.flatten(s.body, breakJump=goto_final_stmnt)
 				r += [goto_repeat_stmnt]
 				r += [GotoLabel(goto_final_stmnt.label)]
 			elif isinstance(s, ast.For):
 				raise NotImplementedError
 			elif isinstance(s, (ast.TryExcept, ast.TryFinally)):
 				raise NotImplementedError
+			elif isinstance(s, ast.Break):
+				assert breakJump, "found break in unexpected scope"
+				r += [breakJump]
 			else:
 				r += [s]
 		return r
