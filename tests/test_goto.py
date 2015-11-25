@@ -56,27 +56,29 @@ def test_transform_goto():
 	s = """
 	def foo():
 		i = 0
+		# :label
 		if i == 5: return i
 		i += 1
 		print "hello"
+		# goto label
 	"""
 	s = fix_code(s)
 	print s
 	m = parse(s)
-	assert isinstance(m, ast.Module)
-	assert len(m.body) == 1
+	assert_is_instance(m, ast.Module)
+	assert_equal(len(m.body), 1)
 	f = m.body[0]
-	assert isinstance(f, ast.FunctionDef)
-	assert len(f.body) == 4
+	assert_is_instance(f, ast.FunctionDef)
+	assert_equal(len(f.body), 4)
 	f.body = f.body[:1] + [goto.GotoLabel("label")] + f.body[1:] + [goto.GotoStatement("label")]
 	f = goto.transform_goto(f, "goto")
 	ss = unparse(f)
 	print ss
 
 	c = compile(ss, "<src>", "single")
-	print c
 	d = {}
 	exec c in d, d
 	func = d["foo"]
 	r = func()
-	assert r == 5
+	assert_equal(r, 5)
+

@@ -221,6 +221,7 @@ class _HandleGoto:
 				parts[-1].append(s)
 		r = []
 		for l in parts:
+			if not l: continue
 			if isinstance(l, GotoLabel):
 				r += self.handle_goto_label(l)
 			else:
