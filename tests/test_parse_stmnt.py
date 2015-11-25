@@ -176,3 +176,15 @@ def test_parse_goto_label_single_stmnt():
 				x = 1;
 	}
 	""")
+
+def test_parse_array():
+	s = parse("int x[10];")
+	x = s.vars["x"]
+	print "x:", x
+	assert isinstance(x, CVarDecl)
+	assert isinstance(x.type, CArrayType)
+	assert isinstance(x.type.arrayLen, CArrayStatement)
+	assert x.type.arrayOf == CBuiltinType(("int",))
+	l = getConstValue(s, x.type.arrayLen)
+	assert l == 10
+

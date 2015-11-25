@@ -367,6 +367,25 @@ class CStdIntType(CType):
 	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
 	def asCCode(self, indent=""): return indent + self.name
 
+class CArrayType(CType):
+	def __init__(self, arrayOf, arrayLen):
+		self.arrayOf = arrayOf
+		self.arrayLen = arrayLen
+	def getCType(self, stateStruct):
+		try:
+			l = getConstValue(stateStruct, self.arrayLen)
+		except Exception as e:
+			stateStruct.error("%s: error getting array len (%r), falling back to 1" % (self, e))
+			l = 1
+		try:
+			t = getCType(self.arrayOf, stateStruct)
+			return t * l
+		except Exception as e:
+			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to int")
+		return ctypes.c_int * l
+	def asCCode(self, indent=""): return "%s%s[%s]" % (indent, asCCode(self.arrayOf), asCCode(self.arrayLen))
+
+
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
 	try:
@@ -2394,7 +2413,12 @@ class CStatement(_CBaseWithOptBody):
 
 		if self._state == 0:
 			self._leftexpr = subStatement
-			if openingBracketToken.content != "(":
+			if isinstance(subStatement, CArrayStatement): bracketType = "["
+			elif isinstance(subStatement, CStatement): bracketType = "("
+			else:
+				bracketType = "("
+				stateStruct.error("cpre3 statement parse brackets: didn't expected sub statement %r" % subStatement)
+			if openingBracketToken.content != bracketType:
 				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 0")
 			self._state = 5
 		elif self._state == 6: # expr + op
@@ -2674,14 +2698,14 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 	stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(parentCObj._bracketlevel))
 
 def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
-	# TODO
-	for token in input_iter:
-		if isinstance(token, CClosingBracket):
-			if token.brackets == curCObj._bracketlevel:
-				return
-			if not _isBracketLevelOk(curCObj._bracketlevel, token.brackets):
-				stateStruct.error("cpre3 parse array args: internal error: bracket level messed up with closing bracket: " + str(token.brackets))
-	stateStruct.error("cpre3 parse array args: incomplete, missing ']' on level " + str(curCObj._bracketlevel))
+	assert isinstance(curCObj, CVarDecl)
+	arrayType = make_type_from_typetokens(stateStruct, curCObj._type_tokens)
+	valueStmnt = CStatement()
+	valueStmnt._bracketlevel = curCObj._bracketlevel
+	valueStmnt._cpre3_parse_brackets(stateStruct, COpeningBracket("[", brackets=curCObj._bracketlevel), input_iter)
+	assert isinstance(valueStmnt._leftexpr, CArrayStatement)
+	arrayLen = valueStmnt._leftexpr
+	curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	state = 0
