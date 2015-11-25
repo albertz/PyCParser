@@ -7,6 +7,8 @@ from interpreter import CWrapValue
 import ctypes, _ctypes
 import errno, os
 
+libc = ctypes.CDLL(None)
+
 def _fixCType(t, wrap=False):
 	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
 	if t is ctypes.c_char: t = ctypes.c_byte
@@ -14,7 +16,7 @@ def _fixCType(t, wrap=False):
 	return t
 
 def wrapCFunc(state, funcname, restype, argtypes):
-	f = getattr(ctypes.pythonapi, funcname)
+	f = getattr(libc, funcname)
 	if restype is CVoidType:
 		f.restype = None
 	else:
@@ -36,7 +38,7 @@ def _fixCArg(a):
 	return a
 
 def callCFunc(funcname, *args):
-	f = getattr(ctypes.pythonapi, funcname)
+	f = getattr(libc, funcname)
 	args = map(_fixCArg, args)
 	return f(*args)
 
