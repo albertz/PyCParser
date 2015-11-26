@@ -13,15 +13,17 @@ import inspect
 import goto
 
 class CWrapValue(CType):
-	def __init__(self, value, decl=None, **kwattr):
+	def __init__(self, value, decl=None, name=None, **kwattr):
 		if isinstance(value, int):
 			value = ctypes.c_int(value)
 		self.value = value
 		self.decl = decl
+		self.name = name
 		for k,v in kwattr.iteritems():
 			setattr(self, k, v)
 	def __repr__(self):
 		s = "<" + self.__class__.__name__ + " "
+		if self.name: s += "%r " % self.name
 		if self.decl is not None: s += repr(self.decl) + " "
 		s += repr(self.value)
 		s += ">"
@@ -118,7 +120,7 @@ class GlobalScope:
 	
 	def registerExternVar(self, name_prefix, value=None):
 		if not isinstance(value, CWrapValue):
-			value = CWrapValue(value)
+			value = CWrapValue(value, name=name_prefix)
 		for name in iterIdWithPostfixes(name_prefix):
 			if self.findIdentifier(name) is not None: continue
 			self.identifiers[name] = value

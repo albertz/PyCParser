@@ -24,7 +24,7 @@ def wrapCFunc(state, funcname, restype, argtypes):
 		f.restype = restype = _fixCType(restype, wrap=True)
 	assert argtypes is not None
 	f.argtypes = map(_fixCType, argtypes)
-	state.funcs[funcname] = CWrapValue(f, funcname=funcname, returnType=restype)
+	state.funcs[funcname] = CWrapValue(f, name=funcname, funcname=funcname, returnType=restype)
 
 def _fixCArg(a):
 	if isinstance(a, unicode):
@@ -54,9 +54,9 @@ class Wrapper:
 		wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
 		wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
 		wrapCFunc(state, "fdopen", restype=FileP, argtypes=(ctypes.c_int, ctypes.c_char_p))
-		state.vars["stdin"] = CWrapValue(callCFunc("fdopen", 0, "r"))
-		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"))
-		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"))
+		state.vars["stdin"] = CWrapValue(callCFunc("fdopen", 0, "r"), name="stdin")
+		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"), name="stdout")
+		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"), name="stderr")
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "vfprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p, ctypes.c_void_p)) # TODO
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
@@ -77,7 +77,7 @@ class Wrapper:
 		struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
 		struct_stat.body = CBody(parent=struct_stat)
 		CVarDecl(parent=struct_stat, name="st_mode", type=ctypes.c_int).finalize(state)
-		state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int) # TODO
+		state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
 		state.macros["S_IFMT"] = Macro(rightside="0") # TODO
 		state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 	def handle_stdlib_h(self, state):
@@ -91,11 +91,13 @@ class Wrapper:
 		wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
 		state.funcs["atoi"] = CWrapValue(
 			lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
-			returnType=ctypes.c_int
+			returnType=ctypes.c_int,
+			name="atoi"
 		)
 		state.funcs["getenv"] = CWrapValue(
 			lambda x: _fixCArg(ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value))),
-			returnType=CPointerType(ctypes.c_byte)
+			returnType=CPointerType(ctypes.c_byte),
+			name="getenv"
 		)
 	def handle_stdarg_h(self, state):
 		state.macros["va_list"] = Macro(rightside="void*")
@@ -126,7 +128,7 @@ class Wrapper:
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
 		def assert_wrap(x): assert x
-		state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType)
+		state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType, name="assert")
 	def handle_fcntl_h(self, state):
 		state.macros["O_RDONLY"] = Macro(rightside="0x0000")
 		wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
