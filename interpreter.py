@@ -632,6 +632,7 @@ def getAstForWrapValue(interpreter, wrapValue):
 	assert isinstance(wrapValue, CWrapValue)
 	orig_name = wrapValue.name or "anonymous_value"
 	for name in iterIdWithPostfixes(orig_name):
+		if not isValidVarName(name): continue
 		obj = getattr(interpreter.wrappedValues, name, None)
 		if obj is None:  # new
 			setattr(interpreter.wrappedValues, name, wrapValue)
