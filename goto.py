@@ -193,7 +193,7 @@ class _Flatten:
 
 
 def _ast_for_value(v):
-	if isinstance(v, str): return ast.Str(s=v)
+	if isinstance(v, (str,unicode)): return ast.Str(s=v)
 	elif isinstance(v, int): return ast.Num(n=v)
 	else: raise NotImplementedError("type (%r) %r" % (type(v), v))
 
