@@ -1754,8 +1754,9 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
-		
-		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+
+		if not self.type:
+			self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 		
 		if self.type is None:
@@ -1953,8 +1954,9 @@ class CFuncArgDecl(_CBaseWithOptBody):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
-			
-		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+
+		if not self.type:
+			self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 		
 		if self.type != CBuiltinType(("void",)):
@@ -2698,14 +2700,16 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
 	stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(parentCObj._bracketlevel))
 
 def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
-	assert isinstance(curCObj, CVarDecl)
-	arrayType = make_type_from_typetokens(stateStruct, curCObj._type_tokens)
 	valueStmnt = CStatement()
 	valueStmnt._bracketlevel = curCObj._bracketlevel
 	valueStmnt._cpre3_parse_brackets(stateStruct, COpeningBracket("[", brackets=curCObj._bracketlevel), input_iter)
 	assert isinstance(valueStmnt._leftexpr, CArrayStatement)
-	arrayLen = valueStmnt._leftexpr
-	curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
+	if isinstance(curCObj, (CVarDecl, CFuncArgDecl, CFuncPointerDecl)):
+		arrayType = make_type_from_typetokens(stateStruct, curCObj._type_tokens)
+		arrayLen = valueStmnt._leftexpr
+		curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
+	else:
+		stateStruct.error("cpre3_parse_arrayargs: unexpected: %r" % curCObj)
 
 def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
 	state = 0
