@@ -625,9 +625,16 @@ def getAstNodeArrayIndex(base, index, ctx=ast.Load()):
 	return a
 
 def getAstForWrapValue(interpreter, wrapValue):
-	interpreter.wrappedValuesDict[id(wrapValue)] = wrapValue
-	v = getAstNodeArrayIndex("values", id(wrapValue))
-	return v
+	assert isinstance(wrapValue, CWrapValue)
+	orig_name = wrapValue.name or "anonymous_value"
+	for name in iterIdWithPostfixes(orig_name):
+		obj = getattr(interpreter.wrappedValues, name, None)
+		if obj is None:  # new
+			setattr(interpreter.wrappedValues, name, wrapValue)
+			obj = wrapValue
+		if obj is wrapValue:
+			v = getAstNodeAttrib("values", name)
+			return v
 
 def astForCast(funcEnv, new_type, arg_ast):
 	"""
@@ -1144,7 +1151,11 @@ def cCodeToPyAstList(funcEnv, cBody):
 			cStatementToPyAst(funcEnv, c)
 	else:
 		cStatementToPyAst(funcEnv, cBody)
-		
+
+class WrappedValues:
+	pass
+
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -1155,13 +1166,13 @@ class Interpreter:
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
 		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
-		self.wrappedValuesDict = {} # id(obj) -> obj
+		self.wrappedValues = WrappedValues()  # attrib -> obj
 		self.globalsDict = {
 			"ctypes": ctypes,
 			"helpers": Helpers,
 			"g": self.globalsWrapper,
 			"structs": self.globalsStructWrapper,
-			"values": self.wrappedValuesDict,
+			"values": self.wrappedValues,
 			"intp": self
 			}
 	
