@@ -118,18 +118,6 @@ class GlobalScope:
 		# is the actual variable. Anyway, this is fine.
 		return o.name
 	
-	def registerExternVar(self, name_prefix, value=None):
-		if not isinstance(value, CWrapValue):
-			value = CWrapValue(value, name=name_prefix)
-		for name in iterIdWithPostfixes(name_prefix):
-			if self.findIdentifier(name) is not None: continue
-			self.identifiers[name] = value
-			return name
-
-	def registerExterns(self):
-		self.varname_ctypes = self.registerExternVar("ctypes", ctypes)
-		self.varname_helpers = self.registerExternVar("helpers", Helpers)
-
 	def getVar(self, name):
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
@@ -1182,9 +1170,6 @@ class Interpreter:
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
-	
-	def registerFinalize(self):
-		self.globalScope.registerExterns()
 	
 	def getCType(self, obj):
 		wrappedStateStruct = self._cStateWrapper

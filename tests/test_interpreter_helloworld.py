@@ -22,7 +22,6 @@ def test_interpreter_helloworld():
 	import interpreter
 	interp = interpreter.Interpreter()
 	interp.register(state)
-	interp.registerFinalize()
 
 	def dump():
 		for f in state.contentlist:

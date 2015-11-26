@@ -10,7 +10,6 @@ def test_interpret_c_cast():
 	state = parse("int f()\n { int v = (int) 42; return v; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -24,7 +23,6 @@ def test_interpret_c_cast_ptr():
 	state = parse("void f()\n { int* v = (int*) 42; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -37,7 +35,6 @@ def test_interpret_c_cast_ptr_2_a():
 	state = parse("void f()\n { unsigned int v = (unsigned int) 42; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -49,7 +46,6 @@ def test_interpret_c_cast_ptr_2_b():
 	state = parse("void f()\n { void* v = (void*) 42; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -65,7 +61,6 @@ def test_interpret_c_cast_ptr_2():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -82,7 +77,6 @@ def test_interpret_c_cast_ptr_3():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -102,7 +96,6 @@ def test_interpret_c_cast_ptr_4():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -122,7 +115,6 @@ def test_interpret_auto_cast():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -141,7 +133,6 @@ def test_interpret_auto_cast_2():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -166,7 +157,6 @@ def test_interpret_var_init_wrap_value():
 
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -193,7 +183,6 @@ def test_interpret_var_init_wrap_value_2():
 
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -213,7 +202,6 @@ def test_interpret_call_void_func():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Parsed funcs:"
 	pprint(state.funcs["g"])
@@ -253,7 +241,6 @@ def test_interpret_goto_forward():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -277,7 +264,6 @@ def test_interpret_goto_backward():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -298,7 +284,6 @@ def test_interpret_do_while():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -317,7 +302,6 @@ def test_interpret_inplacce_add():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -341,7 +325,6 @@ def test_interpret_do_while_while():
 	} """)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -366,7 +349,6 @@ def test_interpret_goto_label_single_stmnt():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -393,7 +375,6 @@ def test_interpret_goto_in_nested():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -419,7 +400,6 @@ def test_interpret_goto_into_nested():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -446,7 +426,6 @@ def test_interpret_goto_into_nested_for_loop():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -468,7 +447,6 @@ def test_interpret_for_loop_empty():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Parsed func body:"
 	pprint(state.funcs["f"].body)
@@ -495,7 +473,6 @@ def test_interpret_nested_var():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -534,7 +511,6 @@ def test_interpret_ptr_array():
 	pprint(state.typedefs["PyTupleObject"].type.body.contentlist)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -555,7 +531,6 @@ def test_interpret_global_obj():
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
@@ -582,7 +557,6 @@ def test_interpret_array():
 	pprint(state.funcs["f"].body.contentlist)
 	interpreter = Interpreter()
 	interpreter.register(state)
-	interpreter.registerFinalize()
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
