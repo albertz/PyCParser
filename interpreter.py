@@ -324,6 +324,7 @@ def makeAstNodeCall(func, *args):
 
 def isPointerType(t, checkWrapValue=False):
 	if isinstance(t, CPointerType): return True
+	if isinstance(t, CArrayType): return True
 	if isinstance(t, CFuncPointerDecl): return True
 	if checkWrapValue and isinstance(t, CWrapValue):
 		return isPointerType(t.getCType(None), checkWrapValue=True)
@@ -378,6 +379,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	"""
 	Create a new instance of type `objType`.
 	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
+	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	"""
 	typeAst = getAstNodeForVarType(interpreter, objType)
 
@@ -568,6 +570,8 @@ class Helpers:
 			return c
 		if isinstance(a, _ctypes._Pointer):
 			return ctypes.cast(a, a.__class__)
+		if isinstance(a, _ctypes.Array):
+			return ctypes.cast(a, ctypes.POINTER(a._type_))
 		assert False, "cannot copy " + str(a)
 	
 	@staticmethod
@@ -900,6 +904,9 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, middleType, a.orelse, rightType)
 		return a, middleType
 	elif isPointerType(leftType):
+		if isinstance(leftType, CArrayType):
+			# The value-AST will be a pointer.
+			leftType = CPointerType(ptr=leftType.arrayOf)
 		return getAstNode_ptrBinOpExpr(
 			funcEnv.globalScope.stateStruct,
 			leftAstNode, leftType,
@@ -912,25 +919,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
 		# We assume that the type of `a` is leftType.
 		# TODO: type not really correct. e.g. int + float -> float
-		if isinstance(leftType, CArrayType):
-			# The value-AST will be a pointer.
-			leftType = CPointerType(ptr=leftType.arrayOf)
-		if isinstance(leftType, CPointerType):
-			# Fix pointer-arithmetic.
-			assert isinstance(a.op, (ast.Add, ast.Sub))
-			# The value of the pointer is just an int.
-			if isinstance(rightType, CStdIntType):
-				pass  # fine
-			elif isinstance(rightType, CBuiltinType):
-				assert "*" not in rightType.builtinType
-				assert "float" not in rightType.builtinType
-				assert "double" not in rightType.builtinType
-			else:
-				assert False, "invalid ptr arithmetic right type: %r" % rightType
-			# So, to fix it, the right value must be multiplied by sizeof the type.
-			size = getSizeOf(leftType.pointerOf, funcEnv.globalScope.stateStruct)
-			a.right = ast.BinOp(op=ast.Mult(), left=a.right, right=ast.Num(n=size))
-		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a, leftType), leftType
+		# Note: No pointer arithmetic here, that case is caught above.
+		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a), leftType
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
