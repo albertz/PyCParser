@@ -67,7 +67,7 @@ class Wrapper:
 		wrapCFunc(state, "rewind", restype=CVoidType, argtypes=(FileP,))
 		wrapCFunc(state, "ferror", restype=ctypes.c_int, argtypes=(FileP,))
 		wrapCFunc(state, "clearerr", restype=CVoidType, argtypes=(FileP,))
-		state.vars["errno"] = CWrapValue(0) # TODO
+		state.vars["errno"] = CWrapValue(0, name="errno") # TODO
 		state.macros["EOF"] = Macro(rightside="-1") # TODO?
 		wrapCFunc(state, "setbuf", restype=CVoidType, argtypes=(FileP, ctypes.c_char_p))
 		wrapCFunc(state, "isatty", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
