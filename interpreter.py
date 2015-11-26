@@ -308,6 +308,10 @@ def getAstNodeForVarType(interpreter, t):
 			return getAstNodeAttrib(v, "value")
 		# TODO: this assumes the was previously declared globally.
 		return getAstNodeAttrib("structs", t.name)
+	elif isinstance(t, CArrayType):
+		arrayOf = getAstNodeForVarType(interpreter, t.arrayOf)
+		arrayLen = ast.Num(n=getConstValue(interpreter.globalScope.stateStruct, t.arrayLen))
+		return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
 	elif isinstance(t, CWrapValue):
 		return getAstNodeForVarType(interpreter, t.getCType(None))
 	else:
@@ -361,6 +365,13 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 	elif isValueType(objType):
 		astValue = getAstNodeAttrib(objAst, "value")
 		return astValue
+	elif isinstance(objType, CArrayType):
+		# cast array to ptr
+		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		castToPtr = makeAstNodeCall(astCast, objAst, astVoidPT)
+		astValue = getAstNodeAttrib(castToPtr, "value")
+		return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
 	elif isinstance(objType, CTypedef):
 		t = objType.type
 		return getAstNode_valueFromObj(stateStruct, objAst, t)
@@ -752,18 +763,23 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
 		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
-		assert isinstance(aType, CPointerType)
-		assert len(stmnt.args) == 1
-		# kind of a hack: create equivalent ptr arithmetic expression
-		ptrStmnt = CStatement()
-		ptrStmnt._leftexpr = stmnt.base
-		ptrStmnt._op = COp("+")
-		ptrStmnt._rightexpr = stmnt.args[0]
-		derefStmnt = CStatement()
-		derefStmnt._op = COp("*")
-		derefStmnt._rightexpr = ptrStmnt
-		return astAndTypeForCStatement(funcEnv, derefStmnt)
-		# TODO: support for real arrays.
+		if isinstance(aType, (CPointerType, CArrayType)):
+			assert len(stmnt.args) == 1
+			# kind of a hack: create equivalent ptr arithmetic expression
+			ptrStmnt = CStatement()
+			ptrStmnt._leftexpr = stmnt.base
+			ptrStmnt._op = COp("+")
+			ptrStmnt._rightexpr = stmnt.args[0]
+			derefStmnt = CStatement()
+			derefStmnt._op = COp("*")
+			derefStmnt._rightexpr = ptrStmnt
+			return astAndTypeForCStatement(funcEnv, derefStmnt)
+		#elif isinstance(aType, CArrayType):
+		#	assert len(stmnt.args) == 1
+		#	indexAst, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
+		#	return getAstNodeArrayIndex(aAst, indexAst), aType.arrayOf
+		else:
+			assert False, "invalid array access to type %r" % aType
 		# the following code may be useful
 		#bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
 		#bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
@@ -896,8 +912,28 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a = ast.BinOp()
 		a.op = OpBin[stmnt._op.content]()
 		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
-		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)		
-		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a), leftType # TODO: not really correct. e.g. int + float -> float
+		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
+		# We assume that the type of `a` is leftType.
+		# TODO: type not really correct. e.g. int + float -> float
+		if isinstance(leftType, CArrayType):
+			# The value-AST will be a pointer.
+			leftType = CPointerType(ptr=leftType.arrayOf)
+		if isinstance(leftType, CPointerType):
+			# Fix pointer-arithmetic.
+			assert isinstance(a.op, (ast.Add, ast.Sub))
+			# The value of the pointer is just an int.
+			if isinstance(rightType, CStdIntType):
+				pass  # fine
+			elif isinstance(rightType, CBuiltinType):
+				assert "*" not in rightType.builtinType
+				assert "float" not in rightType.builtinType
+				assert "double" not in rightType.builtinType
+			else:
+				assert False, "invalid ptr arithmetic right type: %r" % rightType
+			# So, to fix it, the right value must be multiplied by sizeof the type.
+			size = getSizeOf(leftType.pointerOf, funcEnv.globalScope.stateStruct)
+			a.right = ast.BinOp(op=ast.Mult(), left=a.right, right=ast.Num(n=size))
+		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a, leftType), leftType
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
