@@ -2367,7 +2367,7 @@ class CStatement(_CBaseWithOptBody):
 			arrayArgs.finalize(stateStruct)
 			self._state = 5
 			return
-		
+
 		if self._state in (5,7): # after expr or expr + op + expr
 			if self._state == 5:
 				ref = self._leftexpr
@@ -2407,20 +2407,18 @@ class CStatement(_CBaseWithOptBody):
 			return
 
 		if openingBracketToken.content == "(":
+			bracketType = "("
 			subStatement = CStatement(parent=self.parent)
 		elif openingBracketToken.content == "[":
+			bracketType = "["
 			subStatement = CArrayStatement(parent=self.parent)
 		else:
 			# fallback. handle just like '('. we error this below
+			bracketType = "("
 			subStatement = CStatement(parent=self.parent)
 
 		if self._state == 0:
 			self._leftexpr = subStatement
-			if isinstance(subStatement, CArrayStatement): bracketType = "["
-			elif isinstance(subStatement, CStatement): bracketType = "("
-			else:
-				bracketType = "("
-				stateStruct.error("cpre3 statement parse brackets: didn't expected sub statement %r" % subStatement)
 			if openingBracketToken.content != bracketType:
 				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 0")
 			self._state = 5
@@ -2431,7 +2429,8 @@ class CStatement(_CBaseWithOptBody):
 			self._state = 7
 		else:
 			stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state " + str(self._state))
-			
+
+		finalized = False
 		for token in input_iter:
 			if isinstance(token, COpeningBracket):
 				subStatement._cpre3_parse_brackets(stateStruct, token, input_iter)
@@ -2439,13 +2438,16 @@ class CStatement(_CBaseWithOptBody):
 				if token.brackets == openingBracketToken.brackets:
 					subStatement.finalize(stateStruct, addToContent=False)
 					self._tokens += [subStatement]
-					return
+					finalized = True
+					break
 				else:
 					stateStruct.error("cpre3 statement parse brackets: internal error, closing brackets " + str(token.brackets) + " not expected")
 			else:
 				subStatement._cpre3_handle_token(stateStruct, token)
-		stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
-		
+		if not finalized:
+			stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
+			return
+
 	def getConstValue(self, stateStruct):
 		if self._leftexpr is None: # prefixed only
 			func = OpPrefixFuncs[self._op.content]
