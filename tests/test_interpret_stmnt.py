@@ -677,3 +677,34 @@ def test_interpret_init_array_sizeof():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5 * ctypes.sizeof(ctypes.c_int)
+
+
+def test_interpreter_offset_of():
+	state = parse("""
+	typedef struct _typeobject { long foo; long bar; } PyTypeObject;
+	int f() {
+		int a = (int) &((PyTypeObject*)(0))->bar;
+		return a;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	vardecl = state.funcs["f"].body.contentlist[0]
+	assert isinstance(vardecl, CVarDecl)
+	assert vardecl.name == "a"
+	print "var decl a body:"
+	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ctypes.sizeof(ctypes.c_long)
+
