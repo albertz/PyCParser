@@ -2092,7 +2092,7 @@ def getConstValue(stateStruct, obj):
 
 class CSizeofSymbol: pass
 
-class CArrayArgs(_CBaseWithOptBody):
+class CCurlyArrayArgs(_CBaseWithOptBody):
 	# args is a list of CStatement
 	NameIsRelevant = False
 	def asCCode(self, indent=""):
@@ -2359,8 +2359,9 @@ class CStatement(_CBaseWithOptBody):
 	def _cpre3_parse_brackets(self, stateStruct, openingBracketToken, input_iter):
 		self._handlePushedErrorForUnknown(stateStruct)
 
-		if self._state == 0 and openingBracketToken.content == "{": # array args
-			arrayArgs = CArrayArgs(parent=self)
+		if self._state == 0 and openingBracketToken.content == "{": # array args or struct args
+			arrayArgs = CCurlyArrayArgs(parent=self)
+			self._leftexpr = arrayArgs
 			arrayArgs._bracketlevel = list(openingBracketToken.brackets)
 			cpre3_parse_statements_in_brackets(stateStruct, arrayArgs, COp(","), arrayArgs.args, input_iter)
 			arrayArgs.finalize(stateStruct)

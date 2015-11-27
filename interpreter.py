@@ -381,6 +381,26 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	"""
+	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
+		# Handle array type extra here for the case when array-len is not specified.
+		arrayOf, arrayLen = None, None
+		if isinstance(objType, CArrayType):
+			arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
+			if objType.arrayLen:
+				arrayLen = getConstValue(interpreter.globalScope.stateStruct, objType.arrayLen)
+				assert arrayLen == len(argType)
+			else:
+				arrayLen = len(argType)
+			typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
+		else:
+			typeAst = getAstNodeForVarType(interpreter, objType)
+
+		assert isinstance(argAst, ast.Tuple)
+		assert len(argAst.elts) == len(argType)
+		args = [getAstNode_valueFromObj(interpreter._cStateWrapper, a[0], a[1])
+				for a in zip(argAst.elts, argType)]
+		return makeAstNodeCall(typeAst, *args)
+
 	typeAst = getAstNodeForVarType(interpreter, objType)
 
 	if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
@@ -730,6 +750,13 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			return a, stmnt.base.type
 		elif isinstance(stmnt.base, CSizeofSymbol):
 			assert len(stmnt.args) == 1
+			a = stmnt.args[0]
+			if isinstance(a, CStatement) and not a.isCType():
+				v, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
+				sizeValueAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "sizeof"), v)
+				sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_size_t"), sizeValueAst)
+				return sizeAst, CStdIntType("size_t")
+			# We expect that it is a type.
 			t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
 			assert t is not None
 			s = ctypes.sizeof(t)
@@ -790,6 +817,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		v = getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt)
 		# Keep in sync with getAstNode_valueFromObj().
 		return getAstNodeAttrib(v, "value"), stmnt.getType()
+	elif isinstance(stmnt, CCurlyArrayArgs):
+		elts = [astAndTypeForStatement(funcEnv, s) for s in stmnt.args]
+		a = ast.Tuple(elts=tuple([e[0] for e in elts]), ctx=ast.Load())
+		return a, tuple([e[1] for e in elts])
 	else:
 		assert False, "cannot handle " + str(stmnt)
 

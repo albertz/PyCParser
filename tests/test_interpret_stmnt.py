@@ -590,3 +590,90 @@ def test_interpret_func_call_auto_cast():
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 5
 
+
+def test_interpret_init_struct():
+	state = parse("""
+	typedef struct _A { int a, b, c; } A;
+	int f() {
+		A s = {1, 2, 3};
+		return s.b;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	vardecl = state.funcs["f"].body.contentlist[0]
+	assert isinstance(vardecl, CVarDecl)
+	assert vardecl.name == "s"
+	print "var decl s body:"
+	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 2
+
+
+def test_interpret_init_array():
+	state = parse("""
+	int f() {
+		int a[] = {1, 2, 3};
+		return a[2];
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	vardecl = state.funcs["f"].body.contentlist[0]
+	assert isinstance(vardecl, CVarDecl)
+	assert vardecl.name == "a"
+	print "var decl a body:"
+	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
+
+
+def test_interpret_init_array_sizeof():
+	state = parse("""
+	int f() {
+		int a[] = {1, 2, 3, 4, 5};
+		return sizeof(a);
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	vardecl = state.funcs["f"].body.contentlist[0]
+	assert isinstance(vardecl, CVarDecl)
+	assert vardecl.name == "a"
+	print "var decl a body:"
+	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5 * ctypes.sizeof(ctypes.c_int)
