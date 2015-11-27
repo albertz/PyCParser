@@ -123,7 +123,8 @@ class GlobalScope:
 		decl = self.findIdentifier(name)
 		assert isinstance(decl, CVarDecl)
 		if decl.body is not None:
-			bodyAst, t = astAndTypeForStatement(self, decl.body)
+			anonFuncEnv = FuncEnv(self)
+			bodyAst, t = astAndTypeForStatement(anonFuncEnv, decl.body)
 			if isPointerType(decl.type) and not isPointerType(t):
 				v = decl.body.getConstValue(self.stateStruct)
 				assert not v, "Global: Initializing pointer type " + str(decl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
