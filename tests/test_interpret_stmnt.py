@@ -708,3 +708,31 @@ def test_interpreter_offset_of():
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ctypes.sizeof(ctypes.c_long)
 
+
+def test_interpreter_num_cast():
+	state = parse("""
+	int f() {
+		int a = (int) 'A';
+		return a;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	vardecl = state.funcs["f"].body.contentlist[0]
+	assert isinstance(vardecl, CVarDecl)
+	assert vardecl.name == "a"
+	print "var decl a body:"
+	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord('A')
