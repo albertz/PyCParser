@@ -705,6 +705,8 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
 	for f_arg_type, s_arg in zip(required_arg_types, stmnt_args):
 		s_arg_ast, s_arg_type = astAndTypeForStatement(funcEnv, s_arg)
 		if f_arg_type is not None:
+			if isinstance(f_arg_type, CFuncArgDecl):
+				f_arg_type = f_arg_type.type
 			f_arg_ctype = getCType(f_arg_type, funcEnv.globalScope.stateStruct)
 			s_arg_ctype = getCType(s_arg_type, funcEnv.globalScope.stateStruct)
 			if s_arg_ctype != f_arg_ctype:
