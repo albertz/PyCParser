@@ -770,7 +770,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
 			assert t is not None
 			s = ctypes.sizeof(t)
-			return ast.Num(s), CStdIntType("size_t")
+			sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_size_t"), ast.Num(s))
+			return sizeAst, CStdIntType("size_t")
 		elif isinstance(stmnt.base, CWrapValue):
 			# expect that we just wrapped a callable function/object
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
