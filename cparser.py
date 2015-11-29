@@ -451,7 +451,7 @@ class State(object):
 		"wchar_t": ctypes.c_wchar,
 		"size_t": ctypes.c_size_t,
 		"ptrdiff_t": ctypes.c_long,
-		"intptr_t": ctypes.POINTER(ctypes.c_int),
+		"intptr_t": ctypes.c_long,
 		"FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
 	}
 	Attribs = [
