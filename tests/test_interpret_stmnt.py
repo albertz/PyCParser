@@ -768,12 +768,12 @@ def test_interpreter_num_cast():
 
 def test_interpreter_func_ptr_return_ptr():
 	state = parse("""
-	int* f(int* v) { return v; }
+	typedef int* (*F) (int*);
+	int* i(int* v) { return v; }
 	int f() {
-		typedef int* (*F) (int*);
-		F _f = f;
+		F fp = i;
 		int v = 42;
-		int* vp = f(&v);
+		int* vp = fp(&v);
 		return *vp;
 	}
 	""")
@@ -782,11 +782,6 @@ def test_interpreter_func_ptr_return_ptr():
 	print "f body:"
 	assert isinstance(state.funcs["f"].body, CBody)
 	pprint(state.funcs["f"].body.contentlist)
-	vardecl = state.funcs["f"].body.contentlist[0]
-	assert isinstance(vardecl, CVarDecl)
-	assert vardecl.name == "a"
-	print "var decl a body:"
-	print vardecl.body
 	interpreter = Interpreter()
 	interpreter.register(state)
 
