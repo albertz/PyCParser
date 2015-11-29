@@ -142,11 +142,17 @@ class GlobalScope:
 
 def evalValueAst(funcEnv, valueAst, srccode_name=None):
 	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
-	valueExprAst = ast.Expression(valueAst)
-	ast.fix_missing_locations(valueExprAst)
-	valueCode = compile(valueExprAst, srccode_name, "eval")
+	if False:  # directly via AST
+		valueExprAst = ast.Expression(valueAst)
+		ast.fix_missing_locations(valueExprAst)
+		valueCode = compile(valueExprAst, srccode_name, "eval")
+	else:
+		src = _unparse(valueAst)
+		_set_linecache(srccode_name, src)
+		valueCode = compile(src, srccode_name, "eval")
 	v = eval(valueCode, funcEnv.interpreter.globalsDict)
 	return v
+
 
 class GlobalsWrapper:
 	def __init__(self, globalScope):
@@ -1237,6 +1243,10 @@ def _unparse(pyAst):
 	output.write("\n")
 	return output.getvalue()
 
+def _set_linecache(filename, source):
+	import linecache
+	linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
+
 
 class Interpreter:
 	def __init__(self):
@@ -1305,9 +1315,6 @@ class Interpreter:
 
 	def _compile(self, pyAst):
 		# We unparse + parse again for now for better debugging (so we get some code in a backtrace).
-		def _set_linecache(filename, source):
-			import linecache
-			linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 		SRC_FILENAME = "<PyCParser_" + pyAst.name + ">"
 		def _unparseAndParse(pyAst):
 			src = _unparse(pyAst)
@@ -1331,7 +1338,7 @@ class Interpreter:
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
 		func.C_argTypes = map(lambda a: a.type, cfunc.args)
-		func.C_unparse = lambda: self._unparse(pyAst)
+		func.C_unparse = lambda: _unparse(pyAst)
 		return func
 
 	def getFunc(self, funcname):
