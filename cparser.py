@@ -2353,6 +2353,21 @@ class CStatement(_CBaseWithOptBody):
 				self._rightexpr.args[0].finalize(stateStruct)
 				self._state = 7
 				self._cpre3_handle_token(stateStruct, token) # redo handling
+		elif self._state in (50,51): # [expr + op + ] (expr)-cast
+			if self._state == 50: funcCall = self._leftexpr
+			else: funcCall = self._rightexpr
+			assert isinstance(funcCall, CFuncCall)
+			if not funcCall.args:
+				funcCall.args = [CStatement(parent=funcCall)]
+			assert len(funcCall.args) == 1
+			subStatement = funcCall.args[0]
+			if subStatement._state != 0 and isinstance(token, COp) and token not in (COp("."),COp("->")):
+				subStatement.finalize(stateStruct, addToContent=False)
+				if self._state == 50: self._state = 5
+				else: self._state = 7
+				self._cpre3_handle_token(stateStruct, token)
+			else:
+				subStatement._cpre3_handle_token(stateStruct, token)
 		else:
 			stateStruct.error("internal error: statement parsing: token " + str(token) + " in invalid state " + str(self._state))
 
@@ -2368,6 +2383,26 @@ class CStatement(_CBaseWithOptBody):
 			self._state = 5
 			return
 
+		if self._state in (50,51):  # after [expr + op +] (expr)-cast
+			if self._state == 50:
+				funcCall = self._leftexpr
+			else:
+				funcCall = self._rightexpr
+			assert isinstance(funcCall, CFuncCall)
+			if funcCall.args:
+				assert len(funcCall.args) == 1
+				assert isinstance(funcCall.args[0], CStatement)
+				funcCall.args[0]._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
+			else:
+				funcCall._bracketlevel = list(openingBracketToken.brackets)
+				cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
+				funcCall.finalize(stateStruct)
+				if self._state == 50:
+					self._state = 5
+				else:
+					self._state = 7
+			return
+
 		if self._state in (5,7): # after expr or expr + op + expr
 			if self._state == 5:
 				ref = self._leftexpr
@@ -2381,12 +2416,12 @@ class CStatement(_CBaseWithOptBody):
 				stateStruct.error("cpre3 statement parse brackets after expr: didn't expected opening bracket '" + openingBracketToken.content + "'")
 				# fallback. handle just like '('
 				funcCall = CStatement(parent=self.parent)
-			funcCall.base = ref
-			funcCall._bracketlevel = list(openingBracketToken.brackets)
 			if self._state == 5:
 				self._leftexpr = funcCall
 			else:
 				self._rightexpr = funcCall
+			funcCall.base = ref
+			funcCall._bracketlevel = list(openingBracketToken.brackets)
 			cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
 			funcCall.finalize(stateStruct)
 			return
@@ -2407,25 +2442,18 @@ class CStatement(_CBaseWithOptBody):
 			return
 
 		if openingBracketToken.content == "(":
-			bracketType = "("
 			subStatement = CStatement(parent=self.parent)
 		elif openingBracketToken.content == "[":
-			bracketType = "["
 			subStatement = CArrayStatement(parent=self.parent)
 		else:
 			# fallback. handle just like '('. we error this below
-			bracketType = "("
 			subStatement = CStatement(parent=self.parent)
 
 		if self._state == 0:
 			self._leftexpr = subStatement
-			if openingBracketToken.content != bracketType:
-				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 0")
 			self._state = 5
 		elif self._state == 6: # expr + op
 			self._rightexpr = subStatement
-			if openingBracketToken.content != "(":
-				stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state 6")
 			self._state = 7
 		else:
 			stateStruct.error("cpre3 statement parse brackets: didn't expected opening bracket '" + openingBracketToken.content + "' in state " + str(self._state))
@@ -2447,6 +2475,18 @@ class CStatement(_CBaseWithOptBody):
 		if not finalized:
 			stateStruct.error("cpre3 statement parse brackets: incomplete, missing closing bracket '" + openingBracketToken.content + "' at level " + str(openingBracketToken.brackets))
 			return
+		if openingBracketToken.content == "(" and subStatement.isCType():
+			# This is a C-style-cast.
+			funcCall = CFuncCall(parent=self)
+			funcCall.base = subStatement
+			if self._state == 5:
+				self._leftexpr = funcCall
+				self._state = 50
+			elif self._state == 7:
+				self._rightexpr = funcCall
+				self._state = 51
+			else:
+				assert False, self._state
 
 	def getConstValue(self, stateStruct):
 		if self._leftexpr is None: # prefixed only
