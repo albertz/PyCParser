@@ -2,6 +2,7 @@
 # by Albert Zeyer, 2011
 # code under LGPL
 
+import cparser
 from cparser import *
 from cwrapper import CStateWrapper
 
@@ -794,10 +795,12 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				# A void cast will discard the output.
 				return bAst, aType
 			return astForCast(funcEnv, aType, bValueAst), aType
-		elif isinstance(stmnt.base, CStatement):
+		elif isinstance(stmnt.base, (CStatement, cparser._CStatementCall)):
 			# func ptr call
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
+			while isinstance(pType, CTypedef):
+				pType = pType.type
 			assert isinstance(pType, CFuncPointerDecl)
 			a.func = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType)
 			a.args = autoCastArgs(funcEnv, pType.args, stmnt.args)
