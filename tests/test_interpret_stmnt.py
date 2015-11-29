@@ -220,9 +220,8 @@ def test_interpret_call_void_func():
 	print "Call statement:", call_stmnt
 	assert isinstance(call_stmnt, CStatement)
 	assert isinstance(call_stmnt._leftexpr, CFuncCall)
-	assert isinstance(call_stmnt._leftexpr.base, CStatement)
-	assert isinstance(call_stmnt._leftexpr.base._leftexpr, CBuiltinType)
-	assert call_stmnt._leftexpr.base._leftexpr.builtinType == ("void", )
+	assert isinstance(call_stmnt._leftexpr.base, CBuiltinType)
+	assert call_stmnt._leftexpr.base.builtinType == ("void", )
 
 	print "Run f:"
 	r = interpreter.runFunc("f")
