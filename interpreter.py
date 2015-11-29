@@ -797,8 +797,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				# A void cast will discard the output.
 				return bAst, aType
 			return astForCast(funcEnv, aType, bValueAst), aType
-		elif isinstance(stmnt.base, (CStatement, cparser._CStatementCall)):
-			# func ptr call
+		else:
+			# Expect func ptr call.
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
 			while isinstance(pType, CTypedef):
@@ -807,8 +807,6 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a.func = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType)
 			a.args = autoCastArgs(funcEnv, pType.args, stmnt.args)
 			return a, pType.type
-		else:
-			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
 		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
 		if isinstance(aType, (CPointerType, CArrayType)):
