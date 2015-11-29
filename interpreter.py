@@ -122,21 +122,23 @@ class GlobalScope:
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
 		assert isinstance(decl, CVarDecl)
+		# First set self.vars with some initial var.
+		# This is to avoid infinite loops, in case that the initializer
+		# access the var itself.
+		emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
+		v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
+		self.vars[name] = v_empty
 		if decl.body is not None:
 			anonFuncEnv = FuncEnv(self)
 			bodyAst, t = astAndTypeForStatement(anonFuncEnv, decl.body)
 			if isPointerType(decl.type) and not isPointerType(t):
 				v = decl.body.getConstValue(self.stateStruct)
 				assert not v, "Global: Initializing pointer type " + str(decl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
-				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
 			else:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
-		else:	
-			valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
-		# TODO: valueAst could refer to the var itself -> infinite loop
-		v = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init>")
-		self.vars[name] = v
-		return v
+				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
+				ctypes.pointer(v_empty)[0] = value
+		return v_empty
 
 def evalValueAst(funcEnv, valueAst, srccode_name=None):
 	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
