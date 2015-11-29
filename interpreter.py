@@ -133,6 +133,7 @@ class GlobalScope:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
 		else:	
 			valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
+		# TODO: valueAst could refer to the var itself -> infinite loop
 		v = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init>")
 		self.vars[name] = v
 		return v
