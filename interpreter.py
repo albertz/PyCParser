@@ -866,7 +866,45 @@ def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
 	opAst = ast.Str(opStr)
 	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
 	return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
-	
+
+def _resolveSingleStatement(stmnt):
+	if not isinstance(stmnt, CStatement): return stmnt
+	if stmnt._op is None and stmnt._rightexpr is None:
+		return _resolveSingleStatement(stmnt._leftexpr)
+	return stmnt
+
+def _getZeroPtrTypeOrNone(stmnt):
+	"""
+	We expect sth like `(PyObject*) 0`, i.e. a C-style cast.
+	In that case, we return the base type, i.e. `PyObject`,
+	otherwise None.
+	"""
+	stmnt = _resolveSingleStatement(stmnt)
+	if not isinstance(stmnt, CFuncCall): return
+	base = stmnt.base
+	if isinstance(base, CStatement):
+		if not base.isCType(): return
+		base = base.asType()
+	if not isinstance(base, CPointerType): return
+	assert len(stmnt.args) == 1
+	arg = stmnt.args[0]
+	assert isinstance(arg, CStatement)
+	arg = _resolveSingleStatement(arg)
+	if not isinstance(arg, CNumber): return
+	if arg.content != 0: return
+	return base.pointerOf
+
+def _resolveOffsetOf(stateStruct, stmnt):
+	if stmnt._leftexpr is not None: return
+	if stmnt._op.content != "&": return
+	rightexpr = _resolveSingleStatement(stmnt._rightexpr)
+	if not isinstance(rightexpr, CPtrAccessRef): return
+	zero_ptr_type = _getZeroPtrTypeOrNone(rightexpr.base)
+	if zero_ptr_type is None: return
+	c_type = getCType(zero_ptr_type, stateStruct)
+	field = getattr(c_type, rightexpr.name)
+	return field.offset
+
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
 	if stmnt._leftexpr is None: # prefixed only
@@ -885,6 +923,12 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			else:
 				assert False, str(stmnt) + " has bad type " + str(rightType)
 		elif stmnt._op.content == "&":
+			# We need to catch offsetof-like calls here because ctypes doesn't allow
+			# NULL pointer access.
+			offset = _resolveOffsetOf(funcEnv.globalScope.stateStruct, stmnt)
+			if offset is not None:
+				t = CStdIntType("intptr_t")
+				return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=offset)), t
 			return makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode), CPointerType(rightType)
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
