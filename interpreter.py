@@ -421,13 +421,6 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		return makeAstNodeCall(astCast, argAst, typeAst)
 
-	if isPointerType(objType, checkWrapValue=True) and argAst is not None:
-		if isinstance(argAst, ast.Num) and argAst.n == 0:
-			# We always will init all pointers with 0.
-			# We later have the same check for cases where this is not 0.
-			argAst = None
-			argType = None
-
 	args = []
 	if argAst is not None:
 		if isinstance(argAst, (ast.Str, ast.Num)):
