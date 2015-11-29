@@ -144,7 +144,7 @@ def evalValueAst(funcEnv, valueAst, srccode_name=None):
 	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
 	valueExprAst = ast.Expression(valueAst)
 	ast.fix_missing_locations(valueExprAst)
-	valueCode = compile(valueExprAst, "<PyCParser_globalvar_" + srccode_name + "_init>", "eval")
+	valueCode = compile(valueExprAst, srccode_name, "eval")
 	v = eval(valueCode, funcEnv.interpreter.globalsDict)
 	return v
 
