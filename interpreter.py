@@ -771,7 +771,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			else:  # e.g. custom lambda / Python func
 				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
 			return a, stmnt.base.returnType
-		elif isinstance(stmnt.base, CType) or (isinstance(stmnt.base, CStatement) and stmnt.base.isCType()):
+		elif isinstance(stmnt.base, (CType,CTypedef)) or (isinstance(stmnt.base, CStatement) and stmnt.base.isCType()):
 			# C static cast
 			assert len(stmnt.args) == 1
 			if isinstance(stmnt.base, CStatement):
