@@ -311,7 +311,9 @@ def getAstNodeForVarType(interpreter, t):
 		return getAstNodeAttrib("structs", t.name)
 	elif isinstance(t, CArrayType):
 		arrayOf = getAstNodeForVarType(interpreter, t.arrayOf)
-		arrayLen = ast.Num(n=getConstValue(interpreter.globalScope.stateStruct, t.arrayLen))
+		v = getConstValue(interpreter.globalScope.stateStruct, t.arrayLen)
+		assert isinstance(v, (int,long))
+		arrayLen = ast.Num(n=v)
 		return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
 	elif isinstance(t, CWrapValue):
 		return getAstNodeForVarType(interpreter, t.getCType(None))
@@ -392,27 +394,36 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	"""
-	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
-		# Handle array type extra here for the case when array-len is not specified.
-		arrayOf, arrayLen = None, None
-		if isinstance(objType, CArrayType):
-			arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
-			if objType.arrayLen:
-				arrayLen = getConstValue(interpreter.globalScope.stateStruct, objType.arrayLen)
+	if isinstance(objType, CArrayType):
+		arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
+		if objType.arrayLen:
+			arrayLen = getConstValue(interpreter.globalScope.stateStruct, objType.arrayLen)
+			assert arrayLen is not None
+			if isinstance(argType, (tuple, list)):
 				assert arrayLen == len(argType)
-			else:
-				arrayLen = len(argType)
-			typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
 		else:
-			typeAst = getAstNodeForVarType(interpreter, objType)
+			# Handle array type extra here for the case when array-len is not specified.
+			assert argType is not None
+			if isinstance(argType, (tuple, list)):
+				arrayLen = len(argType)
+			else:
+				assert isinstance(argType, CArrayType)
+				arrayLen = getConstValue(interpreter.globalScope.stateStruct, argType.arrayLen)
+				assert arrayLen is not None
 
+		typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
+	else:
+		typeAst = getAstNodeForVarType(interpreter, objType)
+
+	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
 		assert isinstance(argAst, ast.Tuple)
 		assert len(argAst.elts) == len(argType)
 		args = [getAstNode_valueFromObj(interpreter._cStateWrapper, a[0], a[1])
 				for a in zip(argAst.elts, argType)]
 		return makeAstNodeCall(typeAst, *args)
 
-	typeAst = getAstNodeForVarType(interpreter, objType)
+	if isinstance(objType, CArrayType) and isinstance(argType, CArrayType):
+		return ast.Call(func=typeAst, args=[], keywords=[], starargs=argAst, kwargs=None)
 
 	if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
 		# We can have it simpler. This is even important in some cases
@@ -749,9 +760,21 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		t = CStdIntType(t)
 		return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=stmnt.content)), t
 	elif isinstance(stmnt, CStr):
-		t = CPointerType(ctypes.c_byte)
-		v = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=str(stmnt.content)))
-		return getAstNode_newTypeInstance(funcEnv.interpreter, t, v, t), t
+		s = str(stmnt.content)
+		l = len(s) + 1
+		ta = CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(l))
+		#tp = CPointerType(ctypes.c_byte)
+		#v = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=s))
+		#return getAstNode_newTypeInstance(funcEnv.interpreter, tp, v, tp), ta
+		# Array so that we have the len info.
+		# c_byte because we always treat `char` as c_byte to avoid problems.
+		typeAst = ast.BinOp(left=getAstNodeAttrib("ctypes", "c_byte"),
+							op=ast.Mult(),
+							right=ast.Num(n=l))
+		ss = makeAstNodeCall(ast.Name(id="map", ctx=ast.Load()),
+							 ast.Name(id="ord", ctx=ast.Load()),
+							 ast.Str(s=s))
+		return ast.Call(func=typeAst, args=[], keywords=[], starargs=ss, kwargs=None), ta
 	elif isinstance(stmnt, CChar):
 		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_byte"), ast.Num(stmnt.content)), ctypes.c_byte
 	elif isinstance(stmnt, CFuncCall):

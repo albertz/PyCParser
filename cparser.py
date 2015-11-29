@@ -372,9 +372,8 @@ class CArrayType(CType):
 		self.arrayOf = arrayOf
 		self.arrayLen = arrayLen
 	def getCType(self, stateStruct):
-		try:
-			l = getConstValue(stateStruct, self.arrayLen)
-		except Exception as e:
+		l = getConstValue(stateStruct, self.arrayLen)
+		if l is None:
 			stateStruct.error("%s: error getting array len (%r), falling back to 1" % (self, e))
 			l = 1
 		try:
