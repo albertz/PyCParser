@@ -762,6 +762,15 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert t is not None
 			s = ctypes.sizeof(t)
 			return ast.Num(s), CStdIntType("size_t")
+		elif isinstance(stmnt.base, CWrapValue):
+			# expect that we just wrapped a callable function/object
+			a = ast.Call(keywords=[], starargs=None, kwargs=None)
+			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt.base), "value")
+			if isinstance(stmnt.base.value, ctypes._CFuncPtr):
+				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
+			else:  # e.g. custom lambda / Python func
+				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+			return a, stmnt.base.returnType
 		elif isinstance(stmnt.base, CType) or (isinstance(stmnt.base, CStatement) and stmnt.base.isCType()):
 			# C static cast
 			assert len(stmnt.args) == 1
@@ -783,15 +792,6 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a.func = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType)
 			a.args = autoCastArgs(funcEnv, pType.args, stmnt.args)
 			return a, pType.type
-		elif isinstance(stmnt.base, CWrapValue):
-			# expect that we just wrapped a callable function/object
-			a = ast.Call(keywords=[], starargs=None, kwargs=None)
-			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt.base), "value")
-			if isinstance(stmnt.base.value, ctypes._CFuncPtr):
-				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
-			else:  # e.g. custom lambda / Python func
-				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.base.returnType
 		else:
 			assert False, "cannot handle " + str(stmnt.base) + " call"
 	elif isinstance(stmnt, CArrayIndexRef):
