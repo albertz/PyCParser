@@ -1185,6 +1185,11 @@ def astForCReturn(funcEnv, stmnt):
 		assert isSameType(funcEnv.globalScope.stateStruct, funcEnv.func.type, CVoidType())
 		return ast.Return(value=None)
 	assert isinstance(stmnt.body, CStatement)
+	if isPointerType(funcEnv.func.type):
+		v = stmnt.body.getConstValue(funcEnv.globalScope.stateStruct)
+		if v is not None and v == 0:
+			# Return zero-initialized pointer.
+			return getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
 	valueAst, valueType = astAndTypeForCStatement(funcEnv, stmnt.body)
 	returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type, valueAst, valueType)
 	return ast.Return(value=returnValueAst)
