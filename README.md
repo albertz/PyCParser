@@ -50,7 +50,6 @@ Current state
 -------------
 
 * I'm quite sure that function pointer typedefs are handled incorrectly. E.g. `typedef void f();` and `typedef void (*f)();` are just the same right now. See `cpre3_parse_typedef` and do some testing if you want to fix this.
-* Array initializers (e.g. `{1,2,3}`) aren't correctly handled by the interpreter.
 * `goto`s are not handled by the interpreter.
 * Function pointers don't work quite correct in the interpreter.
 * Many functions from the standard C library are still missing.
