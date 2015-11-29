@@ -2478,7 +2478,7 @@ class CStatement(_CBaseWithOptBody):
 		if openingBracketToken.content == "(" and subStatement.isCType():
 			# This is a C-style-cast.
 			funcCall = CFuncCall(parent=self)
-			funcCall.base = subStatement
+			funcCall.base = subStatement.asType()
 			if self._state == 5:
 				self._leftexpr = funcCall
 				self._state = 50
@@ -2515,6 +2515,7 @@ class CStatement(_CBaseWithOptBody):
 			if issubclass(t, _ctypes._SimpleCData): return True
 		except Exception: pass # e.g. typeerror or so
 		if isinstance(t, (CType,CStruct,CUnion,CEnum,CTypedef)): return True
+		if isinstance(t, CStatement): return t.isCType()
 		return False
 	
 	def asType(self):

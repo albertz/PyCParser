@@ -762,10 +762,13 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert t is not None
 			s = ctypes.sizeof(t)
 			return ast.Num(s), CStdIntType("size_t")
-		elif isinstance(stmnt.base, CStatement) and stmnt.base.isCType():
+		elif isinstance(stmnt.base, CType) or (isinstance(stmnt.base, CStatement) and stmnt.base.isCType()):
 			# C static cast
 			assert len(stmnt.args) == 1
-			aType = stmnt.base.asType()
+			if isinstance(stmnt.base, CStatement):
+				aType = stmnt.base.asType()
+			else:
+				aType = stmnt.base
 			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
 			bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
 			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
