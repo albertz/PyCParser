@@ -1229,6 +1229,15 @@ class WrappedValues:
 	pass
 
 
+def _unparse(pyAst):
+	from cStringIO import StringIO
+	output = StringIO()
+	from py_demo_unparse import Unparser
+	Unparser(pyAst, output)
+	output.write("\n")
+	return output.getvalue()
+
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -1294,15 +1303,6 @@ class Interpreter:
 			base.astNode = goto.transform_goto(base.astNode, gotoVarName)
 		return base
 
-	@staticmethod
-	def _unparse(pyAst):
-		from cStringIO import StringIO
-		output = StringIO()
-		from py_demo_unparse import Unparser
-		Unparser(pyAst, output)
-		output.write("\n")
-		return output.getvalue()
-
 	def _compile(self, pyAst):
 		# We unparse + parse again for now for better debugging (so we get some code in a backtrace).
 		def _set_linecache(filename, source):
@@ -1310,7 +1310,7 @@ class Interpreter:
 			linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 		SRC_FILENAME = "<PyCParser_" + pyAst.name + ">"
 		def _unparseAndParse(pyAst):
-			src = self._unparse(pyAst)
+			src = _unparse(pyAst)
 			_set_linecache(SRC_FILENAME, src)
 			return compile(src, SRC_FILENAME, "single")
 		def _justCompile(pyAst):
