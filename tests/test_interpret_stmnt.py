@@ -608,9 +608,13 @@ def test_interpret_init_struct():
 	assert vardecl.name == "s"
 	print "var decl s body:"
 	print vardecl.body
+	print "_A:"
+	print state.structs["_A"]
+	print "_A body:"
+	print state.structs["_A"].body
+
 	interpreter = Interpreter()
 	interpreter.register(state)
-
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run f:"

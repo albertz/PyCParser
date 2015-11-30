@@ -407,7 +407,9 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	Create a new instance of type `objType`.
 	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
+	:type interpreter: Interpreter
 	"""
+	arrayLen = None
 	if isinstance(objType, CArrayType):
 		arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
 		if objType.arrayLen:
@@ -432,9 +434,43 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
 		assert isinstance(argAst, ast.Tuple)
 		assert len(argAst.elts) == len(argType)
-		args = [getAstNode_valueFromObj(interpreter._cStateWrapper, a[0], a[1])
-				for a in zip(argAst.elts, argType)]
-		return makeAstNodeCall(typeAst, *args)
+		# There is a bit of inconsistency between basic types init
+		# (like c_int), which must get a value (int),
+		# and ctypes.Structure/ctypes.ARRAY, which for some field can either
+		# get a value (int) or a c_int. For pointers, it must get
+		# the var, not the value.
+		# This is mostly the same as for calling functions.
+		f_args = []
+		while isinstance(objType, CTypedef):
+			objType = objType.type
+		if isinstance(objType, CStruct):
+			for c in objType.body.contentlist:
+				if not isinstance(c, CVarDecl): continue
+				f_args += [c.type]
+		elif isinstance(objType, CArrayType):
+			f_args += [objType.arrayOf] * arrayLen
+		else:
+			assert False, "did not expect type %r" % objType
+		assert len(argType) <= len(f_args)
+		# Somewhat like autoCastArgs():
+		anonFuncEnv = FuncEnv(interpreter.globalScope)
+		s_args = []
+		for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
+			f_arg_ctype = getCType(f_arg_type, interpreter.globalScope.stateStruct)
+			s_arg_ctype = getCType(s_arg_type, interpreter.globalScope.stateStruct)
+			use_value = False
+			if interpreter.globalScope.stateStruct.IndirectSimpleCTypes and needWrapCTypeClass(f_arg_ctype):
+				# We cannot use e.g. c_int, because the Structure uses another wrapped field type.
+				# However, using the value itself should be fine in those cases.
+				use_value = True
+			if s_arg_ctype != f_arg_ctype or use_value:
+				s_value_ast = getAstNode_valueFromObj(interpreter.globalScope.stateStruct, s_arg_ast, s_arg_type)
+				if use_value:
+					s_arg_ast = s_value_ast
+				else:
+					s_arg_ast = astForCast(anonFuncEnv, f_arg_type, s_value_ast)
+			s_args += [s_arg_ast]
+		return makeAstNodeCall(typeAst, *s_args)
 
 	if isinstance(objType, CArrayType) and isinstance(argType, CArrayType):
 		return ast.Call(func=typeAst, args=[], keywords=[], starargs=argAst, kwargs=None)

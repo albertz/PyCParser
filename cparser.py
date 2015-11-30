@@ -1834,14 +1834,21 @@ class CVarDecl(_CBaseWithOptBody):
 		s += " = "
 		s += asCCode(self.body)
 		return s
-	
+
+def needWrapCTypeClass(t):
+	return t.__base__ is _ctypes._SimpleCData
+
 def wrapCTypeClassIfNeeded(t):
-	if t.__base__ is _ctypes._SimpleCData: return wrapCTypeClass(t)
+	if needWrapCTypeClass(t): return wrapCTypeClass(t)
 	else: return t
-	
+
+_wrapCTypeClassCache = {}
+
 def wrapCTypeClass(t):
+	if id(t) in _wrapCTypeClassCache: return _wrapCTypeClassCache[id(t)]
 	class WrappedType(t): pass
-	WrappedType.__name__ = t.__name__
+	WrappedType.__name__ = "wrapCTypeClass_%s" % t.__name__
+	_wrapCTypeClassCache[id(t)] = WrappedType
 	return WrappedType
 
 def _getCTypeStruct(baseClass, obj, stateStruct):
