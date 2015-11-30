@@ -126,9 +126,19 @@ class GlobalScope:
 		# First set self.vars with some initial var.
 		# This is to avoid infinite loops, in case that the initializer
 		# access the var itself.
-		emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
-		v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
-		self.vars[name] = v_empty
+		init_empty_first = True
+		if isinstance(decl.type, CArrayType) and decl.body:
+			# In case this is an array, we don't do this, since the len
+			# of the array might be only determined by its body.
+			init_empty_first = False
+		if init_empty_first:
+			emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
+			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
+			self.vars[name] = v_empty
+			value = v_empty
+		else:
+			v_empty = None
+			value = None
 		if decl.body is not None:
 			anonFuncEnv = FuncEnv(self)
 			bodyAst, t = astAndTypeForStatement(anonFuncEnv, decl.body)
@@ -137,9 +147,13 @@ class GlobalScope:
 				assert not v, "Global: Initializing pointer type " + str(decl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
 			else:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
-				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-				ctypes.pointer(v_empty)[0] = value
-		return v_empty
+				body_value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
+				if init_empty_first:
+					ctypes.pointer(v_empty)[0] = body_value
+				else:
+					value = body_value
+					self.vars[name] = value
+		return value
 
 def evalValueAst(funcEnv, valueAst, srccode_name=None):
 	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
