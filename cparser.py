@@ -3332,6 +3332,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					CVarDecl.overtake(curCObj)
 					oldObj = curCObj
 					curCObj = curCObj.copy()
+					curCObj._already_added = False
 					oldObj.finalize(stateStruct)
 					curCObj.clearDeclForNextVar()
 					curCObj.name = None

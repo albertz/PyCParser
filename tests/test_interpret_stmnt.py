@@ -892,3 +892,29 @@ def test_interpret_op_precedence_ref():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 43
+
+
+def test_interpret_multiple_vars():
+	state = parse("""
+	int f() {
+		int a = 23, b, c;
+		c = 42;
+		return c;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
