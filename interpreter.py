@@ -301,8 +301,10 @@ def getAstNodeForCTypesBasicType(t):
 		a = getAstNodeAttrib("ctypes", "POINTER")
 		return makeAstNodeCall(a, getAstNodeForCTypesBasicType(base_type))
 	if not issubclass(t, ctypes._SimpleCData): raise DidNotFindCTypesBasicType("unknown type")
-	assert issubclass(t, getattr(ctypes, t.__name__))
-	return getAstNodeAttrib("ctypes", t.__name__)
+	t_name = t.__name__
+	if t_name.startswith("wrapCTypeClass_"): t_name = t_name[len("wrapCTypeClass_"):]
+	assert issubclass(t, getattr(ctypes, t_name))
+	return getAstNodeAttrib("ctypes", t_name)
 
 def getAstNodeForVarType(interpreter, t):
 	if isinstance(t, CBuiltinType):
