@@ -53,7 +53,7 @@ class CWrapFuncType(CType):
 		"""
 		self.func = func
 	def getCType(self, stateStruct):
-		assert False
+		return self.func.getCType(stateStruct)
 
 
 def iterIdentifierNames():
