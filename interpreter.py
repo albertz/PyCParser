@@ -428,6 +428,8 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 				assert isinstance(argType, CArrayType)
 				arrayLen = getConstValue(interpreter.globalScope.stateStruct, argType.arrayLen)
 				assert arrayLen is not None
+			# Write back to type so that future getCType calls will succeed.
+			objType.arrayLen = CNumber(arrayLen)
 
 		typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
 	else:
@@ -459,6 +461,13 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		s_args = []
 		for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
 			f_arg_ctype = getCType(f_arg_type, interpreter.globalScope.stateStruct)
+			while isinstance(s_arg_type, CTypedef):
+				s_arg_type = s_arg_type.type
+			if isinstance(s_arg_type, CArrayType) and not s_arg_type.arrayLen:
+				# It can happen that we don't know the array-len yet.
+				# Then, getCType() will fail.
+				# However, it's probably enough here to just use the pointer-type instead.
+				s_arg_type = CPointerType(s_arg_type.arrayOf)
 			s_arg_ctype = getCType(s_arg_type, interpreter.globalScope.stateStruct)
 			use_value = False
 			if interpreter.globalScope.stateStruct.IndirectSimpleCTypes and needWrapCTypeClass(f_arg_ctype):
