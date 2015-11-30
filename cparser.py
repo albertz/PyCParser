@@ -1772,6 +1772,27 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 	def asCCode(self, indent=""):
 		return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
 
+
+def _addToParent(obj, stateStruct, dictName=None, listName=None):
+	assert dictName or listName
+	assert hasattr(obj.parent, "body")
+	d = getattr(obj.parent.body, dictName or listName)
+	if dictName:
+		if obj.name is None:
+			# might be part of a typedef, so don't error
+			return
+
+		# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
+		# Otherwise however, it is an error.
+		if obj.name in d and d[obj.name].body is not None:
+			stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
+		else:
+			d[obj.name] = obj
+	else:
+		assert listName is not None
+		d.append(obj)
+
+
 def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToContent=None):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
@@ -1784,22 +1805,9 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 		obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
 	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
 	
-	if addToContent and hasattr(obj.parent, "body"):
-		d = getattr(obj.parent.body, dictName or listName)
-		if dictName:
-			if obj.name is None:
-				# might be part of a typedef, so don't error
-				return
-	
-			# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
-			# Otherwise however, it is an error.
-			if obj.name in d and d[obj.name].body is not None:
-				stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
-			else:
-				d[obj.name] = obj
-		else:
-			assert listName is not None
-			d.append(obj)
+	if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
+		_addToParent(obj=obj, stateStruct=stateStruct, dictName=dictName, listName=listName)
+
 
 class CFunc(_CBaseWithOptBody):
 	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="funcs", **kwargs)
@@ -3328,6 +3336,11 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					if not curCObj.isDerived():
 						CVarDecl.overtake(curCObj)
 					curCObj.body = CStatement(parent=curCObj)
+					if isinstance(curCObj, CVarDecl):
+						# Early add, so that the var init body can reference it's own instance,
+						# e.g. its pointer.
+						_addToParent(curCObj, stateStruct, dictName="vars")
+						curCObj._already_added = True
 				else:
 					stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj) + " after " + str(curCObj))
 		elif isinstance(token, CNumber):

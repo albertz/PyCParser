@@ -620,6 +620,48 @@ def test_interpret_init_struct():
 	assert r.value == 2
 
 
+def test_interpret_init_struct_via_self():
+	state = parse("""
+	#include <assert.h>
+	typedef struct _A { void* self; int x; } A;
+	A s = {&s, 42};
+	int f() {
+		assert((&s) == s.self);
+		return s.x;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	print "s:", state.vars["s"]
+	print "s body:", state.vars["s"].body
+	s = state.vars["s"]
+	s_body = s.body
+	assert isinstance(s_body, CStatement)
+	assert isinstance(s_body._leftexpr, CCurlyArrayArgs)
+	s_body = s_body._leftexpr
+	assert len(s_body.args) == 2
+	assert isinstance(s_body.args[0], CStatement)
+	assert s_body.args[0]._leftexpr is None
+	assert s_body.args[0]._op == COp("&")
+	assert isinstance(s_body.args[0]._rightexpr, CStatement)
+	s_body_ref = s_body.args[0]._rightexpr
+	assert s_body_ref._leftexpr is state.vars["s"]
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
 def test_interpret_init_array():
 	state = parse("""
 	int f() {
@@ -695,6 +737,30 @@ def test_interpreter_char_array():
 	assert vardecl.name == "name"
 	print "var decl a body:"
 	print vardecl.body
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 4
+
+
+def test_interpreter_global_char_array():
+	state = parse("""
+	static char name[] = "foo";
+	int f() {
+		return sizeof(name);
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
 	interpreter = Interpreter()
 	interpreter.register(state)
 
@@ -792,3 +858,33 @@ def test_interpreter_func_ptr_return_ptr():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_op_precedence_ref():
+	state = parse("""
+	#include <assert.h>
+	typedef struct _A { int* x; } A;
+	int f() {
+		int a = 42;
+		A b = {&a};
+		assert(&a == b.x);
+		*b.x += 1;
+		return a;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 43
