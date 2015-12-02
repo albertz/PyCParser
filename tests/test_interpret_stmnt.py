@@ -836,14 +836,41 @@ def test_interpreter_num_cast():
 	assert r.value == ord('A')
 
 
-def test_interpreter_func_ptr_return_ptr():
+def test_interpreter_func_ptr():
 	state = parse("""
-	typedef int* (*F) (int*);
-	int* i(int* v) { return v; }
+	typedef int (*F) ();
+	int i() { return 42; }
 	int f() {
 		F fp = i;
-		int v = 42;
-		int* vp = fp(&v);
+		int v = fp();
+		return v;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
+def test_interpreter_func_ptr_return_ptr():
+	state = parse("""
+	typedef int* (*F) ();
+	int _i = 42;
+	int* i() { return &_i; }
+	int f() {
+		F fp = i;
+		int* vp = fp();
 		return *vp;
 	}
 	""")
