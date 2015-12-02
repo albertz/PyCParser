@@ -1098,6 +1098,13 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		# TODO: type not really correct. e.g. int + float -> float
 		# Note: No pointer arithmetic here, that case is caught above.
 		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a), leftType
+	elif stmnt._op.content == ",":
+		a = ast.Tuple(ctx=ast.Load())
+		left_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
+		right_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
+		a.elts = (left_ast, right_ast)
+		b = ast.Subscript(value=a, slice=ast.Num(n=1), ctx=ast.Load())
+		return b, rightType
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 

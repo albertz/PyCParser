@@ -86,6 +86,10 @@ OpPrefixFuncs = {
 	"~": (lambda x: ~x),
 }
 
+OpPostfixFuncs = {
+	"++", "--"
+}
+
 OpBinFuncs = {
 	"+": (lambda a,b: a + b),
 	"-": (lambda a,b: a - b),
@@ -2231,8 +2235,14 @@ class CStatement(_CBaseWithOptBody):
 				self._state = 20
 				self._leftexpr = CPtrAccessRef(parent=self, base=self._leftexpr)
 			elif isinstance(token, COp):
-				self._op = token
-				self._state = 6
+				if token.content in OpPostfixFuncs:
+					subStatement = CStatement(parent=self)
+					subStatement._leftexpr = self._leftexpr
+					subStatement._op = token
+					self._leftexpr = subStatement
+				else:
+					self._op = token
+					self._state = 6
 			elif isinstance(self._leftexpr, CStr) and isinstance(token, CStr):
 				self._leftexpr = CStr(self._leftexpr.content + token.content)
 			else:

@@ -972,6 +972,32 @@ def test_interpret_multi_stmnt():
 	assert r.value == 1
 
 
+def test_interpret_multi_stmnt_body():
+	state = parse("""
+	int f() {
+		int i = 1, j = 2;
+		i++, j++;
+		return i + j;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
 def test_interpret_prefix_inc_ret():
 	state = parse("""
 	int f() {
