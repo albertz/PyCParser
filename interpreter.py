@@ -372,9 +372,13 @@ def isValueType(t):
 	return False
 
 def getAstNode_valueFromObj(stateStruct, objAst, objType):
-	if isPointerType(objType):
+	if isinstance(objType, CFuncPointerDecl):
+		# It's already the value.
+		return objAst
+	elif isPointerType(objType):
 		from inspect import isclass
 		if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
+			# Only c_void_p supports to get the pointer-value via the value-attrib.
 			astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 			astCast = getAstNodeAttrib("ctypes", "cast")
 			astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
