@@ -79,6 +79,7 @@ def test_interpret_c_cast_ptr_3():
 	interpreter.register(state)
 
 	print "Func dump:"
+	interpreter.dumpFunc("g", output=sys.stdout)
 	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
