@@ -1765,13 +1765,15 @@ class CFuncPointerDecl(_CBaseWithOptBody):
 		if self.type is None:
 			stateStruct.error("finalize " + str(self) + ": type is unknown")
 		# Name can be unset. It depends where this is declared.
-	def getCType(self, stateStruct, workaroundPtrReturn=True):
+	def getCType(self, stateStruct, workaroundPtrReturn=True, wrap=True):
 		if workaroundPtrReturn and isinstance(self.type, CPointerType):
 			# https://bugs.python.org/issue5710
 			restype = ctypes.c_void_p
 		else:
 			restype = getCType(self.type, stateStruct)
+		if wrap: restype = wrapCTypeClassIfNeeded(restype)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
+		#if wrap: argtypes = map(wrapCTypeClassIfNeeded, argtypes)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 	def asCCode(self, indent=""):
 		return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
