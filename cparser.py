@@ -3011,12 +3011,15 @@ CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToList, input_iter):
 	brackets = list(parentCObj._bracketlevel)
 	curCObj = _CBaseWithOptBody(parent=parentCObj)
+	def _make_statement(o):
+		assert not o.isDerived()
+		CStatement.overtake(o)
+		for t in o._type_tokens:
+			o._cpre3_handle_token(stateStruct, CIdentifier(t))
+		o._type_tokens = []
 	def _finalizeCObj(o):
 		if not o.isDerived():
-			CStatement.overtake(o)
-			for t in o._type_tokens:
-				o._cpre3_handle_token(stateStruct, CIdentifier(t))
-			o._type_tokens = []
+			_make_statement(o)
 		o.finalize(stateStruct, addToContent=False)
 	for token in input_iter:
 		if isinstance(token, CIdentifier):
@@ -3066,7 +3069,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 			elif isinstance(curCObj.body, CStatement):
 				curCObj.body._cpre3_parse_brackets(stateStruct, token, input_iter)
 			elif not curCObj.isDerived():
-				CStatement.overtake(curCObj)
+				_make_statement(curCObj)
 				curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
 			else:
 				stateStruct.error("cpre3 parse statements in brackets: " + str(token) + " not expected after " + str(curCObj))
@@ -3087,14 +3090,14 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
 			curCObj.body = CStatement(parent=curCObj)
 		else:
 			if not curCObj.isDerived():
-				CStatement.overtake(curCObj)
+				_make_statement(curCObj)
 			if isinstance(curCObj, CStatement):
 				curCObj._cpre3_handle_token(stateStruct, token)
 			elif isinstance(curCObj.body, CStatement):
 				curCObj.body._cpre3_handle_token(stateStruct, token)
 			else:
 				stateStruct.error("cpre3 parse statements in brackets: " + str(token) + " not expected after " + str(curCObj))
-			
+
 	# add also the last object
 	if isinstance(sepToken, CSemicolon) or curCObj:
 		_finalizeCObj(curCObj)
