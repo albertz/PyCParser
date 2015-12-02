@@ -942,3 +942,31 @@ def test_interpret_sizeof_ptr():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ctypes.sizeof(ctypes.c_void_p)
+
+
+def test_interpret_multi_stmnt():
+	state = parse("""
+	int f() {
+		int *mp = 0;
+		int i, nslots = 1;
+		for (i = 0; i < nslots; i++, mp++) {
+		}
+		return i;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1
