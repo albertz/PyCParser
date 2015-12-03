@@ -1453,21 +1453,19 @@ class Interpreter:
 		return obj.getCValue(wrappedStateStruct)
 
 	def _storePtr(self, ptr):
-		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer))
+		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array))
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr == 0:
 			return ptr  # Nothing needed to store.
 		objs = _ctype_collect_objects(ptr)
-		if len(objs) != 1:
-			raise NotImplementedError("_storePtr: ref'd objects of ptr: %r" % objs)
-		obj = objs[0]
-		obj_ptr_addr = _ctype_get_ptr_addr(obj)
-		if ptr_addr != obj_ptr_addr:
-			raise NotImplementedError(
-				"_storePtr: ptr %r, obj %r, ptr_addr %x, obj_ptr_addr %x" % (
-				ptr, obj, ptr_addr, obj_ptr_addr))
-		self.pointerStorage[ptr_addr] = obj
-		return ptr
+		for obj in objs:
+			obj_ptr_addr = _ctype_get_ptr_addr(obj)
+			if ptr_addr == obj_ptr_addr:
+				self.pointerStorage[ptr_addr] = obj
+				return ptr
+		raise NotImplementedError(
+			"_storePtr: ptr %r, objs %r, ptr_addr %x, obj_ptr_addr %s" % (
+			ptr, objs, ptr_addr, map(hex, map(_ctype_get_ptr_addr, objs))))
 
 	def _getPtr(self, addr, ptr_type=None):
 		if addr == 0:
