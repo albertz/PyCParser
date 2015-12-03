@@ -196,7 +196,7 @@ def test_interpret_var_init_wrap_value_2():
 
 def test_interpret_call_void_func():
 	state = parse("""
-	int g() {}
+	int g() { return 0; }
 	int f() {
 		(void) g();
 		return 5;

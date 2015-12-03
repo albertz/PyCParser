@@ -848,7 +848,11 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib("g", stmnt.base.name)
 			a.args = autoCastArgs(funcEnv, [f_arg.type for f_arg in stmnt.base.args], stmnt.args)
-			return a, stmnt.base.type
+			if stmnt.base.type in (CBuiltinType(("void",)), CVoidType()):
+				b = a
+			else:
+				b = getAstNode_newTypeInstance(funcEnv.interpreter, stmnt.base.type, a)
+			return b, stmnt.base.type
 		elif isinstance(stmnt.base, CSizeofSymbol):
 			assert len(stmnt.args) == 1
 			a = stmnt.args[0]
@@ -1273,20 +1277,31 @@ def astForCSwitch(funcEnv, stmnt):
 	return ifAst
 
 def astForCReturn(funcEnv, stmnt):
-	assert isinstance(stmnt, CReturnStatement)
-	if not stmnt.body:
-		assert isSameType(funcEnv.globalScope.stateStruct, funcEnv.func.type, CVoidType())
+	if stmnt is not None:
+		assert isinstance(stmnt, CReturnStatement)
+	if isSameType(funcEnv.globalScope.stateStruct, funcEnv.func.type, CVoidType()):
+		assert stmnt is None or not stmnt.body
 		return ast.Return(value=None)
-	assert isinstance(stmnt.body, CStatement)
+	# Note that we must return a value (int), not a ctypes-type (c_int).
+	# This is so that these functions can be wrapped into a CFUNCTYPE (native func ptr).
 	returnValueAst = None
-	if isPointerType(funcEnv.func.type):
-		v = stmnt.body.getConstValue(funcEnv.globalScope.stateStruct)
-		if v is not None and v == 0:
-			# Return zero-initialized pointer.
-			returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
-	if returnValueAst is None:
-		valueAst, valueType = astAndTypeForCStatement(funcEnv, stmnt.body)
-		returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type, valueAst, valueType)
+	if stmnt is None:
+		# No error for non-void return, because this will be the final return of the func,
+		# and we just want a safe return in all cases.
+		emptyAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
+		returnValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, emptyAst, funcEnv.func.type)
+	else:
+		assert isinstance(stmnt.body, CStatement)
+		#if isPointerType(funcEnv.func.type):
+		#	v = stmnt.body.getConstValue(funcEnv.globalScope.stateStruct)
+		#	if v is not None and v == 0:
+		#		# Return zero-initialized pointer.
+		#		returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
+		if returnValueAst is None:
+			valueAst, valueType = astAndTypeForCStatement(funcEnv, stmnt.body)
+			returnValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, valueAst, valueType)
+			#returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type, valueAst, valueType)
+			#returnValueAst = valueAst
 	return ast.Return(value=returnValueAst)
 
 def cStatementToPyAst(funcEnv, c):
@@ -1408,12 +1423,7 @@ class Interpreter:
 		else:
 			cCodeToPyAstList(base, func.body)
 		base.popScope()
-		if isSameType(self._cStateWrapper, func.type, CVoidType()):
-			returnValueAst = NoneAstNode
-		else:
-			returnTypeAst = getAstNodeForVarType(self, func.type)
-			returnValueAst = makeAstNodeCall(returnTypeAst)
-		base.astNode.body.append(ast.Return(value=returnValueAst))
+		base.astNode.body.append(astForCReturn(base, None))
 		if base.needGotoHandling:
 			gotoVarName = base.registerNewUnscopedVarName("goto")
 			base.astNode = goto.transform_goto(base.astNode, gotoVarName)
@@ -1444,6 +1454,7 @@ class Interpreter:
 		func.C_pyAst = pyAst
 		func.C_interpreter = self
 		func.C_argTypes = map(lambda a: a.type, cfunc.args)
+		func.C_resType = cfunc.type
 		func.C_unparse = lambda: _unparse(pyAst)
 		return func
 
@@ -1480,9 +1491,18 @@ class Interpreter:
 			return self._cStateWrapper.StdIntTypes[t](arg)			
 		else:
 			assert False, "cannot cast " + str(arg) + " to " + str(typ)
-	
-	def runFunc(self, funcname, *args):
+
+	def _runFunc_kwargs_resolve(self, return_as_ctype=True):
+		return {"return_as_ctype": return_as_ctype}
+
+	def runFunc(self, funcname, *args, **kwargs):
+		kwargs = self._runFunc_kwargs_resolve(**kwargs)
 		f = self.getFunc(funcname)
 		assert len(args) == len(f.C_argTypes)
 		args = map(lambda (arg,typ): self._castArgToCType(arg,typ), zip(args,f.C_argTypes))
-		return f(*args)
+		res = f(*args)
+		if kwargs["return_as_ctype"]:
+			res_ctype = f.C_resType.getCType(self.globalScope.stateStruct)
+			if res_ctype is not None:
+				res = res_ctype(res)
+		return res
