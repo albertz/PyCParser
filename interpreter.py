@@ -509,8 +509,23 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 			args += [argAst]
 
 	if isPointerType(objType, checkWrapValue=True) and argAst is not None:
+		# Note that we already covered the case where both objType and argType
+		# are pointer types, and we get a ctypes pointer object.
+		# In that case, we can use ctypes.cast, which is more or less safe.
+		# Note what this case here means:
+		# We get an integer from somewhere, and interpret is as a pointer.
+		# So, if there is a bug in how we got this integer, this can
+		# potentially lead to an invalid pointer and hard to find bug.
+		# Also, if the memory was allocated before by Python,
+		# normally the ctypes pointer handling would keep a reference
+		# to the underlying Python object.
+		# When we however just get the raw pointer address as an integer
+		# and then convert that back to a pointer at this place,
+		# it doesn't know about the underlying Python objects.
+		# When the underlying Python objects will get out-of-scope
+		# at some later point, which we cannot control here,
+		# this again would lead to hard to find bugs.
 		assert False, "not supported because unsafe! " + str(argAst)
-		return makeAstNodeCall(typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 		#astCast = getAstNodeAttrib("ctypes", "cast")
 		#astVoidP = makeAstNodeCall(astVoidPT, *args)
