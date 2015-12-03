@@ -527,7 +527,8 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# When the underlying Python objects will get out-of-scope
 		# at some later point, which we cannot control here,
 		# this again would lead to hard to find bugs.
-		assert False, "not supported because unsafe! " + str(argAst)
+		assert len(args) == 1
+		return makeAstNodeCall(getAstNodeAttrib("intp", "_getPtr"), args[0], typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 		#astCast = getAstNodeAttrib("ctypes", "cast")
 		#astVoidP = makeAstNodeCall(astVoidPT, *args)
@@ -1316,6 +1317,8 @@ def astForCReturn(funcEnv, stmnt):
 		#		returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
 		if returnValueAst is None:
 			valueAst, valueType = astAndTypeForCStatement(funcEnv, stmnt.body)
+			if isPointerType(valueType):
+				valueAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), valueAst)
 			returnValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, valueAst, valueType)
 			#returnValueAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type, valueAst, valueType)
 			#returnValueAst = valueAst
@@ -1387,7 +1390,7 @@ def _set_linecache(filename, source):
 
 def _ctype_ptr_get_value(ptr):
 	ptr = ctypes.cast(ptr, ctypes.c_void_p)
-	return ptr.value
+	return ptr.value or 0
 
 def _ctype_get_ptr_addr(obj):
 	return _ctype_ptr_get_value(ctypes.pointer(obj))
@@ -1449,11 +1452,11 @@ class Interpreter:
 					return obj.getCValue(wrappedStateStruct)
 		return obj.getCValue(wrappedStateStruct)
 
-	def _storePtrObj(self, ptr):
+	def _storePtr(self, ptr):
 		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer))
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr == 0:
-			return  # Nothing needed to store.
+			return ptr  # Nothing needed to store.
 		objs = _ctype_collect_objects(ptr)
 		if len(objs) != 1:
 			raise NotImplementedError("_storePtr: ref'd objects of ptr: %r" % objs)
@@ -1464,15 +1467,17 @@ class Interpreter:
 				"_storePtr: ptr %r, obj %r, ptr_addr %x, obj_ptr_addr %x" % (
 				ptr, obj, ptr_addr, obj_ptr_addr))
 		self.pointerStorage[ptr_addr] = obj
+		return ptr
 
-	def _getPtrObj(self, addr, ptr_type=None):
+	def _getPtr(self, addr, ptr_type=None):
 		if addr == 0:
 			assert ptr_type
 			return ptr_type()
 		try:
-			return self.pointerStorage[addr]
+			obj = self.pointerStorage[addr]
 		except KeyError:
 			raise Exception("invalid pointer access to address %x of type %r" % (addr, ptr_type))
+		return ctypes.pointer(obj)
 
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)
