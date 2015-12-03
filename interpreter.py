@@ -1452,6 +1452,8 @@ class Interpreter:
 	def _storePtrObj(self, ptr):
 		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer))
 		ptr_addr = _ctype_ptr_get_value(ptr)
+		if ptr_addr == 0:
+			return  # Nothing needed to store.
 		objs = _ctype_collect_objects(ptr)
 		if len(objs) != 1:
 			raise NotImplementedError("_storePtr: ref'd objects of ptr: %r" % objs)
@@ -1464,6 +1466,9 @@ class Interpreter:
 		self.pointerStorage[ptr_addr] = obj
 
 	def _getPtrObj(self, addr, ptr_type=None):
+		if addr == 0:
+			assert ptr_type
+			return ptr_type()
 		try:
 			return self.pointerStorage[addr]
 		except KeyError:
