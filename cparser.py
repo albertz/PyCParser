@@ -1842,6 +1842,7 @@ class CVarDecl(_CBaseWithOptBody):
 		return s
 
 def needWrapCTypeClass(t):
+	if t is None: return False
 	return t.__base__ is _ctypes._SimpleCData
 
 def wrapCTypeClassIfNeeded(t):
