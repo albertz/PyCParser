@@ -12,6 +12,8 @@ import ast
 import sys
 import inspect
 import goto
+from weakref import ref, WeakValueDictionary
+
 
 class CWrapValue(CType):
 	def __init__(self, value, decl=None, name=None, **kwattr):
@@ -1383,6 +1385,32 @@ def _set_linecache(filename, source):
 	import linecache
 	linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 
+def _ctype_ptr_get_value(ptr):
+	ptr = ctypes.cast(ptr, ctypes.c_void_p)
+	return ptr.value
+
+def _ctype_get_ptr_addr(obj):
+	return _ctype_ptr_get_value(ctypes.pointer(obj))
+
+def _ctype_collect_objects(obj):
+	"""
+	:param ctypes._CData obj: ctypes obj
+	_CData has the relevant attribs _b_base_, _b_needsfree_, _objects.
+	_b_base_ would be a counted-ref to a base _CData object which shares mem with it.
+	_b_needsfree_ is True/False, depending if we need to free sth.
+	_objects is a dict, where the values are counted-refs to objects which we depend on.
+	counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
+	all the ref'd objects will live, too.
+	"""
+	b = obj
+	d = {}  # id(o) -> o
+	while b is not None:
+		if b._objects:
+			for o in b._objects.values():
+				d[id(o)] = o
+		b = b._b_base_
+	return d.values()
+
 
 class Interpreter:
 	def __init__(self):
@@ -1395,6 +1423,7 @@ class Interpreter:
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
 		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
 		self.wrappedValues = WrappedValues()  # attrib -> obj
+		self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
 		self.globalsDict = {
 			"ctypes": ctypes,
 			"helpers": Helpers,
@@ -1419,7 +1448,27 @@ class Interpreter:
 				else:
 					return obj.getCValue(wrappedStateStruct)
 		return obj.getCValue(wrappedStateStruct)
-	
+
+	def _storePtrObj(self, ptr):
+		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer))
+		ptr_addr = _ctype_ptr_get_value(ptr)
+		objs = _ctype_collect_objects(ptr)
+		if len(objs) != 1:
+			raise NotImplementedError("_storePtr: ref'd objects of ptr: %r" % objs)
+		obj = objs[0]
+		obj_ptr_addr = _ctype_get_ptr_addr(obj)
+		if ptr_addr != obj_ptr_addr:
+			raise NotImplementedError(
+				"_storePtr: ptr %r, obj %r, ptr_addr %x, obj_ptr_addr %x" % (
+				ptr, obj, ptr_addr, obj_ptr_addr))
+		self.pointerStorage[ptr_addr] = obj
+
+	def _getPtrObj(self, addr, ptr_type=None):
+		try:
+			return self.pointerStorage[addr]
+		except KeyError:
+			raise Exception("invalid pointer access to address %x of type %r" % (addr, ptr_type))
+
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)
 		base = FuncEnv(globalScope=self.globalScope)
