@@ -847,17 +847,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		l = len(s) + 1
 		ta = CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(l))
 		#tp = CPointerType(ctypes.c_byte)
-		#v = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_char_p"), ast.Str(s=s))
-		#return getAstNode_newTypeInstance(funcEnv.interpreter, tp, v, tp), ta
-		# Array so that we have the len info.
-		# c_byte because we always treat `char` as c_byte to avoid problems.
-		typeAst = ast.BinOp(left=getAstNodeAttrib("ctypes", "c_byte"),
-							op=ast.Mult(),
-							right=ast.Num(n=l))
-		ss = makeAstNodeCall(ast.Name(id="map", ctx=ast.Load()),
-							 ast.Name(id="ord", ctx=ast.Load()),
-							 ast.Str(s=s))
-		return ast.Call(func=typeAst, args=[], keywords=[], starargs=ss, kwargs=None), ta
+		ss = makeAstNodeCall(getAstNodeAttrib("intp", "_make_string"), ast.Str(s=s))
+		return ss, ta
 	elif isinstance(stmnt, CChar):
 		return makeAstNodeCall(getAstNodeAttrib("ctypes", "c_byte"), ast.Num(stmnt.content)), ctypes.c_byte
 	elif isinstance(stmnt, CFuncCall):
@@ -1427,7 +1418,13 @@ class Interpreter:
 		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
 		self.wrappedValues = WrappedValues()  # attrib -> obj
 		self.mallocs = {}  # ptr addr -> ctype obj
+		# Note: The pointerStorage will only weakly ref the ctype objects.
+		# When the real ctype objects go out of scope, we don't want to
+		# keep them alive.
 		self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
+		# Here we hold constant strings, because they need some global
+		# storage which will not get freed.
+		self.constStrings = {}  # str -> ctype c_char_p
 		self.globalsDict = {
 			"ctypes": ctypes,
 			"helpers": Helpers,
@@ -1454,6 +1451,16 @@ class Interpreter:
 				else:
 					return obj.getCValue(wrappedStateStruct)
 		return obj.getCValue(wrappedStateStruct)
+
+	def _make_string(self, s):
+		if s in self.constStrings:
+			return self.constStrings[s]
+		# Array so that we have the len info.
+		# c_byte because we always treat `char` as c_byte to avoid problems.
+		t = ctypes.c_byte * (len(s) + 1)
+		buf = t(*map(ord, s))
+		self.constStrings[s] = buf
+		return buf
 
 	def _malloc(self, size):
 		buf = (ctypes.c_byte * size)()
@@ -1491,6 +1498,8 @@ class Interpreter:
 			if ptr_addr == obj_ptr_addr:
 				self.pointerStorage[ptr_addr] = obj
 				return ptr
+		# Note: This can also/esp happen when the ptr was not allocated by us.
+		# Not sure how to handle that yet...
 		raise NotImplementedError(
 			"_storePtr: ptr %r, objs %r, ptr_addr %x, obj_ptr_addr %s" % (
 			ptr, objs, ptr_addr, map(hex, map(_ctype_get_ptr_addr, objs))))
