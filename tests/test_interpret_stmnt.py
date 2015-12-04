@@ -1154,3 +1154,38 @@ def test_interpret_malloc():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ord("h")
+
+
+def test_interpret_malloc_with_cast():
+	state = parse("""
+	#include <stdlib.h>
+	#include <string.h>
+	char* g() {
+		char* s = (char*) malloc(5);
+		strcpy(s, "hey");
+		return s;
+	}
+	int f() {
+		char* s = g();
+		char c = *s;
+		free(s);
+		return c;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord("h")
