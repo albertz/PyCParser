@@ -1405,19 +1405,13 @@ def _ctype_collect_objects(obj):
 	counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
 	all the ref'd objects will live, too.
 	"""
-	visited = set()  # {id(o)}
+	b = obj
 	d = {}  # id(o) -> o
-	def _fill(obj):
-		if id(obj) in visited: return
-		visited.add(id(obj))
-		if obj._objects:
-			for o in obj._objects.values():
+	while b is not None:
+		if b._objects:
+			for o in b._objects.values():
 				d[id(o)] = o
-				if isinstance(o, (ctypes.c_void_p, ctypes._SimpleCData, ctypes._Pointer, ctypes.Array)):
-					_fill(o)
-		if obj._b_base_ is not None:
-			_fill(obj._b_base_)
-	_fill(obj)
+		b = b._b_base_
 	return d.values()
 
 
