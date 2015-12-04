@@ -1426,6 +1426,7 @@ class Interpreter:
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
 		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
 		self.wrappedValues = WrappedValues()  # attrib -> obj
+		self.mallocs = {}  # ptr addr -> ctype obj
 		self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
 		self.globalsDict = {
 			"ctypes": ctypes,
@@ -1451,6 +1452,18 @@ class Interpreter:
 				else:
 					return obj.getCValue(wrappedStateStruct)
 		return obj.getCValue(wrappedStateStruct)
+
+	def _malloc(self, size):
+		buf = (ctypes.c_byte * size)()
+		ptr_addr = _ctype_get_ptr_addr(buf)
+		self.mallocs[ptr_addr] = buf
+		return ptr_addr
+
+	def _free(self, ptr_addr):
+		try:
+			self.mallocs.pop(ptr_addr)
+		except KeyError:
+			raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
 
 	def _storePtr(self, ptr):
 		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array))
