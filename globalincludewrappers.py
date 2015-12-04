@@ -98,15 +98,18 @@ class Wrapper:
 		wrapCFunc(state, "exit", restype=CVoidType, argtypes=(ctypes.c_int,))
 		state.funcs["malloc"] = CWrapValue(
 			lambda s: self.interpreter._malloc(s.value),  # size_t
-			returnType=ctypes.c_void_p
+			returnType=ctypes.c_void_p,
+			name="malloc"
 		)
 		state.funcs["realloc"] = CWrapValue(
 			lambda (p, s): self.interpreter._realloc(_ctype_ptr_get_value(p), s.value),  # void*, size_t
-			returnType=ctypes.c_void_p
+			returnType=ctypes.c_void_p,
+			name="realloc"
 		)
 		state.funcs["free"] = CWrapValue(
 			lambda p: self.interpreter._free(_ctype_ptr_get_value(p)),  # void*
-			returnType=CVoidType
+			returnType=CVoidType,
+			name="free"
 		)
 		wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
 		state.funcs["atoi"] = CWrapValue(
