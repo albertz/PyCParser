@@ -1442,7 +1442,9 @@ class Interpreter:
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
-	
+		if stateStruct._global_include_wrapper:
+			stateStruct._global_include_wrapper.interpreter = self
+
 	def getCType(self, obj):
 		wrappedStateStruct = self._cStateWrapper
 		for T,DictName in [(CStruct,"structs"), (CUnion,"unions"), (CEnum,"enums")]:
@@ -1457,7 +1459,20 @@ class Interpreter:
 		buf = (ctypes.c_byte * size)()
 		ptr_addr = _ctype_get_ptr_addr(buf)
 		self.mallocs[ptr_addr] = buf
-		return ptr_addr
+		return ctypes.cast(buf, ctypes.c_void_p)
+
+	def _realloc(self, ptr_addr, size):
+		if not ptr_addr:
+			return self._malloc(size)
+		try:
+			buf = self.mallocs.pop(ptr_addr)
+		except KeyError:
+			raise Exception("_realloc: address 0x%x was not allocated by us" % ptr_addr)
+		if buf._length_ >= size:
+			return ctypes.cast(buf, ctypes.c_void_p)
+		ptr = self._malloc(size)
+		ctypes.memmove(ptr, ctypes.cast(buf, ctypes.c_void_p), ctypes.c_size_t(buf._length_))
+		return ptr
 
 	def _free(self, ptr_addr):
 		try:

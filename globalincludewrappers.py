@@ -3,7 +3,7 @@
 # code under LGPL
 
 from cparser import *
-from interpreter import CWrapValue
+from interpreter import CWrapValue, _ctype_ptr_get_value
 import ctypes, _ctypes
 import errno, os
 
@@ -42,7 +42,18 @@ def callCFunc(funcname, *args):
 	args = map(_fixCArg, args)
 	return f(*args)
 
+
 class Wrapper:
+	def __init__(self, state):
+		"""
+		:type state: cparser.StateStruct
+		"""
+		self.state = state
+		# The Wrapper is supposed to work for parsing also without an interpreter.
+		# However, when you are going to call some of the functions from here,
+		# this is needed.
+		self.interpreter = None
+
 	def handle_limits_h(self, state):
 		state.macros["UCHAR_MAX"] = Macro(rightside="255")
 		state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1)))
@@ -85,9 +96,18 @@ class Wrapper:
 		state.macros["EXIT_FAILURE"] = Macro(rightside="1")
 		wrapCFunc(state, "abort", restype=CVoidType, argtypes=())
 		wrapCFunc(state, "exit", restype=CVoidType, argtypes=(ctypes.c_int,))
-		wrapCFunc(state, "malloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_size_t,))
-		wrapCFunc(state, "realloc", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_size_t))
-		wrapCFunc(state, "free", restype=CVoidType, argtypes=(ctypes.c_void_p,))
+		state.funcs["malloc"] = CWrapValue(
+			lambda s: self.interpreter._malloc(s.value),  # size_t
+			returnType=ctypes.c_void_p
+		)
+		state.funcs["realloc"] = CWrapValue(
+			lambda (p, s): self.interpreter._realloc(_ctype_ptr_get_value(p), s.value),  # void*, size_t
+			returnType=ctypes.c_void_p
+		)
+		state.funcs["free"] = CWrapValue(
+			lambda p: self.interpreter._free(_ctype_ptr_get_value(p)),  # void*
+			returnType=CVoidType
+		)
 		wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
 		state.funcs["atoi"] = CWrapValue(
 			lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
@@ -158,7 +178,7 @@ class Wrapper:
 			return reader(), None
 		return oldFunc(filename) # fallback
 	
-	def install(self, state):
+	def install(self):
+		state = self.state
 		oldFunc = state.readGlobalInclude
 		state.readGlobalInclude = lambda fn: self.readGlobalInclude(state, oldFunc, fn)
-		

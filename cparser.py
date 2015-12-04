@@ -483,6 +483,7 @@ class State(object):
 		# 0->didnt got true yet, 1->in true part, 2->after true part. and that as a stack
 		self._preprocessIncludeLevel = []
 		self._errors = []
+		self._global_include_wrapper = None
 	
 	def autoSetupSystemMacros(self, system_specific=False):
 		import sys
@@ -498,9 +499,11 @@ class State(object):
 			self.macros["MAC_OS_X_VERSION_MIN_REQUIRED"] = Macro(rightside="1030")
 	
 	def autoSetupGlobalIncludeWrappers(self):
+		if self._global_include_wrapper: return
 		from globalincludewrappers import Wrapper
-		Wrapper().install(self)
-	
+		self._global_include_wrapper = Wrapper(self)
+		self._global_include_wrapper.install()
+
 	def incIncludeLineChar(self, fullfilename=None, inc=None, line=None, char=None, charMod=None):
 		CharStartIndex = 0
 		LineStartIndex = 1
