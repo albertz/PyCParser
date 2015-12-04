@@ -3,17 +3,11 @@
 # code under LGPL
 
 from cparser import *
-from interpreter import CWrapValue, _ctype_ptr_get_value
+from interpreter import CWrapValue, _ctype_ptr_get_value, _fixCType
 import ctypes, _ctypes
 import errno, os
 
 libc = ctypes.CDLL(None)
-
-def _fixCType(t, wrap=False):
-	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
-	if t is ctypes.c_char: t = ctypes.c_byte
-	if wrap: return wrapCTypeClassIfNeeded(t)
-	return t
 
 def wrapCFunc(state, funcname, restype, argtypes):
 	f = getattr(libc, funcname)

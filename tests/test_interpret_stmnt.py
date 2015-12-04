@@ -893,6 +893,72 @@ def test_interpreter_func_ptr_return_ptr():
 	assert r.value == 42
 
 
+def test_interpreter_func_ptr_struct_init():
+	state = parse("""
+	#include <assert.h>
+	typedef int (*F) ();
+	typedef struct _S { int x; F f; } S;
+	int i() { return 42; }
+	S s = {3, i};
+	int f() {
+		assert(s.x == 3);
+		assert(s.f == (F) i);
+		return s.x + s.f();
+	}
+	""", withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("i", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	#s = interpreter.globalScope.vars["s"]
+	#print s, s._fields_, s.x, s.f
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 45
+
+
+def test_interpreter_func_ptr_struct_init_unknown():
+	state = parse("""
+	#include <assert.h>
+	typedef long (*F) ();
+	typedef struct _S { int x; F f; } S;
+	long unknown_func();
+	S s = {3, unknown_func};
+	int f() {
+		assert(s.x == 3);
+		assert((void*) s.f != 0);
+		//return s.x + s.f();
+		return 0;
+	}
+	""", withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	#s = interpreter.globalScope.vars["s"]
+	#print s, s._fields_, s.x, s.f
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 45
+
+
 def test_interpret_op_precedence_ref():
 	state = parse("""
 	#include <assert.h>

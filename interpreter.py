@@ -333,6 +333,15 @@ def getAstNodeForVarType(interpreter, t):
 		assert isinstance(v, (int,long))
 		arrayLen = ast.Num(n=v)
 		return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
+	elif isinstance(t, CFuncPointerDecl):
+		return makeAstNodeCall(
+			getAstNodeAttrib("ctypes", "CFUNCTYPE"),
+			makeAstNodeCall(
+				getAstNodeAttrib("intp", "_fixReturnType"),
+				getAstNodeForVarType(interpreter, t.type)
+			),
+			*[getAstNodeForVarType(interpreter, a) for a in t.attribs]
+		)
 	elif isinstance(t, CWrapValue):
 		return getAstNodeForVarType(interpreter, t.getCType(None))
 	else:
@@ -356,7 +365,9 @@ def makeAstNodeCall(func, *args):
 def isPointerType(t, checkWrapValue=False):
 	if isinstance(t, CPointerType): return True
 	if isinstance(t, CArrayType): return True
-	if isinstance(t, CFuncPointerDecl): return True
+	# Don't treat CFuncPointerDecl as ptr. Should be treated special.
+	if isinstance(t, CTypedef):
+		return isPointerType(t.type, checkWrapValue=checkWrapValue)
 	if checkWrapValue and isinstance(t, CWrapValue):
 		return isPointerType(t.getCType(None), checkWrapValue=True)
 	from inspect import isclass
@@ -417,6 +428,11 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	:type interpreter: Interpreter
 	"""
+	while isinstance(objType, CTypedef):
+		objType = objType.type
+	while isinstance(argType, CTypedef):
+		argType = argType.type
+
 	arrayLen = None
 	if isinstance(objType, CArrayType):
 		arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
@@ -498,6 +514,13 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		return makeAstNodeCall(astCast, argAst, typeAst)
 
+	if isSameType(interpreter.globalScope.stateStruct, objType, ctypes.c_void_p) and \
+			isinstance(argType, CFuncPointerDecl):
+		# We treat CFuncPointerDecl not as a normal pointer.
+		# However, we allow casts to c_void_p.
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		return makeAstNodeCall(astCast, argAst, typeAst)
+
 	args = []
 	if argAst is not None:
 		if isinstance(argAst, (ast.Str, ast.Num)):
@@ -527,6 +550,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# at some later point, which we cannot control here,
 		# this again would lead to hard to find bugs.
 		assert len(args) == 1
+		print "getptr", objType, argType
 		return makeAstNodeCall(getAstNodeAttrib("intp", "_getPtr"), args[0], typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 		#astCast = getAstNodeAttrib("ctypes", "cast")
@@ -895,6 +919,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
 				# A void cast will discard the output.
 				return bAst, aType
+			print "cast", aType, bType
 			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.
@@ -1403,6 +1428,12 @@ def _ctype_collect_objects(obj):
 		b = b._b_base_
 	return d.values()
 
+def _fixCType(t, wrap=False):
+	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
+	if t is ctypes.c_char: t = ctypes.c_byte
+	if wrap: return wrapCTypeClassIfNeeded(t)
+	return t
+
 
 class Interpreter:
 	def __init__(self):
@@ -1511,6 +1542,9 @@ class Interpreter:
 		except KeyError:
 			raise Exception("invalid pointer access to address %x of type %r" % (addr, ptr_type))
 		return ctypes.pointer(obj)
+
+	def _fixReturnType(self, t):
+		return _fixCType(t, wrap=True)
 
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)
