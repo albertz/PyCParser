@@ -481,11 +481,10 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 				# However, using the value itself should be fine in those cases.
 				use_value = True
 			if s_arg_ctype != f_arg_ctype or use_value:
-				s_value_ast = getAstNode_valueFromObj(interpreter.globalScope.stateStruct, s_arg_ast, s_arg_type)
 				if use_value:
-					s_arg_ast = s_value_ast
+					s_arg_ast = getAstNode_valueFromObj(interpreter.globalScope.stateStruct, s_arg_ast, s_arg_type)
 				else:
-					s_arg_ast = astForCast(anonFuncEnv, f_arg_type, s_value_ast)
+					s_arg_ast = getAstNode_newTypeInstance(interpreter, f_arg_type, s_arg_ast, s_arg_type)
 			s_args += [s_arg_ast]
 		return makeAstNodeCall(typeAst, *s_args)
 
@@ -804,8 +803,7 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
 			f_arg_ctype = getCType(f_arg_type, funcEnv.globalScope.stateStruct)
 			s_arg_ctype = getCType(s_arg_type, funcEnv.globalScope.stateStruct)
 			if s_arg_ctype != f_arg_ctype:
-				s_value_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, s_arg_ast, s_arg_type)
-				s_arg_ast = astForCast(funcEnv, f_arg_type, s_value_ast)
+				s_arg_ast = getAstNode_newTypeInstance(funcEnv.interpreter, f_arg_type, s_arg_ast, s_arg_type)
 		r_args += [s_arg_ast]
 	return r_args
 
@@ -858,8 +856,9 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a.func = getAstNodeAttrib("g", stmnt.base.name)
 			a.args = autoCastArgs(funcEnv, [f_arg.type for f_arg in stmnt.base.args], stmnt.args)
 			if stmnt.base.type in (CBuiltinType(("void",)), CVoidType()):
-				b = a
+				b = a  # Will (should) be ignored anyway. Should be None.
 			else:
+				# We expect the return by value. Thus create a new ctype around.
 				b = getAstNode_newTypeInstance(funcEnv.interpreter, stmnt.base.type, a)
 			return b, stmnt.base.type
 		elif isinstance(stmnt.base, CSizeofSymbol):
@@ -893,11 +892,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			else:
 				aType = stmnt.base
 			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
-			bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
 			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
 				# A void cast will discard the output.
 				return bAst, aType
-			return astForCast(funcEnv, aType, bValueAst), aType
+			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)

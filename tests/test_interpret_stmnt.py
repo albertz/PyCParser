@@ -20,7 +20,7 @@ def test_interpret_c_cast():
 	assert r.value == 42
 
 def test_interpret_c_cast_ptr():
-	state = parse("void f()\n { int* v = (int*) 42; } \n")
+	state = parse("void f()\n { int* v = (int*) 0; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
 
@@ -43,7 +43,7 @@ def test_interpret_c_cast_ptr_2_a():
 	print "result:", r
 
 def test_interpret_c_cast_ptr_2_b():
-	state = parse("void f()\n { void* v = (void*) 42; } \n")
+	state = parse("void f()\n { void* v = (void*) 0; } \n")
 	interpreter = Interpreter()
 	interpreter.register(state)
 
@@ -72,7 +72,7 @@ def test_interpret_c_cast_ptr_3():
 	state = parse("""
 	int g(int*) { return 3; }
 	int f() {
-		g((int*) 42);
+		g((int*) 0);
 		return 5;
 	} """)
 	interpreter = Interpreter()
@@ -92,7 +92,7 @@ def test_interpret_c_cast_ptr_4():
 	state = parse("""
 	int g(unsigned char * buff) { return 3; }
 	int f() {
-		g((unsigned char *) 42);
+		g((unsigned char *) "x");
 		return 5;
 	} """)
 	interpreter = Interpreter()
@@ -584,6 +584,7 @@ def test_interpret_func_call_auto_cast():
 
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("add", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
