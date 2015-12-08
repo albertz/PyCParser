@@ -470,6 +470,13 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	while isinstance(argType, CTypedef):
 		argType = argType.type
 
+	if isinstance(objType, CBuiltinType) and objType.builtinType == ("void",):
+		# It's like a void cast. Return None.
+		if argAst is None:
+			return NoneAstNode
+		tup = ast.Tuple(elts=(argAst, NoneAstNode), ctx=ast.Load())
+		return getAstNodeArrayIndex(tup, 1)
+
 	arrayLen = None
 	if isinstance(objType, CArrayType):
 		arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
@@ -952,15 +959,19 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			return a, stmnt.base.returnType
 		elif isinstance(stmnt.base, (CType,CTypedef)) or (isinstance(stmnt.base, CStatement) and stmnt.base.isCType()):
 			# C static cast
-			assert len(stmnt.args) == 1
 			if isinstance(stmnt.base, CStatement):
 				aType = stmnt.base.asType()
 			else:
 				aType = stmnt.base
-			bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
-			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
-				# A void cast will discard the output.
-				return bAst, aType
+			args = [astAndTypeForStatement(funcEnv, a) for a in stmnt.args]
+			if len(args) == 0:
+				return getAstNode_newTypeInstance(funcEnv.interpreter, aType)
+			if len(args) == 1:
+				bAst, bType = args[0]
+			else:
+				tup = ast.Tuple(elts=[a[0] for a in args], ctx=ast.Load())
+				bAst = getAstNodeArrayIndex(tup, -1)
+				bType = args[-1][1]
 			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.

@@ -1344,3 +1344,53 @@ def test_interpret_condition():
 	assert isinstance(r, ctypes.c_int)
 	# Note: i = (j && (k == 1)).
 	assert r.value == 1
+
+
+def test_interpret_void_ptr_cast():
+	state = parse("""
+	int g(int *) { return 42; }
+	int f() {
+		void* obj = 0;
+		return g((int *)obj);
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
+def test_interpret_void_cast_two_args():
+	state = parse("""
+	int f() {
+		int a, b;
+		(void) (a = 1, (b = 2, &a));
+		return b;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 2
