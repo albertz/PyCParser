@@ -341,7 +341,7 @@ def getAstNodeForVarType(interpreter, t):
 		return makeAstNodeCall(
 			getAstNodeAttrib("ctypes", "CFUNCTYPE"),
 			makeAstNodeCall(
-				getAstNodeAttrib("intp", "_fixReturnType"),
+				getAstNodeAttrib("helpers", "fixReturnType"),
 				getAstNodeForVarType(interpreter, t.type)
 			),
 			*[getAstNodeForVarType(interpreter, a) for a in t.attribs]
@@ -768,6 +768,10 @@ class Helpers:
 	@staticmethod
 	def ptrArithmetic(a, op, bValue):
 		return Helpers.augAssignPtr(Helpers.copy(a), op, bValue)
+
+	@staticmethod
+	def fixReturnType(t):
+		return _fixCType(t, wrap=True)
 
 	@staticmethod
 	def makeFuncPtr(funcCType, func):
@@ -1569,9 +1573,6 @@ class Interpreter:
 		except KeyError:
 			raise Exception("invalid pointer access to address %x of type %r" % (addr, ptr_type))
 		return ctypes.pointer(obj)
-
-	def _fixReturnType(self, t):
-		return _fixCType(t, wrap=True)
 
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)
