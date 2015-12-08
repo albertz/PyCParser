@@ -1390,11 +1390,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					if laststr == "__FILE__":
-						yield CStr(stateStruct.curFile())
-					elif laststr == "__LINE__":
-						yield CNumber(stateStruct.curLine())
-					elif laststr in stateStruct.macros:
+					if laststr in stateStruct.macros:
 						macroname = laststr
 						macroargs = []
 						macrobrackets = []
@@ -1403,7 +1399,12 @@ def cpre2_parse(stateStruct, input, brackets = None):
 							state = 32 # finalize macro directly. there can't be any args
 						breakLoop = False
 					else:
-						yield CIdentifier(laststr)
+						if laststr == "__FILE__":
+							yield CStr(stateStruct.curFile())
+						elif laststr == "__LINE__":
+							yield CNumber(stateStruct.curLine())
+						else:
+							yield CIdentifier(laststr)
 						laststr = ""
 						state = 0
 						breakLoop = False
