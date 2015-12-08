@@ -345,7 +345,7 @@ def getAstNodeForVarType(interpreter, t):
 				getAstNodeAttrib("helpers", "fixReturnType"),
 				getAstNodeForVarType(interpreter, t.type)
 			),
-			*[getAstNodeForVarType(interpreter, a) for a in t.attribs]
+			*[getAstNodeForVarType(interpreter, a) for a in t.args]
 		)
 	elif isinstance(t, CWrapValue):
 		return getAstNodeForVarType(interpreter, t.getCType(None))
