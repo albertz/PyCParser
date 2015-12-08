@@ -1533,6 +1533,14 @@ class Interpreter:
 					return obj.getCValue(wrappedStateStruct)
 		return obj.getCValue(wrappedStateStruct)
 
+	def _abort(self):
+		print "C abort() call."
+		raise Exception("C abort()")
+
+	def _exit(self, i):
+		print "C exit(%i) call." % i
+		sys.exit(i)
+
 	def _make_string(self, s):
 		if s in self.constStrings:
 			return self.constStrings[s]

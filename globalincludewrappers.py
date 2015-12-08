@@ -88,8 +88,16 @@ class Wrapper:
 	def handle_stdlib_h(self, state):
 		state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
 		state.macros["EXIT_FAILURE"] = Macro(rightside="1")
-		wrapCFunc(state, "abort", restype=CVoidType, argtypes=())
-		wrapCFunc(state, "exit", restype=CVoidType, argtypes=(ctypes.c_int,))
+		state.funcs["abort"] = CWrapValue(
+			lambda: self.interpreter._abort(),
+			returnType=CVoidType,
+			name="abort"
+		)
+		state.funcs["exit"] = CWrapValue(
+			lambda s: self.interpreter._exit(s.value),  # int
+			returnType=CVoidType,
+			name="exit"
+		)
 		state.funcs["malloc"] = CWrapValue(
 			lambda s: self.interpreter._malloc(s.value),  # size_t
 			returnType=ctypes.c_void_p,
