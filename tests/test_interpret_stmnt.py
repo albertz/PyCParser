@@ -1421,3 +1421,29 @@ def test_interpret_macro_file_line():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_reserved_global_varname():
+	state = parse("""
+	void h() {}
+	int f() {
+		h();
+		int g = 42;
+		return g;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42

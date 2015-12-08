@@ -242,6 +242,7 @@ class FuncEnv:
 			assert id(varDecl) not in self.varNames
 		for name in iterIdWithPostfixes(varName):
 			if not isValidVarName(name): continue
+			if name in self.interpreter.globalsDict: continue
 			if self.searchVarName(name): continue
 			self.vars[name] = varDecl
 			if varDecl is not None:
