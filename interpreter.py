@@ -370,6 +370,7 @@ def makeAstNodeCall(func, *args):
 def isPointerType(t, checkWrapValue=False):
 	if isinstance(t, CPointerType): return True
 	if isinstance(t, CArrayType): return True
+	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"): return True
 	# Don't treat CFuncPointerDecl as ptr. Should be treated special.
 	if isinstance(t, CTypedef):
 		return isPointerType(t.type, checkWrapValue=checkWrapValue)
