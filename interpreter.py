@@ -773,6 +773,8 @@ class Helpers:
 
 	@staticmethod
 	def fixReturnType(t):
+		# Note: This behavior must match CFuncPointerDecl.getCType()
+		# so that we stay compatible.
 		if t is None: return None
 		if issubclass(t, ctypes._Pointer):
 			# A Python func wrapped in CFuncType cannot handle any pointer type
