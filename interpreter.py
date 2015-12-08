@@ -420,7 +420,37 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 		return objAst
 	else:
 		assert False, "bad type: " + str(objType)
-		
+
+def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
+	stateStruct = interpreter.globalScope.stateStruct
+	while isinstance(f_arg_type, CTypedef):
+		f_arg_type = f_arg_type.type
+	while isinstance(s_arg_type, CTypedef):
+		s_arg_type = s_arg_type.type
+	f_arg_ctype = getCType(f_arg_type, stateStruct)
+	if isinstance(s_arg_type, CArrayType) and not s_arg_type.arrayLen:
+		# It can happen that we don't know the array-len yet.
+		# Then, getCType() will fail.
+		# However, it's probably enough here to just use the pointer-type instead.
+		s_arg_type = CPointerType(s_arg_type.arrayOf)
+	s_arg_ctype = getCType(s_arg_type, stateStruct)
+	use_value = False
+	if stateStruct.IndirectSimpleCTypes and needWrapCTypeClass(f_arg_ctype):
+		# We cannot use e.g. c_int, because the Structure uses another wrapped field type.
+		# However, using the value itself should be fine in those cases.
+		use_value = True
+	if use_value:
+		s_arg_ast = getAstNode_valueFromObj(stateStruct, s_arg_ast, s_arg_type)
+	else:
+		need_cast = s_arg_ctype != f_arg_ctype
+		if isinstance(s_arg_type, CWrapFuncType):
+			# The new type instance might add some checks.
+			need_cast = True
+		if need_cast:
+			s_arg_ast = getAstNode_newTypeInstance(interpreter, f_arg_type, s_arg_ast, s_arg_type)
+	return s_arg_ast
+
+
 def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	"""
 	Create a new instance of type `objType`.
@@ -481,30 +511,16 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# Somewhat like autoCastArgs():
 		s_args = []
 		for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
-			f_arg_ctype = getCType(f_arg_type, interpreter.globalScope.stateStruct)
-			while isinstance(s_arg_type, CTypedef):
-				s_arg_type = s_arg_type.type
-			if isinstance(s_arg_type, CArrayType) and not s_arg_type.arrayLen:
-				# It can happen that we don't know the array-len yet.
-				# Then, getCType() will fail.
-				# However, it's probably enough here to just use the pointer-type instead.
-				s_arg_type = CPointerType(s_arg_type.arrayOf)
-			s_arg_ctype = getCType(s_arg_type, interpreter.globalScope.stateStruct)
-			use_value = False
-			if interpreter.globalScope.stateStruct.IndirectSimpleCTypes and needWrapCTypeClass(f_arg_ctype):
-				# We cannot use e.g. c_int, because the Structure uses another wrapped field type.
-				# However, using the value itself should be fine in those cases.
-				use_value = True
-			if s_arg_ctype != f_arg_ctype or use_value:
-				if use_value:
-					s_arg_ast = getAstNode_valueFromObj(interpreter.globalScope.stateStruct, s_arg_ast, s_arg_type)
-				else:
-					s_arg_ast = getAstNode_newTypeInstance(interpreter, f_arg_type, s_arg_ast, s_arg_type)
+			s_arg_ast = _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type)
 			s_args += [s_arg_ast]
 		return makeAstNodeCall(typeAst, *s_args)
 
 	if isinstance(objType, CArrayType) and isinstance(argType, CArrayType):
 		return ast.Call(func=typeAst, args=[], keywords=[], starargs=argAst, kwargs=None)
+
+	if isinstance(argType, CWrapFuncType):
+		assert isinstance(objType, CFuncPointerDecl)  # what other case could there be?
+		return makeAstNodeCall(getAstNodeAttrib("helpers", "makeFuncPtr"), typeAst, argAst)
 
 	if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
 		# We can have it simpler. This is even important in some cases
@@ -748,6 +764,16 @@ class Helpers:
 	@staticmethod
 	def ptrArithmetic(a, op, bValue):
 		return Helpers.augAssignPtr(Helpers.copy(a), op, bValue)
+
+	@staticmethod
+	def makeFuncPtr(funcCType, func):
+		assert inspect.isfunction(func)
+		if getattr(func, "C_funcPtr", None):
+			return func.C_funcPtr
+		# We store the pointer in the func itself
+		# so that it don't get out of scope (because of casts).
+		func.C_funcPtr = funcCType(func)
+		return func.C_funcPtr
 
 def astForHelperFunc(helperFuncName, *astArgs):
 	helperFuncAst = getAstNodeAttrib("helpers", helperFuncName)
