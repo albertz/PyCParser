@@ -323,6 +323,7 @@ def getAstNodeForVarType(interpreter, t):
 	elif isinstance(t, CTypedef):
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
+		assert t.name is not None
 		if t.name is None:
 			# We have a problem. Actually, I wonder how this can happen.
 			# But we have an anonymous struct here.
@@ -462,6 +463,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	:type interpreter: Interpreter
 	"""
+	origObjType = objType
 	while isinstance(objType, CTypedef):
 		objType = objType.type
 	while isinstance(argType, CTypedef):
@@ -489,7 +491,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 
 		typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
 	else:
-		typeAst = getAstNodeForVarType(interpreter, objType)
+		typeAst = getAstNodeForVarType(interpreter, origObjType)
 
 	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
 		assert isinstance(argAst, ast.Tuple)

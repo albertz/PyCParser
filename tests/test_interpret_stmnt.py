@@ -1254,3 +1254,29 @@ def test_interpret_malloc_with_cast():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ord("h")
+
+
+def test_interpret_noname_struct_init():
+	state = parse("""
+	typedef struct { int x; } S;
+	int f() {
+		S s;
+		s.x = 42;
+		return s.x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
