@@ -479,7 +479,6 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 			assert False, "did not expect type %r" % objType
 		assert len(argType) <= len(f_args)
 		# Somewhat like autoCastArgs():
-		anonFuncEnv = FuncEnv(interpreter.globalScope)
 		s_args = []
 		for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
 			f_arg_ctype = getCType(f_arg_type, interpreter.globalScope.stateStruct)
