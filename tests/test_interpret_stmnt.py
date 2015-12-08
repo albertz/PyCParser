@@ -1315,3 +1315,32 @@ def test_interpret_struct_ambig_name():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_condition():
+	# https://github.com/albertz/PyCParser/issues/3
+	state = parse("""
+	int f()
+	{
+		int i = 5, j = 6, k = 1;
+		if ((i=j && k == 1) || k > j)
+			return i;
+		return -17;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	# Note: i = (j && (k == 1)).
+	assert r.value == 1
