@@ -771,6 +771,10 @@ class Helpers:
 
 	@staticmethod
 	def fixReturnType(t):
+		if issubclass(t, ctypes._Pointer):
+			# A Python func wrapped in CFuncType cannot handle any pointer type
+			# other than void-ptr.
+			return ctypes.c_void_p
 		return _fixCType(t, wrap=True)
 
 	@staticmethod
