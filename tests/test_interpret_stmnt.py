@@ -1280,3 +1280,38 @@ def test_interpret_noname_struct_init():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_struct_ambig_name():
+	# https://github.com/albertz/PyCParser/issues/2
+	state = parse("""
+	typedef struct
+	{
+		int number;
+	} Number;
+	struct XYZ
+	{
+		Number Number[10];
+	};
+	int f() {
+		struct XYZ s;
+		s.Number[1].number = 42;
+		s.Number[2].number = 3;
+		return s.Number[1].number;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
