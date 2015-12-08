@@ -550,7 +550,6 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# at some later point, which we cannot control here,
 		# this again would lead to hard to find bugs.
 		assert len(args) == 1
-		print "getptr", objType, argType
 		return makeAstNodeCall(getAstNodeAttrib("intp", "_getPtr"), args[0], typeAst)
 		#astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
 		#astCast = getAstNodeAttrib("ctypes", "cast")
@@ -919,7 +918,6 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			if isinstance(aType, CBuiltinType) and aType.builtinType == ("void",):
 				# A void cast will discard the output.
 				return bAst, aType
-			print "cast", aType, bType
 			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.
