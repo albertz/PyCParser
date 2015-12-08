@@ -151,6 +151,10 @@ class GlobalScope:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
 				body_value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
 				if init_empty_first:
+					# WARNING: This can be dangerous.
+					# It will correctly copy the content. However, we might loose any Python obj refs,
+					# from body_value._objects.
+					# TODO: Fix this somehow?
 					ctypes.pointer(v_empty)[0] = body_value
 				else:
 					value = body_value
