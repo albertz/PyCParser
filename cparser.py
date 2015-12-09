@@ -1145,7 +1145,7 @@ def cpreprocess_parse(stateStruct, input):
 				else:
 					cmd = c
 					state = 2
-			elif state == 2: # in the middle of the command
+			elif state == 2: # in the middle of the preprocessor command
 				if c in SpaceChars:
 					if arg is None: arg = ""
 					else: arg += c
@@ -1216,10 +1216,12 @@ def cpreprocess_parse(stateStruct, input):
 					state = statebeforecomment
 					statebeforecomment = None
 					if state == 0:
-						if not stateStruct._preprocessIgnoreCurrent: yield "/"
+						if not stateStruct._preprocessIgnoreCurrent:
+							yield "/"
+							yield c
 					elif state == 2:
 						if arg is None: arg = ""
-						arg += "/"
+						arg += "/" + c
 						breakLoop = False
 					else:
 						stateStruct.error("preproc parse: internal error after possible comment. didn't expect state " + str(state))

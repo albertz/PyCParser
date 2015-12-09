@@ -1453,7 +1453,7 @@ def test_interpret_stmnt_no_space():
 	state = parse("""
 	int f() {
 		int foo = 6, bar = 3;
-		if (foo/foo == 2)
+		if (foo/bar == 2)
 			return 13;
 		return 5;
 	}
