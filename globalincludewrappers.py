@@ -125,9 +125,11 @@ class Wrapper:
 			name="getenv"
 		)
 	def handle_stdarg_h(self, state):
+		# Dummies for now. TODO...
 		state.macros["va_list"] = Macro(rightside="void*")
 		state.macros["va_start"] = Macro(args=("list", "last"), rightside="")
 		state.macros["va_end"] = Macro(args=("list",), rightside="")
+		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="type()")
 	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
