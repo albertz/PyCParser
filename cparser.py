@@ -1327,7 +1327,18 @@ def cpre2_parse(stateStruct, input, brackets = None):
 	macroargs = []
 	macrobrackets = []
 	import itertools
-	for c in itertools.chain(input, "\n"):
+	input = itertools.chain(input, "\n")
+	input = iter(input)
+	buffer = ""
+	while True:
+		if buffer:
+			c = buffer[0]
+			buffer = buffer[1:]
+		else:
+			try:
+				c = next(input)
+			except StopIteration:
+				break
 		breakLoop = False
 		while not breakLoop:
 			breakLoop = True
@@ -1479,12 +1490,12 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 32: # finalize macro
 				try:
 					resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
-					for t in cpre2_parse(stateStruct, resolved, brackets):
-						yield t
 				except Exception as e:
 					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + repr(e))
+					resolved = ""
+				resolved += c
+				buffer = resolved + buffer
 				state = 0
-				breakLoop = False
 			elif state == 40: # op
 				if c in OpChars:
 					if laststr != "" and laststr + c not in LongOps:
