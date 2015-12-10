@@ -1473,3 +1473,60 @@ def test_interpret_stmnt_no_space():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 13
+
+
+def test_interpret_marco_if0():
+	state = parse("""
+	int f() {
+	#if 0
+		return 13;
+	#endif
+		return 5;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
+def test_interpret_varname_like_struct():
+	state = parse("""
+	typedef struct { int x; } PyGC_Head;
+	typedef int node; // problematic
+	void g(PyGC_Head *node) {
+		node->x = 13;
+	}
+	int f() {
+		PyGC_Head node;
+		g(&node);
+		return node.x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
+
