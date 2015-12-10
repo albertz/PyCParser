@@ -378,7 +378,7 @@ class CArrayType(CType):
 	def getCType(self, stateStruct):
 		l = getConstValue(stateStruct, self.arrayLen)
 		if l is None:
-			stateStruct.error("%s: error getting array len (%r), falling back to 1" % (self, e))
+			stateStruct.error("%s: error getting array len, falling back to 1" % self)
 			l = 1
 		try:
 			t = getCType(self.arrayOf, stateStruct)
