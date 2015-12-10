@@ -1535,10 +1535,10 @@ def test_interpret_malloc_macro():
 	state = parse("""
 	#include <stdlib.h>
 	typedef int PyGC_Head;
-	#define PY_SSIZE_T_MAX ((Py_ssize_t)(((size_t)-1)>>1))
+	#define PY_SSIZE_T_MAX ((long)(((size_t)-1)>>1))
 	#define PyObject_MALLOC         PyMem_MALLOC
 	#define PyObject_FREE           PyMem_FREE
-	#define PyMem_MALLOC(n)		((size_t)(n) > (size_t)PY_SSIZE_T_MAX ? NULL \
+	#define PyMem_MALLOC(n)		((size_t)(n) > (size_t)PY_SSIZE_T_MAX ? 0 \
 					: malloc((n) ? (n) : 1))
 	#define PyMem_FREE		free
 	int f() {
@@ -1547,6 +1547,33 @@ def test_interpret_malloc_macro():
 		g = (PyGC_Head *)PyObject_MALLOC(
 			sizeof(PyGC_Head) + basicsize);
 		PyObject_FREE(g);
+		return 42;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
+def test_interpret_malloc_in_ternary():
+	state = parse("""
+	#include <stdlib.h>
+	int f() {
+		void* g = 0 ? 0 : malloc(12);
+		free(g);
 		return 42;
 	}
 	""",
