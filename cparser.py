@@ -3280,6 +3280,14 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				curCObj._type_tokens += [token.content]
 			elif not curCObj._type_tokens and token.content in stateStruct.StdIntTypes:
 				curCObj._type_tokens += [token.content]
+			elif not curCObj._type_tokens and not curCObj.isDerived() \
+					and (token.content in stateStruct.vars
+						 or token.content in parentCObj.body.vars
+						 or (isinstance(parentCObj, CFunc)
+							 and token.content in [a.name for a in parentCObj.args])):
+				assert curCObj.name is None
+				CStatement.overtake(curCObj)
+				curCObj._cpre3_handle_token(stateStruct, token)
 			elif not curCObj._type_tokens and token.content in stateStruct.typedefs:
 				curCObj._type_tokens += [token.content]
 			else:
