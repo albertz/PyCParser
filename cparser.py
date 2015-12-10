@@ -1113,6 +1113,10 @@ def cpreprocess_parse(stateStruct, input):
 	:type stateStruct: State
 	:param str | iterable[char] input: not-yet preprocessed C code
 	:returns preprocessed C code, iterator of chars
+	This removes comments and can skip over parts, which is controlled by
+	the C preprocessor commands (`#if 0` parts or so).
+	We will not do C preprocessor macro substitutions here.
+	The next func which gets this output is cpre2_parse().
 	"""
 	cmd = ""
 	arg = ""
@@ -1313,6 +1317,8 @@ def cpre2_parse(stateStruct, input, brackets = None):
 	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution
 	:param list[str] | None brackets: opening brackets stack
 	:returns token iterator. this will also substitute macros
+	The input comes more or less from cpreprocess_parse().
+	This output will be handled by cpre3_parse().
 	"""
 	state = 0
 	if brackets is None: brackets = []
