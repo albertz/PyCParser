@@ -1591,7 +1591,7 @@ class Interpreter:
 		# Note: This can also/esp happen when the ptr was not allocated by us.
 		# Not sure how to handle that yet...
 		raise NotImplementedError(
-			"_storePtr: ptr %r, objs %r, ptr_addr %x, obj_ptr_addr %s" % (
+			"_storePtr: ptr %r, objs %r, ptr_addr 0x%x, obj_ptr_addr %s" % (
 			ptr, objs, ptr_addr, map(hex, map(_ctype_get_ptr_addr, objs))))
 
 	def _getPtr(self, addr, ptr_type=None):
@@ -1601,7 +1601,7 @@ class Interpreter:
 		try:
 			obj = self.pointerStorage[addr]
 		except KeyError:
-			raise Exception("invalid pointer access to address %x of type %r" % (addr, ptr_type))
+			raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
 		return ctypes.pointer(obj)
 
 	def _translateFuncToPyAst(self, func):
