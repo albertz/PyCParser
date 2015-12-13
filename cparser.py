@@ -2548,17 +2548,19 @@ class CStatement(_CBaseWithOptBody):
 			v = getConstValue(stateStruct, self._rightexpr)
 			if v is None: return None
 			return func(v)
-		if self._op is None or self._rightexpr is None:
-			return getConstValue(stateStruct, self._leftexpr)
 		v1 = getConstValue(stateStruct, self._leftexpr)
 		if v1 is None: return None
+		if self._op is None or self._rightexpr is None:
+			return v1
 		v2 = getConstValue(stateStruct, self._rightexpr)
 		if v2 is None: return None
-		func = OpBinFuncs[self._op.content]
 		if self._op == COp("?:"):
+			assert self._middleexpr is not None
 			v15 = getConstValue(stateStruct, self._middleexpr)
 			if v15 is None: return None
-			return func(v1, v15, v2)
+			return v15 if v1 else v2
+		assert self._middleexpr is None
+		func = OpBinFuncs[self._op.content]
 		return func(v1, v2)
 	
 	def isCType(self):
