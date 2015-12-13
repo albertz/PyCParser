@@ -1619,3 +1619,105 @@ def test_interpret_double_macro():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 10
+
+
+def test_interpret_max_uint16():
+	state = parse("""
+	#include <stdint.h>
+	int64_t f() {
+		int64_t x = (uint16_t) -1;
+		return x;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int64)
+	assert r.value == 2 ** 16 - 1
+
+
+def test_interpret_max_uint16_plus1():
+	state = parse("""
+	#include <stdint.h>
+	int64_t f() {
+		int64_t x = (int32_t)(uint16_t)(-1) + 1;
+		return x;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int64)
+	assert r.value == 2 ** 16
+
+
+def test_interpret_ternary_second():
+	state = parse("""
+	long f() {
+		long max_uint = (unsigned int)(-1);
+		long x = (long)(max_uint) + 1;
+		long g = 0 ? (unsigned int)(0) : x;
+		return g;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_long)
+	assert r.value == 256 ** ctypes.sizeof(ctypes.c_int)
+
+
+def test_interpret_double_cast():
+	state = parse("""
+	long f() {
+		long x = (int)(unsigned short)(-1);
+		return x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_long)
+	assert r.value == 256 ** ctypes.sizeof(ctypes.c_short) - 1
