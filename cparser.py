@@ -2799,7 +2799,7 @@ class CStatement(_CBaseWithOptBody):
 			elif self._op.content == "*":
 				assert isinstance(v, CPointerType)
 				return v.pointerOf
-			elif self._op.content in ("+","-","++","--","&"):  # OpPrefixFuncs
+			elif self._op.content in ("+","-","++","--","~"):  # OpPrefixFuncs
 				return v
 			else:
 				assert False, "invalid prefix op %r" % self._op
