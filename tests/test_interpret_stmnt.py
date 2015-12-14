@@ -1896,3 +1896,36 @@ def test_interpret_cstr_indirect():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ord("f")
+
+
+def test_interpret_struct_forward_type():
+	state = parse("""
+	typedef struct _A {
+		struct _B *b;
+	} A;
+	typedef struct _B {
+		int x;
+	} B;
+	int f() {
+		A a;
+		B b;
+		a.b = &b;
+		a.b->x = 42;
+		return a.b->x + 1;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 43

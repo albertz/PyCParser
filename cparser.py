@@ -2161,6 +2161,12 @@ def getValueType(stateStruct, obj):
 		while isinstance(base_type, CTypedef):
 			base_type = base_type.type
 		assert isinstance(base_type, (CStruct,CUnion))
+		if base_type.body is None:
+			if isinstance(base_type, CStruct):
+				base_type = stateStruct.structs[base_type.name]
+			elif isinstance(base_type, CUnion):
+				base_type = stateStruct.unions[base_type.name]
+			assert base_type.body is not None
 		return base_type.body.vars[obj.name].type
 	if isinstance(obj, CFuncCall):
 		from interpreter import CWrapValue
