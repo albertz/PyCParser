@@ -1676,9 +1676,9 @@ def test_interpret_max_uint16_plus1():
 def test_interpret_ternary_second():
 	state = parse("""
 	long f() {
-		long max_uint = (unsigned int)(-1);
-		long x = (long)(max_uint) + 1;
-		long g = 0 ? (unsigned int)(0) : x;
+		long max_ushort = (unsigned short)(-1);
+		long x = (long)(max_ushort) + 1;
+		long g = 0 ? (unsigned short)(0) : x;
 		return g;
 	}
 	""")
@@ -1696,7 +1696,7 @@ def test_interpret_ternary_second():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_long)
-	assert r.value == 256 ** ctypes.sizeof(ctypes.c_int)
+	assert r.value == 256 ** ctypes.sizeof(ctypes.c_short)
 
 
 def test_interpret_double_cast():
