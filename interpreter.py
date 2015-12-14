@@ -910,6 +910,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		attrStmnt.name = stmnt.name
 		return astAndTypeForStatement(funcEnv, attrStmnt)
 	elif isinstance(stmnt, CNumber):
+		# TODO handle stmnt.typeSpec
+		if isinstance(stmnt.content, float):
+			t = CBuiltinType(("double",))
+			return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=stmnt.content)), t
 		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
 		t = CStdIntType(t)
@@ -1185,10 +1189,9 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.op = OpBin[stmnt._op.content]()
 		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
 		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
-		# We assume that the type of `a` is leftType.
-		# TODO: type not really correct. e.g. int + float -> float
+		commonType = stmnt.getValueType(funcEnv.globalScope.stateStruct)
 		# Note: No pointer arithmetic here, that case is caught above.
-		return getAstNode_newTypeInstance(funcEnv.interpreter, leftType, a), leftType
+		return getAstNode_newTypeInstance(funcEnv.interpreter, commonType, a), commonType
 	elif stmnt._op.content == ",":
 		a = ast.Tuple(ctx=ast.Load())
 		left_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
