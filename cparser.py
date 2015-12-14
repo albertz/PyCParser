@@ -1281,6 +1281,7 @@ class CChar(_CBase):
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
 	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
 class CNumber(_CBase):
+	typeSpec = None  # prefix like "f", "i" or so, or None
 	def asCCode(self, indent=""): return indent + self.rawstr
 class CIdentifier(_CBase): pass
 class COp(_CBase): pass
