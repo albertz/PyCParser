@@ -2140,11 +2140,40 @@ def getConstValue(stateStruct, obj):
 
 def getValueType(stateStruct, obj):
 	if hasattr(obj, "getValueType"): return obj.getValueType(stateStruct)
+	if isinstance(obj, CVarDecl):
+		return obj.type
+	if isinstance(obj, CAttribAccessRef):
+		base_type = getValueType(stateStruct, obj.base)
+		while isinstance(base_type, CTypedef):
+			base_type = base_type.type
+		assert isinstance(base_type, (CStruct,CUnion))
+		return base_type.body.vars[obj.name].type
+	if isinstance(obj, CPtrAccessRef):
+		pbase_type = getValueType(stateStruct, obj.base)
+		while isinstance(pbase_type, CTypedef):
+			pbase_type = pbase_type.type
+		assert isinstance(pbase_type, CPointerType)
+		base_type = pbase_type.pointerOf
+		while isinstance(base_type, CTypedef):
+			base_type = base_type.type
+		assert isinstance(base_type, (CStruct,CUnion))
+		return base_type.body.vars[obj.name].type
+	if isinstance(obj, CFuncCall):
+		# First check for cast-like calls.
+		if isinstance(obj.base, CType):
+			return obj.base
+		base_type = getValueType(stateStruct, obj.base)
+		while isinstance(base_type, CTypedef):
+			base_type = base_type.type
+		assert isinstance(base_type, (CFuncPointerDecl,CFunc))
+		return base_type.type  # return-type
 	if isinstance(obj, CStr):
 		return CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(len(obj.content) + 1))
 	if isinstance(obj, CChar):
 		return CBuiltinType(("char",))
 	if isinstance(obj, CNumber):
+		if isinstance(obj.content, float):
+			return CBuiltinType(("double",))
 		t = minCIntTypeForNums(obj.content, minBits=8, maxBits=64, useUnsignedTypes=True)
 		assert t, "no int type for %r" % obj
 		return CStdIntType(t)
@@ -2184,7 +2213,7 @@ def getCommonValueType(stateStruct, t1, t2):
 	if isinstance(t1, CBuiltinType) and isinstance(t2, CBuiltinType):
 		tup1 = t1.builtinType
 		tup2 = t2.builtinType
-		if "float" in tup1 or "double" in tup2:
+		if "float" in tup1 or "double" in tup1:
 			if "float" in tup2 or "double" in tup2:
 				# Select bigger type.
 				Ts = [("float",), ("double",), ("long", "double")]
@@ -2234,10 +2263,10 @@ def getCommonValueType(stateStruct, t1, t2):
 		t_max = ("u" if (unsigned_t1 or unsigned_t2) else "") + st_max
 		return CStdIntType(t_max)
 	if isinstance(t1, CBuiltinType) and isinstance(t2, CStdIntType):
-		t1 = getStdIntTypeForBuiltinType(stateStruct, t1)
+		t2 = getBuiltinTypeForStdIntType(stateStruct, t2)
 		return getCommonValueType(stateStruct, t1, t2)
 	if isinstance(t1, CStdIntType) and isinstance(t2, CBuiltinType):
-		t2 = getStdIntTypeForBuiltinType(stateStruct, t2)
+		t1 = getBuiltinTypeForStdIntType(stateStruct, t1)
 		return getCommonValueType(stateStruct, t1, t2)
 	# Not a basic type.
 	assert isSameType(stateStruct, t1, t2)
@@ -2255,6 +2284,20 @@ def getStdIntTypeForBuiltinType(stateStruct, t):
 			stdint_c_type = stateStruct.StdIntTypes[k]
 			if c_type == stdint_c_type:
 				return CStdIntType(k)
+	assert False, "unknown type %r" % t
+
+def getBuiltinTypeForStdIntType(stateStruct, t):
+	"""
+	Note: This is platform dependent!
+	"""
+	assert isinstance(t, CStdIntType)
+	stdint_c_type = stateStruct.StdIntTypes[t.name]
+	for prefix in ((), ("unsigned",)):
+		for postfix in (("char",), ("short",), ("int",), ("long",), ("long", "long")):
+			k = prefix + postfix
+			c_type = stateStruct.CBuiltinTypes[k]
+			if c_type == stdint_c_type:
+				return CBuiltinType(k)
 	assert False, "unknown type %r" % t
 
 class CSizeofSymbol: pass
