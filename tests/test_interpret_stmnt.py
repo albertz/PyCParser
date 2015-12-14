@@ -1721,3 +1721,75 @@ def test_interpret_double_cast():
 	print "result:", r
 	assert isinstance(r, ctypes.c_long)
 	assert r.value == 256 ** ctypes.sizeof(ctypes.c_short) - 1
+
+
+def test_interpret_int_float():
+	state = parse("""
+	int f() {
+		int x = 4 * 0.5;
+		return x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 2
+
+
+def test_interpret_float_cast():
+	state = parse("""
+	int f() {
+		int x = (int) 2.2;
+		return x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 2
+
+
+def test_interpret_double():
+	state = parse("""
+	double f() {
+		double x = 2.5;
+		return x;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_double)
+	assert r.value == 2.5
