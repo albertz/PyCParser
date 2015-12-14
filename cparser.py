@@ -2320,10 +2320,11 @@ def getBuiltinTypeForCType(stateStruct, c_type):
 		c_type = c_type.__base__
 	IntTypes = (("char",), ("short",), ("int",),
 				("long",), ("long", "long"))
-	FloatTypes = (("float",), ("double",), ("long", "double"))
+	OtherTypes = (("float",), ("double",), ("long", "double"),
+				  ("void", "*"))
 	for prefix in ((), ("unsigned",)):
 		types = IntTypes
-		if not prefix: types = types + FloatTypes
+		if not prefix: types = types + OtherTypes
 		for postfix in types:
 			k = prefix + postfix
 			builtin_c_type = stateStruct.CBuiltinTypes[k]
