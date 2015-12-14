@@ -2449,7 +2449,10 @@ class CStatement(_CBaseWithOptBody):
 				funcCall.args[0]._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
 			else:
 				funcCall._bracketlevel = list(openingBracketToken.brackets)
-				cpre3_parse_statements_in_brackets(stateStruct, funcCall, COp(","), funcCall.args, input_iter)
+				subStatement = CStatement(parent=funcCall)
+				funcCall.args += [subStatement]
+				subStatement._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
+				if subStatement._state == 50: return  # another cast follows
 				funcCall.finalize(stateStruct)
 				if self._state == 50:
 					self._state = 5
@@ -2492,6 +2495,7 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				ref = self._rightexpr
 			assert isinstance(ref, CFuncCall)
+			assert len(ref.args) == 1
 			ref.args[0]._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
 			return
 
