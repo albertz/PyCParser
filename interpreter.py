@@ -585,8 +585,12 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		#astCast = getAstNodeAttrib("ctypes", "cast")
 		#astVoidP = makeAstNodeCall(astVoidPT, *args)
 		#return makeAstNodeCall(astCast, astVoidP, typeAst)
-	else:
-		return makeAstNodeCall(typeAst, *args)
+
+	if isIntType(objType) and args:
+		# Introduce a Python int-cast, because ctypes will fail if it is a float or so.
+		assert len(args) == 1
+		args = [makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), *args)]
+	return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
 	def __init__(self, funcEnv, body):

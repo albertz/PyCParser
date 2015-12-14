@@ -2301,6 +2301,18 @@ def getBuiltinTypeForStdIntType(stateStruct, t):
 				return CBuiltinType(k)
 	assert False, "unknown type %r" % t
 
+def isIntType(t):
+	while isinstance(t, CTypedef):
+		t = t.type
+	if isinstance(t, CBuiltinType):
+		if "void" in t.builtinType: return False
+		if "float" in t.builtinType or "double" in t.builtinType:
+			return False
+		return True
+	if isinstance(t, CStdIntType):
+		return True
+	return False
+
 class CSizeofSymbol: pass
 
 class CCurlyArrayArgs(_CBaseWithOptBody):
