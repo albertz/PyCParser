@@ -2143,6 +2143,8 @@ def getValueType(stateStruct, obj):
 	if hasattr(obj, "getValueType"): return obj.getValueType(stateStruct)
 	if isinstance(obj, CVarDecl):
 		return obj.type
+	if isinstance(obj, CFuncArgDecl):
+		return obj.type
 	if isinstance(obj, CAttribAccessRef):
 		base_type = getValueType(stateStruct, obj.base)
 		while isinstance(base_type, CTypedef):
