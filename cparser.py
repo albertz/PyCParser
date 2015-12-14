@@ -2138,6 +2138,125 @@ def getConstValue(stateStruct, obj):
 		return obj.content
 	return None
 
+def getValueType(stateStruct, obj):
+	if hasattr(obj, "getValueType"): return obj.getValueType(stateStruct)
+	if isinstance(obj, CStr):
+		return CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(len(obj.content) + 1))
+	if isinstance(obj, CChar):
+		return CBuiltinType(("char",))
+	if isinstance(obj, CNumber):
+		t = minCIntTypeForNums(obj.content, minBits=8, maxBits=64, useUnsignedTypes=True)
+		assert t, "no int type for %r" % obj
+		return CStdIntType(t)
+	assert False, "no type for %r" % obj
+
+def getCommonValueType(stateStruct, t1, t2):
+	while isinstance(t1, CTypedef):
+		t1 = t1.type
+	while isinstance(t2, CTypedef):
+		t2 = t2.type
+	if t1 == ctypes.c_void_p:
+		t1 = CBuiltinType(("void","*"))
+	if t2 == ctypes.c_void_p:
+		t2 = CBuiltinType(("void","*"))
+	if t1 == CPointerType(CVoidType()):
+		t1 = CBuiltinType(("void","*"))
+	if t2 == CPointerType(CVoidType()):
+		t2 = CBuiltinType(("void","*"))
+	if t1 == CBuiltinType(("void","*")):
+		if t2 == CBuiltinType(("void","*")):
+			return t1
+		if isinstance(t2, CPointerType):
+			return getCommonValueType(stateStruct, t2, t1)
+		assert isinstance(t2, (CBuiltinType, CStdIntType))
+		return t1
+	if t2 == CBuiltinType(("void","*")):
+		return getCommonValueType(stateStruct, t2, t1)
+	if isinstance(t1, CPointerType):
+		if isinstance(t2, CPointerType):
+			assert isSameType(stateStruct, t1.pointerOf, t2.pointerOf)
+			return t1
+		assert isinstance(t2, (CBuiltinType, CStdIntType))
+		return t1
+	if isinstance(t2, CPointerType):
+		return getCommonValueType(stateStruct, t2, t1)
+	# No pointers.
+	if isinstance(t1, CBuiltinType) and isinstance(t2, CBuiltinType):
+		tup1 = t1.builtinType
+		tup2 = t2.builtinType
+		if "float" in tup1 or "double" in tup2:
+			if "float" in tup2 or "double" in tup2:
+				# Select bigger type.
+				Ts = [("float",), ("double",), ("long", "double")]
+				if Ts.index(tup2) > Ts.index(tup1):
+					return t2
+				return t1
+			return t1  # Cast int to float.
+		if "float" in tup2 or "double" in tup2:
+			return t2  # Cast int to float.
+		# No floats.
+		Is = {("char",): 1, ("short",): 2,
+			  ("int",): 3, ("signed",): 3, (): 3,
+			  ("long",): 4, ("long", "long"): 5}
+		invI = {1: ("char",), 2: ("short",), 3: ("int",),
+				4: ("long",), 5: ("long", "long")}
+		unsigned_t1 = "unsigned" in tup1
+		unsigned_t2 = "unsigned" in tup2
+		if unsigned_t1: assert tup1[0] == "unsigned"
+		if unsigned_t2: assert tup2[0] == "unsigned"
+		ti1 = Is[tup1[1 if unsigned_t1 else 0:]]
+		ti2 = Is[tup2[1 if unsigned_t2 else 0:]]
+		st_max = invI[max(ti1, ti2)]
+		t_max = (("unsigned",) if (unsigned_t1 or unsigned_t2) else ()) + st_max
+		return CBuiltinType(t_max)
+	if isinstance(t1, CStdIntType) and isinstance(t2, CStdIntType):
+		def base_wrap(name):
+			if name == "byte": return "int8_t"
+			if name == "wchar_t": return "int16_t"
+			return name
+		t1_name = base_wrap(t1.name)
+		t2_name = base_wrap(t2.name)
+		BuiltinWraps = {"size_t": ("unsigned", "long"),
+						"ptrdiff_t": ("long",),
+						"intptr_t": ("long",)}
+		if t1_name in BuiltinWraps:
+			t1 = CBuiltinType(BuiltinWraps[t1_name])
+			return getCommonValueType(stateStruct, t1, t2)
+		if t2_name in BuiltinWraps:
+			t2 = CBuiltinType(BuiltinWraps[t2_name])
+			return getCommonValueType(stateStruct, t1, t2)
+		unsigned_t1 = t1_name[:1] == "u"
+		unsigned_t2 = t2_name[:1] == "u"
+		Is = {"int8_t": 8, "int16_t": 16, "int32_t": 32, "int64_t": 64}
+		ti1 = Is[t1_name[1 if unsigned_t1 else 0:]]
+		ti2 = Is[t2_name[1 if unsigned_t2 else 0:]]
+		st_max = "int%s_t" % max(ti1, ti2)
+		t_max = ("u" if (unsigned_t1 or unsigned_t2) else "") + st_max
+		return CStdIntType(t_max)
+	if isinstance(t1, CBuiltinType) and isinstance(t2, CStdIntType):
+		t1 = getStdIntTypeForBuiltinType(stateStruct, t1)
+		return getCommonValueType(stateStruct, t1, t2)
+	if isinstance(t1, CStdIntType) and isinstance(t2, CBuiltinType):
+		t2 = getStdIntTypeForBuiltinType(stateStruct, t2)
+		return getCommonValueType(stateStruct, t1, t2)
+	# Not a basic type.
+	assert isSameType(stateStruct, t1, t2)
+	return t1
+
+def getStdIntTypeForBuiltinType(stateStruct, t):
+	"""
+	Note: This is platform dependent!
+	"""
+	assert isinstance(t, CBuiltinType)
+	c_type = stateStruct.CBuiltinTypes[t.builtinType]
+	for prefix in ("", "u"):
+		for postfix in ("8", "16", "32", "64"):
+			k = prefix + "int" + postfix + "_t"
+			stdint_c_type = stateStruct.StdIntTypes[k]
+			if c_type == stdint_c_type:
+				return CStdIntType(k)
+	assert False, "unknown type %r" % t
+
 class CSizeofSymbol: pass
 
 class CCurlyArrayArgs(_CBaseWithOptBody):
@@ -2566,7 +2685,47 @@ class CStatement(_CBaseWithOptBody):
 		assert self._middleexpr is None
 		func = OpBinFuncs[self._op.content]
 		return func(v1, v2)
-	
+
+	def getValueType(self, stateStruct):
+		if self._leftexpr is None: # prefixed only
+			v = getValueType(stateStruct, self._rightexpr)
+			if self._op.content == "&":
+				return CPointerType(v)
+			elif self._op.content == "!":  # not-op
+				return CBuiltinType(("char",))  # 0 or 1, not sure
+			elif self._op.content == "*":
+				assert isinstance(v, CPointerType)
+				return v.pointerOf
+			elif self._op.content in ("+","-","++","--","&"):  # OpPrefixFuncs
+				return v
+			else:
+				assert False, "invalid prefix op %r" % self._op
+		v1 = getValueType(stateStruct, self._leftexpr)
+		if self._op is None or self._rightexpr is None:
+			return v1
+		v2 = getValueType(stateStruct, self._rightexpr)
+		if self._op == COp("?:"):
+			assert self._middleexpr is not None
+			v15 = getValueType(stateStruct, self._middleexpr)
+			if v15 is None: return None
+			return getCommonValueType(stateStruct, v15, v2)
+		assert self._middleexpr is None
+		# see OpBinFuncs
+		if self._op.content == ",":
+			return v2
+		elif self._op.content in ("==","!=","<","<=",">",">="):
+			return CBuiltinType(("char",))  # 0 or 1, not sure
+		elif self._op.content in ("&&","||"):
+			return CBuiltinType(("char",))  # 0 or 1, not sure
+		elif self._op.content in ("<<",">>","<<=",">>="):  # compare
+			return v1
+		elif self._op.content in ("=","*=","-=","+=","/=","%=","&=","^=","|="):  # assign
+			return v1
+		elif self._op.content in ("+","-","*","/","&","^","|"):
+			return getCommonValueType(stateStruct, v1, v2)
+		else:
+			assert False, "invalid bin op %r" % self._op
+
 	def isCType(self):
 		if self._leftexpr is None: return False # all prefixed stuff is not a type
 		if self._rightexpr is not None: return False # same thing, prefixed stuff is not a type

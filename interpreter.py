@@ -1165,13 +1165,11 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		return getAstNode_newTypeInstance(funcEnv.interpreter, ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
+		commonType = getCommonValueType(funcEnv.globalScope.stateStruct, middleType, rightType)
 		a = ast.IfExp()
 		a.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
-		a.body = middleAstNode
-		a.orelse = rightAstNode
-		# TODO: we take the type from middleType right now. not really correct...
-		# So, cast the orelse part.
-		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, middleType, a.orelse, rightType)
+		a.body = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, middleAstNode, middleType)
+		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, rightAstNode, rightType)
 		return a, middleType
 	elif isPointerType(leftType):
 		if isinstance(leftType, CArrayType):
