@@ -2223,11 +2223,13 @@ def getCommonValueType(stateStruct, t1, t2):
 		return t1
 	if isinstance(t2, CPointerType):
 		return getCommonValueType(stateStruct, t2, t1)
-	if isinstance(t1, CArrayType):
-		if isinstance(t2, CArrayType):
+	if isinstance(t1, CArrayType) or isinstance(t2, CArrayType):
+		if isinstance(t1, CArrayType) and isinstance(t2, CArrayType):
 			if isSameType(stateStruct, t1, t2): return t1
+		if isinstance(t1, CArrayType):
+			t1 = CPointerType(t1.arrayOf)
+		if isinstance(t2, CArrayType):
 			t2 = CPointerType(t2.arrayOf)
-		t1 = CPointerType(t1.arrayOf)
 		return getCommonValueType(stateStruct, t1, t2)
 	# No pointers.
 	if isinstance(t1, CBuiltinType) and isinstance(t2, CBuiltinType):

@@ -1178,7 +1178,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
 		a.body = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, middleAstNode, middleType)
 		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, rightAstNode, rightType)
-		return a, middleType
+		return a, commonType
 	elif isPointerType(leftType):
 		if isinstance(leftType, CArrayType):
 			# The value-AST will be a pointer.

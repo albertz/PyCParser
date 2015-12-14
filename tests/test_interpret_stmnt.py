@@ -1828,8 +1828,7 @@ def test_interpret_cond_c_str():
 		const char* s = 0 ? "foo" : "bazz";
 		return 0 ? "blubber" : s;
 	}
-	""",
-	withGlobalIncludeWrappers=True)
+	""")
 	print "Parsed:"
 	print "f:", state.funcs["f"]
 	print "f body:"
@@ -1846,3 +1845,54 @@ def test_interpret_cond_c_str():
 	assert isinstance(r, ctypes.POINTER(ctypes.c_byte))  # char is always byte in the interpreter
 	r = ctypes.cast(r, ctypes.c_char_p)
 	assert r.value == "bazz"
+
+
+def test_interpret_cstr():
+	state = parse("""
+	int f() {
+		const char* p = 0;
+		p = 0 ? 0 : "P";
+		return *p;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord("P")
+
+
+def test_interpret_cstr_indirect():
+	state = parse("""
+	const char* g() { return "foo"; }
+	int f() {
+		const char* p = 0;
+		p = 0 ? 0 : g();
+		return *p;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord("f")
