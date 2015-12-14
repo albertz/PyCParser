@@ -2173,7 +2173,7 @@ def getValueType(stateStruct, obj):
 		if isinstance(obj.base, CWrapValue):
 			return obj.base.returnType
 		# Check for cast-like calls.
-		if isinstance(obj.base, CType):
+		if isinstance(obj.base, (CTypedef, CType)):
 			return obj.base
 		base_type = getValueType(stateStruct, obj.base)
 		while isinstance(base_type, CTypedef):
