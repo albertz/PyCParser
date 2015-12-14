@@ -1793,3 +1793,30 @@ def test_interpret_double():
 	print "result:", r
 	assert isinstance(r, ctypes.c_double)
 	assert r.value == 2.5
+
+
+def test_interpret_strlen_plus1():
+	state = parse("""
+	#include <stdint.h>
+	#include <string.h>
+	size_t f() {
+		size_t x = strlen("foo") + 1;
+		return x;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_size_t)
+	assert r.value == 4

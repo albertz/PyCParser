@@ -2160,7 +2160,13 @@ def getValueType(stateStruct, obj):
 		assert isinstance(base_type, (CStruct,CUnion))
 		return base_type.body.vars[obj.name].type
 	if isinstance(obj, CFuncCall):
-		# First check for cast-like calls.
+		from interpreter import CWrapValue
+		if isinstance(obj.base, CWrapValue):
+			t = obj.base.returnType
+			if issubclass(t, ctypes._SimpleCData):
+				t = getBuiltinTypeForCType(stateStruct, t)
+			return t
+		# Check for cast-like calls.
 		if isinstance(obj.base, CType):
 			return obj.base
 		base_type = getValueType(stateStruct, obj.base)
@@ -2273,19 +2279,44 @@ def getCommonValueType(stateStruct, t1, t2):
 	assert isSameType(stateStruct, t1, t2)
 	return t1
 
+def getStdIntTypeForCType(stateStruct, c_type):
+	"""
+	Note: This is platform dependent!
+	"""
+	for prefix in ("", "u"):
+		for postfix in ("8", "16", "32", "64"):
+			k = prefix + "int" + postfix + "_t"
+			stdint_c_type = stateStruct.StdIntTypes[k]
+			if stdint_c_type == c_type:
+				return CStdIntType(k)
+	assert False, "unknown type %r" % c_type
+
 def getStdIntTypeForBuiltinType(stateStruct, t):
 	"""
 	Note: This is platform dependent!
 	"""
 	assert isinstance(t, CBuiltinType)
 	c_type = stateStruct.CBuiltinTypes[t.builtinType]
-	for prefix in ("", "u"):
-		for postfix in ("8", "16", "32", "64"):
-			k = prefix + "int" + postfix + "_t"
-			stdint_c_type = stateStruct.StdIntTypes[k]
-			if c_type == stdint_c_type:
-				return CStdIntType(k)
-	assert False, "unknown type %r" % t
+	return getStdIntTypeForCType(stateStruct, c_type)
+
+def getBuiltinTypeForCType(stateStruct, c_type):
+	"""
+	Note: This is platform dependent!
+	"""
+	if c_type.__name__.startswith("wrapCTypeClass_"):
+		c_type = c_type.__base__
+	IntTypes = (("char",), ("short",), ("int",),
+				("long",), ("long", "long"))
+	FloatTypes = (("float",), ("double",), ("long", "double"))
+	for prefix in ((), ("unsigned",)):
+		types = IntTypes
+		if not prefix: types = types + FloatTypes
+		for postfix in types:
+			k = prefix + postfix
+			builtin_c_type = stateStruct.CBuiltinTypes[k]
+			if builtin_c_type == c_type:
+				return CBuiltinType(k)
+	assert False, "unknown type %r" % c_type
 
 def getBuiltinTypeForStdIntType(stateStruct, t):
 	"""
@@ -2293,13 +2324,7 @@ def getBuiltinTypeForStdIntType(stateStruct, t):
 	"""
 	assert isinstance(t, CStdIntType)
 	stdint_c_type = stateStruct.StdIntTypes[t.name]
-	for prefix in ((), ("unsigned",)):
-		for postfix in (("char",), ("short",), ("int",), ("long",), ("long", "long")):
-			k = prefix + postfix
-			c_type = stateStruct.CBuiltinTypes[k]
-			if c_type == stdint_c_type:
-				return CBuiltinType(k)
-	assert False, "unknown type %r" % t
+	return getBuiltinTypeForCType(stateStruct, stdint_c_type)
 
 def isIntType(t):
 	while isinstance(t, CTypedef):

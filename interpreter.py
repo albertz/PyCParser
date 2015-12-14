@@ -37,7 +37,7 @@ class CWrapValue(CType):
 			#for k, v in State.CBuiltinTypes  # TODO...
 		#	return self.value.__class__
 			#if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
-		return self	
+		return self
 	def getCType(self, stateStruct):
 		return self.value.__class__
 	def getConstValue(self, stateStruct):
