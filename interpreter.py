@@ -1708,5 +1708,9 @@ class Interpreter:
 		if kwargs["return_as_ctype"]:
 			res_ctype = f.C_resType.getCType(self.globalScope.stateStruct)
 			if res_ctype is not None:
-				res = res_ctype(res)
+				if isPointerType(f.C_resType, checkWrapValue=True):
+					res = self._getPtr(res, res_ctype)
+					res = ctypes.cast(res, res_ctype)
+				else:
+					res = res_ctype(res)
 		return res

@@ -3,6 +3,7 @@
 # code under LGPL
 
 import ctypes, _ctypes
+from inspect import isclass
 
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
@@ -2164,10 +2165,7 @@ def getValueType(stateStruct, obj):
 	if isinstance(obj, CFuncCall):
 		from interpreter import CWrapValue
 		if isinstance(obj.base, CWrapValue):
-			t = obj.base.returnType
-			if issubclass(t, ctypes._SimpleCData):
-				t = getBuiltinTypeForCType(stateStruct, t)
-			return t
+			return obj.base.returnType
 		# Check for cast-like calls.
 		if isinstance(obj.base, CType):
 			return obj.base
@@ -2193,6 +2191,10 @@ def getCommonValueType(stateStruct, t1, t2):
 		t1 = t1.type
 	while isinstance(t2, CTypedef):
 		t2 = t2.type
+	if isclass(t1) and issubclass(t1, ctypes._SimpleCData):
+		t1 = getBuiltinTypeForCType(stateStruct, t1)
+	if isclass(t2) and issubclass(t2, ctypes._SimpleCData):
+		t2 = getBuiltinTypeForCType(stateStruct, t2)
 	if t1 == ctypes.c_void_p:
 		t1 = CBuiltinType(("void","*"))
 	if t2 == ctypes.c_void_p:
@@ -2214,10 +2216,19 @@ def getCommonValueType(stateStruct, t1, t2):
 		if isinstance(t2, CPointerType):
 			assert isSameType(stateStruct, t1.pointerOf, t2.pointerOf)
 			return t1
+		if isinstance(t2, CArrayType):
+			assert isSameType(stateStruct, t1.pointerOf, t2.arrayOf)
+			return t1
 		assert isinstance(t2, (CBuiltinType, CStdIntType))
 		return t1
 	if isinstance(t2, CPointerType):
 		return getCommonValueType(stateStruct, t2, t1)
+	if isinstance(t1, CArrayType):
+		if isinstance(t2, CArrayType):
+			if isSameType(stateStruct, t1, t2): return t1
+			t2 = CPointerType(t2.arrayOf)
+		t1 = CPointerType(t1.arrayOf)
+		return getCommonValueType(stateStruct, t1, t2)
 	# No pointers.
 	if isinstance(t1, CBuiltinType) and isinstance(t2, CBuiltinType):
 		tup1 = t1.builtinType

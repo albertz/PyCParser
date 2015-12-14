@@ -1820,3 +1820,29 @@ def test_interpret_strlen_plus1():
 	print "result:", r
 	assert isinstance(r, ctypes.c_size_t)
 	assert r.value == 4
+
+
+def test_interpret_cond_c_str():
+	state = parse("""
+	const char* f() {
+		const char* s = 0 ? "foo" : "bazz";
+		return 0 ? "blubber" : s;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.POINTER(ctypes.c_byte))  # char is always byte in the interpreter
+	r = ctypes.cast(r, ctypes.c_char_p)
+	assert r.value == "bazz"
