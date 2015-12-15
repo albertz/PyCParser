@@ -479,6 +479,12 @@ def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
 		# This is mostly the same as for calling functions.
 		f_args = []
 		if isinstance(f_arg_type, (CStruct,CUnion)):
+			if not f_arg_type.body:
+				assert f_arg_type.name
+				if isinstance(f_arg_type, CStruct):
+					f_arg_type = interpreter.globalScope.stateStruct.structs[f_arg_type.name]
+				elif isinstance(f_arg_type, CUnion):
+					f_arg_type = interpreter.globalScope.stateStruct.unions[f_arg_type.name]
 			for c in f_arg_type.body.contentlist:
 				if not isinstance(c, CVarDecl): continue
 				f_args += [c.type]
