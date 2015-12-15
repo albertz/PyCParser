@@ -1929,3 +1929,83 @@ def test_interpret_struct_forward_type():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 43
+
+
+def test_interpret_struct_array():
+	state = parse("""
+	/* GC information is stored BEFORE the object structure. */
+	typedef union _gc_head {
+		struct {
+			union _gc_head *gc_next;
+			union _gc_head *gc_prev;
+			unsigned long gc_refs;
+		} gc;
+		long double dummy;  /* force worst-case alignment */
+	} PyGC_Head;
+
+	struct gc_generation {
+		PyGC_Head head;
+		int threshold; /* collection threshold */
+		int count; /* count of allocations or collections of younger
+					  generations */
+	};
+
+	#define NUM_GENERATIONS 3
+	#define GEN_HEAD(n) (&generations[n].head)
+
+	/* linked lists of container objects */
+	static struct gc_generation generations[NUM_GENERATIONS] = {
+		/* PyGC_Head,                               threshold,      count */
+		{{{GEN_HEAD(0), GEN_HEAD(0), 0}},           700,            0},
+		{{{GEN_HEAD(1), GEN_HEAD(1), 0}},           10,             0},
+		{{{GEN_HEAD(2), GEN_HEAD(2), 0}},           10,             0},
+	};
+
+	int f() {
+		// via _PyObject_GC_Malloc
+	    generations[0].count++; /* number of allocated GC objects */
+		return generations[0].count;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1
+
+
+def test_interpret_global_array():
+	state = parse("""
+	int x[3] = {3,2,1};
+	int f() {
+	    x[1]++;
+		return x[1];
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+	print "x:", state.vars["x"]
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
+
