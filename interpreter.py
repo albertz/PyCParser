@@ -125,49 +125,67 @@ class GlobalScope:
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
 		assert isinstance(decl, CVarDecl)
-		# First set self.vars with some initial var.
+
+		# Note: To avoid infinite loops, we must first create the object.
 		# This is to avoid infinite loops, in case that the initializer
 		# access the var itself.
-		init_empty_first = True
-		if isinstance(decl.type, CArrayType) and decl.body:
-			# In case this is an array, we don't do this, since the len
-			# of the array might be only determined by its body.
-			init_empty_first = False
-		def getEmpty():
-			emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl.type)
-			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
-			return v_empty
-		if init_empty_first:
-			v_empty = getEmpty()
-			self.vars[name] = v_empty
-			value = v_empty
-		else:
-			v_empty = None
-			value = None
+
 		if decl.body is not None:
 			anonFuncEnv = FuncEnv(self)
-			bodyAst, t = astAndTypeForStatement(anonFuncEnv, decl.body)
-			if not isinstance(decl.type, CArrayType) and isPointerType(decl.type) \
-					and not isPointerType(t):
-				v = decl.body.getConstValue(self.stateStruct)
-				assert v is not None and v == 0, "Global: Initializing pointer type " + str(decl.type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
-				value = getEmpty()
-			else:
-				valueAst = getAstNode_newTypeInstance(self.interpreter, decl.type, bodyAst, t)
-				body_value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-				if init_empty_first:
-					# WARNING: This can be dangerous.
-					# It will correctly copy the content. However, we might loose any Python obj refs,
-					# from body_value._objects.
-					# TODO: Fix this somehow?
-					ctypes.pointer(v_empty)[0] = body_value
+			bodyAst, bodyType = astAndTypeForStatement(anonFuncEnv, decl.body)
+		else:
+			bodyAst, bodyType = None, None
+
+		decl_type = decl.type
+		# Arrays might have implicit length. If the len is not specified
+		# explicitely, try to get it from the body.
+		if isinstance(decl_type, CArrayType):
+			arrayLen = None
+			if decl_type.arrayLen:
+				arrayLen = getConstValue(self.stateStruct, decl_type.arrayLen)
+				assert isinstance(arrayLen, (int, long))
+				assert arrayLen > 0
+			if isinstance(bodyType, (tuple, list)):
+				if arrayLen:
+					assert arrayLen >= len(bodyType)
 				else:
-					value = body_value
-		if not init_empty_first:
-			if value is None:
-				value = getEmpty()
-			self.vars[name] = value
-		return value
+					arrayLen = len(bodyType)
+					assert arrayLen > 0
+			elif isinstance(bodyType, CArrayType):
+				_arrayLen = getConstValue(self.stateStruct, bodyType.arrayLen)
+				assert isinstance(_arrayLen, (int, long))
+				if arrayLen:
+					assert arrayLen >= _arrayLen
+				else:
+					arrayLen = _arrayLen
+			else:
+				assert bodyType is None, "not expected: %r" % bodyType
+			assert arrayLen, "array without explicit len and without body"
+			if not decl_type.arrayLen:
+				decl_type.arrayLen = CNumber(arrayLen)
+
+		def getEmpty():
+			emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl_type)
+			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
+			return v_empty
+		self.vars[name] = getEmpty()
+
+		if decl.body is not None:
+			if not isinstance(decl_type, CArrayType) and isPointerType(decl_type) \
+					and not isPointerType(bodyType):
+				v = decl.body.getConstValue(self.stateStruct)
+				assert v is not None and v == 0, "Global: Initializing pointer type " + str(decl_type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
+			else:
+				valueAst = getAstNode_newTypeInstance(self.interpreter, decl_type, bodyAst, bodyType)
+				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
+				# WARNING: This can be dangerous.
+				# It will correctly copy the content. However, we might loose any Python obj refs,
+				# from body_value._objects.
+				# TODO: Fix this somehow? Better use a helper func which goes over the structure.
+				ctypes.pointer(self.vars[name])[0] = value
+
+		return self.vars[name]
+
 
 def evalValueAst(funcEnv, valueAst, srccode_name=None):
 	if srccode_name is None: srccode_name = "<PyCParser_dynamic_eval>"
