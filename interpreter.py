@@ -353,10 +353,11 @@ def getAstNodeForVarType(interpreter, t):
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
 		if t.name is None:
-			# We have a problem. Actually, I wonder how this can happen.
-			# But we have an anonymous struct here.
-			# Wrap it via CWrapValue
-			v = getAstForWrapValue(interpreter, CWrapValue(t))
+			# This is an anonymous struct. E.g. like in:
+			# `struct A { struct { int x; } a; };`
+			# Wrap it via CWrapValue.
+			# TODO: is this the best solution? We could refer it to the named parent. If there is one.
+			v = getAstForWrapValue(interpreter, CWrapValue(getCType(t, interpreter.globalScope.stateStruct)))
 			return getAstNodeAttrib(v, "value")
 		# TODO: this assumes the was previously declared globally.
 		return getAstNodeAttrib("structs", t.name)
