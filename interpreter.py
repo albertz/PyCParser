@@ -214,17 +214,15 @@ class GlobalsWrapper:
 	def __repr__(self):
 		return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
 
-class GlobalsTypeWrapper:
-	def __init__(self, globalScope, attrib):
+class GlobalsStructWrapper:
+	def __init__(self, globalScope):
 		self.globalScope = globalScope
-		self.attrib = attrib
-
+	
 	def __setattr__(self, name, value):
 		self.__dict__[name] = value
 	
 	def __getattr__(self, name):
-		collection = getattr(self.globalScope.stateStruct, self.attrib)
-		decl = collection.get(name)
+		decl = self.globalScope.stateStruct.structs.get(name)
 		if decl is None: raise AttributeError
 		v = getCType(decl, self.globalScope.stateStruct)
 		self.__dict__[name] = v
@@ -334,6 +332,7 @@ def getAstNodeForVarType(interpreter, t):
 	elif isinstance(t, CTypedef):
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
+		assert t.name is not None
 		if t.name is None:
 			# We have a problem. Actually, I wonder how this can happen.
 			# But we have an anonymous struct here.
@@ -342,9 +341,6 @@ def getAstNodeForVarType(interpreter, t):
 			return getAstNodeAttrib(v, "value")
 		# TODO: this assumes the was previously declared globally.
 		return getAstNodeAttrib("structs", t.name)
-	elif isinstance(t, CUnion):
-		assert t.name is not None
-		return getAstNodeAttrib("unions", t.name)
 	elif isinstance(t, CArrayType):
 		arrayOf = getAstNodeForVarType(interpreter, t.arrayOf)
 		v = getConstValue(interpreter.globalScope.stateStruct, t.arrayLen)
@@ -446,42 +442,12 @@ def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
 		f_arg_type = f_arg_type.type
 	while isinstance(s_arg_type, CTypedef):
 		s_arg_type = s_arg_type.type
-
-	if isinstance(s_arg_type, (tuple, list)):  # CCurlyArrayArgs
-		arrayLen = len(s_arg_type)
-		typeAst = getAstNodeForVarType(interpreter, f_arg_type)
-		assert isinstance(s_arg_ast, ast.Tuple)
-		assert len(s_arg_ast.elts) == len(s_arg_type)
-		# There is a bit of inconsistency between basic types init
-		# (like c_int), which must get a value (int),
-		# and ctypes.Structure/ctypes.ARRAY, which for some field can either
-		# get a value (int) or a c_int. For pointers, it must get
-		# the var, not the value.
-		# This is mostly the same as for calling functions.
-		f_args = []
-		if isinstance(f_arg_type, (CStruct,CUnion)):
-			for c in f_arg_type.body.contentlist:
-				if not isinstance(c, CVarDecl): continue
-				f_args += [c.type]
-		elif isinstance(f_arg_type, CArrayType):
-			f_args += [f_arg_type.arrayOf] * arrayLen
-		else:
-			assert False, "did not expect type %r" % f_arg_type
-		assert len(s_arg_type) <= len(f_args)
-		# Somewhat like autoCastArgs():
-		s_args = []
-		for _f_arg_type, _s_arg_ast, _s_arg_type in zip(f_args, s_arg_ast.elts, s_arg_type):
-			_s_arg_ast = _makeVal(interpreter, _f_arg_type, _s_arg_ast, _s_arg_type)
-			s_args += [_s_arg_ast]
-		return makeAstNodeCall(typeAst, *s_args)
-
 	f_arg_ctype = getCType(f_arg_type, stateStruct)
 	if isinstance(s_arg_type, CArrayType) and not s_arg_type.arrayLen:
 		# It can happen that we don't know the array-len yet.
 		# Then, getCType() will fail.
 		# However, it's probably enough here to just use the pointer-type instead.
 		s_arg_type = CPointerType(s_arg_type.arrayOf)
-
 	s_arg_ctype = getCType(s_arg_type, stateStruct)
 	use_value = False
 	if stateStruct.IndirectSimpleCTypes and needWrapCTypeClass(f_arg_ctype):
@@ -1544,8 +1510,7 @@ class Interpreter:
 		self.globalScope = GlobalScope(self, self._cStateWrapper)
 		self._func_cache = {}
 		self.globalsWrapper = GlobalsWrapper(self.globalScope)
-		self.globalsStructWrapper = GlobalsTypeWrapper(self.globalScope, "structs")
-		self.globalsUnionsWrapper = GlobalsTypeWrapper(self.globalScope, "unions")
+		self.globalsStructWrapper = GlobalsStructWrapper(self.globalScope)
 		self.wrappedValues = WrappedValues()  # attrib -> obj
 		self.mallocs = {}  # ptr addr -> ctype obj
 		# Note: The pointerStorage will only weakly ref the ctype objects.
@@ -1560,7 +1525,6 @@ class Interpreter:
 			"helpers": Helpers,
 			"g": self.globalsWrapper,
 			"structs": self.globalsStructWrapper,
-			"unions": self.globalsUnionsWrapper,
 			"values": self.wrappedValues,
 			"intp": self
 			}
