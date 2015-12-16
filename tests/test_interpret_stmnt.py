@@ -2009,3 +2009,62 @@ def test_interpret_global_array():
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
 
+
+def test_interpret_gc_malloc():
+	state = parse("""
+	#include <stdlib.h>
+
+	typedef struct _PyObject { int x; } PyObject;
+
+	/* GC information is stored BEFORE the object structure. */
+	typedef union _gc_head {
+		struct {
+			union _gc_head *gc_next;
+			union _gc_head *gc_prev;
+			long gc_refs;
+		} gc;
+		long double dummy;  /* force worst-case alignment */
+	} PyGC_Head;
+
+	/* Get an object's GC head */
+	#define AS_GC(o) ((PyGC_Head *)(o)-1)
+
+	/* Get the object given the GC head */
+	#define FROM_GC(g) ((PyObject *)(((PyGC_Head *)g)+1))
+
+	PyObject* PyObject_GC_Malloc(size_t basicsize) {
+		PyObject *op;
+		PyGC_Head *g;
+		g = (PyGC_Head *)malloc(sizeof(PyGC_Head) + basicsize);
+		g->gc.gc_refs = -1;
+		op = FROM_GC(g);
+		return op;
+	}
+
+	void PyObject_GC_Del(void *op) {
+		PyGC_Head *g = AS_GC(op);
+		free(g);
+	}
+
+	int f() {
+		PyObject* obj = PyObject_GC_Malloc(16);
+		PyObject_GC_Del(obj);
+		return 42;
+	}
+	""",
+	withGlobalIncludeWrappers=True)
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
