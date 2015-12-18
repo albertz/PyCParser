@@ -1842,7 +1842,8 @@ def test_interpret_cond_c_str():
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
-	assert isinstance(r, ctypes.POINTER(ctypes.c_byte))  # char is always byte in the interpreter
+	wrapped_c_byte = interpreter.globalsDict["ctypes_wrapped"].c_byte
+	assert isinstance(r, ctypes.POINTER(wrapped_c_byte))  # char is always byte in the interpreter
 	r = ctypes.cast(r, ctypes.c_char_p)
 	assert r.value == "bazz"
 

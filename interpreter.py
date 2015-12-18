@@ -178,7 +178,7 @@ class GlobalScope:
 			else:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl_type, bodyAst, bodyType)
 				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-				# WARNING: This can be dangerous.
+				# WARNING: This can be dangerous/unsafe.
 				# It will correctly copy the content. However, we might loose any Python obj refs,
 				# from body_value._objects.
 				# TODO: Fix this somehow? Better use a helper func which goes over the structure.
@@ -339,6 +339,9 @@ def getAstNodeForCTypesBasicType(t):
 	t_name = t.__name__
 	if t_name.startswith("wrapCTypeClass_"): t_name = t_name[len("wrapCTypeClass_"):]
 	assert issubclass(t, getattr(ctypes, t_name))
+	t = getattr(ctypes, t_name)  # get original type
+	if needWrapCTypeClass(t):
+		return getAstNodeAttrib("ctypes_wrapped", t_name)
 	return getAstNodeAttrib("ctypes", t_name)
 
 def getAstNodeForVarType(interpreter, t):
@@ -389,7 +392,7 @@ def getAstNodeForVarType(interpreter, t):
 def findHelperFunc(f):
 	for k in dir(Helpers):
 		v = getattr(Helpers, k)
-		if v is f: return k
+		if v == f: return k
 	return None
 
 def makeAstNodeCall(func, *args):
@@ -762,6 +765,9 @@ def _astOpToFunc(op):
 OpBinFuncsByOp = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
 
 class Helpers:
+	def __init__(self, interpreter):
+		self.interpreter = interpreter
+
 	@staticmethod
 	def prefixInc(a):
 		a.value += 1
@@ -812,15 +818,18 @@ class Helpers:
 
 	@staticmethod
 	def copy(a):
-		if isinstance(a, _ctypes._SimpleCData):
-			c = a.__class__()
-			ctypes.pointer(c)[0] = a
-			return c
-		if isinstance(a, _ctypes._Pointer):
+		if isinstance(a, ctypes.c_void_p):
+			return ctypes.cast(a, ctypes.c_void_p)
+		if isinstance(a, ctypes._Pointer):
 			return ctypes.cast(a, a.__class__)
-		if isinstance(a, _ctypes.Array):
-			return ctypes.cast(a, ctypes.POINTER(a._type_))
-		assert False, "cannot copy " + str(a)
+		if isinstance(a, ctypes.Array):
+			return ctypes.pointer(a[0])  # should keep _b_base_
+			# This would not:
+			# return ctypes.cast(a, ctypes.POINTER(a._type_))
+		if isinstance(a, ctypes._SimpleCData):
+			# Safe, should not be a pointer.
+			return a.__class__(a.value)
+		raise NotImplementedError("cannot copy %r" % a)
 	
 	@staticmethod
 	def assign(a, bValue):
@@ -829,6 +838,9 @@ class Helpers:
 	
 	@staticmethod
 	def assignPtr(a, bValue):
+		# WARNING: This can be dangerous/unsafe.
+		# It will correctly copy the content. However, we might loose any Python obj refs.
+		# TODO: Fix this somehow?
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = bValue
 		return a
@@ -838,18 +850,20 @@ class Helpers:
 		a.value = OpBinFuncs[op](a.value, bValue)
 		return a
 
-	@staticmethod
-	def augAssignPtr(a, op, bValue):
+	def augAssignPtr(self, a, op, bValue):
+		# `a` is itself a pointer.
 		assert op in ("+","-")
-		op = OpBin[op]
+		op = OpBinFuncs[op]
 		bValue *= ctypes.sizeof(a._type_)
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
-		aPtr.contents.value = OpBinFuncsByOp[op](aPtr.contents.value, bValue)
+		# Should be safe as long as `a` already contains all the refs.
+		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
+		aPtr.contents.value = op(aPtr.contents.value, bValue)
+		a = self.interpreter._storePtr(a, offset=bValue)
 		return a
 
-	@staticmethod
-	def ptrArithmetic(a, op, bValue):
-		return Helpers.augAssignPtr(Helpers.copy(a), op, bValue)
+	def ptrArithmetic(self, a, op, bValue):
+		return self.augAssignPtr(self.copy(a), op, bValue)
 
 	@staticmethod
 	def fixReturnType(t):
@@ -1101,6 +1115,8 @@ def getAstNode_assign(stateStruct, aAst, aType, bAst, bType):
 
 def getAstNode_augAssign(stateStruct, aAst, aType, opStr, bAst, bType):
 	opAst = ast.Str(opStr)
+	if isPointerType(bType):
+		bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
 	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
 	if isPointerType(aType):
 		return makeAstNodeCall(Helpers.augAssignPtr, aAst, opAst, bValueAst)
@@ -1129,6 +1145,7 @@ def getAstNode_postfixDec(aAst, aType):
 def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
 	assert isPointerType(aType)
 	opAst = ast.Str(opStr)
+	assert not isPointerType(bType)
 	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
 	return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
 
@@ -1189,7 +1206,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 				assert False, str(stmnt) + " has bad type " + str(rightType)
 		elif stmnt._op.content == "&":
 			# We need to catch offsetof-like calls here because ctypes doesn't allow
-			# NULL pointer access.
+			# NULL pointer access. offsetof is like `&(struct S*)(0)->attrib`.
 			offset = _resolveOffsetOf(funcEnv.globalScope.stateStruct, stmnt)
 			if offset is not None:
 				t = CStdIntType("intptr_t")
@@ -1560,6 +1577,17 @@ def _fixCType(t, wrap=False):
 	return t
 
 
+class CTypesWrapper:
+	def __setattr__(self, name, value):
+		self.__dict__[name] = value
+
+	def __getattr__(self, name):
+		t = getattr(ctypes, name)
+		t_wrapped = wrapCTypeClass(t)
+		self.__dict__[name] = t_wrapped
+		return t_wrapped
+
+
 class Interpreter:
 	def __init__(self):
 		self.stateStructs = []
@@ -1582,7 +1610,8 @@ class Interpreter:
 		self.constStrings = {}  # str -> ctype c_char_p
 		self.globalsDict = {
 			"ctypes": ctypes,
-			"helpers": Helpers,
+			"ctypes_wrapped": CTypesWrapper(),
+			"helpers": Helpers(self),
 			"g": self.globalsWrapper,
 			"structs": self.globalsStructWrapper,
 			"unions": self.globalsUnionsWrapper,
@@ -1651,24 +1680,27 @@ class Interpreter:
 		except KeyError:
 			raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
 
-	def _storePtr(self, ptr):
+	def _storePtr(self, ptr, offset=0):
 		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array))
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr == 0:
 			return ptr  # Nothing needed to store.
+		if ptr_addr in self.pointerStorage:
+			return ptr
 		objs = _ctype_collect_objects(ptr)
 		for obj in objs:
 			obj_ptr_addr = _ctype_get_ptr_addr(obj)
-			if ptr_addr == obj_ptr_addr:
+			if ptr_addr == obj_ptr_addr + offset:
 				self.pointerStorage[ptr_addr] = obj
 				return ptr
 		# Note: This can also/esp happen when the ptr was not allocated by us.
 		# Not sure how to handle that yet...
 		raise NotImplementedError(
 			"_storePtr: ptr %r, objs %r, ptr_addr 0x%x, obj_ptr_addr %s" % (
-			ptr, objs, ptr_addr, map(hex, map(_ctype_get_ptr_addr, objs))))
+			ptr, objs, ptr_addr, [hex(_ctype_get_ptr_addr(o) + offset) for o in objs]))
 
 	def _getPtr(self, addr, ptr_type=None):
+		assert isinstance(addr, int)
 		if addr == 0:
 			assert ptr_type
 			return ptr_type()
@@ -1676,7 +1708,11 @@ class Interpreter:
 			obj = self.pointerStorage[addr]
 		except KeyError:
 			raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
-		return ctypes.pointer(obj)
+		ptr = ctypes.pointer(obj)
+		ptr_addr = _ctype_ptr_get_value(ptr)
+		if ptr_addr != addr:  # might be different if we had an offset in _setPtr
+			Helpers.assignPtr(ptr, ptr_addr)
+		return ptr
 
 	def _translateFuncToPyAst(self, func):
 		assert isinstance(func, CFunc)

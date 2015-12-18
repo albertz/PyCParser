@@ -351,11 +351,14 @@ class CPointerType(CType):
 	def getCType(self, stateStruct):
 		try:
 			t = getCType(self.pointerOf, stateStruct)
-			ptrType = ctypes.POINTER(t)
+			if t is None:
+				ptrType = getCType(ctypes.c_void_p, stateStruct)
+			else:
+				ptrType = ctypes.POINTER(t)
 			return ptrType
 		except Exception as e:
 			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
-		return ctypes.c_void_p
+		return getCType(ctypes.c_void_p, stateStruct)
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
 class CBuiltinType(CType):
@@ -369,7 +372,9 @@ class CBuiltinType(CType):
 	
 class CStdIntType(CType):
 	def __init__(self, name): self.name = name
-	def getCType(self, stateStruct): return stateStruct.StdIntTypes[self.name]
+	def getCType(self, stateStruct):
+		t = stateStruct.StdIntTypes[self.name]
+		return getCType(t, stateStruct)
 	def asCCode(self, indent=""): return indent + self.name
 
 class CArrayType(CType):
@@ -393,7 +398,10 @@ class CArrayType(CType):
 def getCType(t, stateStruct):
 	assert not isinstance(t, CUnknownType)
 	try:
-		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer)): return t
+		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer)):
+			if stateStruct.IndirectSimpleCTypes:
+				return wrapCTypeClassIfNeeded(t)
+			return t
 	except Exception: pass # e.g. typeerror or so
 	if isinstance(t, (CStruct,CUnion,CEnum)):
 		if t.body is None:
@@ -1888,6 +1896,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
 	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
 	class ctype(baseClass): pass
+	ctype.__name__ = obj.name or "<anonymous-struct>"
 	obj._ctype = ctype
 	fields = []
 	for c in obj.body.contentlist:
