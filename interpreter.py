@@ -1561,13 +1561,19 @@ def _ctype_collect_objects(obj):
 	counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
 	all the ref'd objects will live, too.
 	"""
-	b = obj
 	d = {}  # id(o) -> o
-	while b is not None:
+	def collect(o):
+		if o is None: return
+		if isinstance(o, dict): return  # not sure, ctypes sometimes has that in _objects
+		if id(o) in d: return
+		d[id(o)] = o
+		visit(o)
+	def visit(b):
 		if b._objects:
 			for o in b._objects.values():
-				d[id(o)] = o
-		b = b._b_base_
+				collect(o)
+		collect(b._b_base_)
+	collect(obj)
 	return d.values()
 
 def _fixCType(t, wrap=False):
