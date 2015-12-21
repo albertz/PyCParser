@@ -14,6 +14,7 @@ import inspect
 import goto
 from weakref import ref, WeakValueDictionary
 from sortedcontainers.sortedset import SortedSet
+from collections import OrderedDict
 
 
 class CWrapValue(CType):
@@ -1585,7 +1586,7 @@ def _ctype_collect_objects(obj):
 	counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
 	all the ref'd objects will live, too.
 	"""
-	d = {}  # id(o) -> o
+	d = OrderedDict()  # id(o) -> o
 	def collect(o):
 		if o is None: return
 		if id(o) in d: return
@@ -1701,7 +1702,7 @@ class Interpreter:
 		buf = (self.ctypes_wrapped.c_byte * size)()
 		ptr_addr = _ctype_get_ptr_addr(buf)
 		self.mallocs[ptr_addr] = buf
-		ret = ctypes.cast(ctypes.pointer(buf[0]), ctypes.c_void_p)
+		ret = ctypes.cast(ctypes.pointer(buf), ctypes.c_void_p)
 		self._storePtr(ret)
 		return ret
 
@@ -1735,7 +1736,9 @@ class Interpreter:
 			self.pointerStorage[ptr_addr] = self.pointerStorage[ptr_addr - offset]
 			return ptr
 		objs = _ctype_collect_objects(ptr)
-		for obj in objs:
+		# Later collected objects are more likely the ones we want.
+		# So go over in reverse order.
+		for obj in reversed(objs):
 			obj_ptr_addr = _ctype_get_ptr_addr(obj)
 			if ptr_addr == obj_ptr_addr + offset:
 				self.pointerStorage[obj_ptr_addr] = obj
