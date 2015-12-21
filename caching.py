@@ -1,6 +1,6 @@
 # PyCParser caching logic
 # by Albert Zeyer, 2011
-# code under LGPL
+# code under BSD 2-Clause License
 
 # idea:
 #   for each parsed file:

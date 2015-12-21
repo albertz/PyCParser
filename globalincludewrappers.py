@@ -1,6 +1,6 @@
 # PyCParser - global include wrappers
 # by Albert Zeyer, 2011
-# code under LGPL
+# code under BSD 2-Clause License
 
 from cparser import *
 from interpreter import CWrapValue, _ctype_ptr_get_value, _fixCType

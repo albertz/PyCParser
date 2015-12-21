@@ -1,6 +1,6 @@
 # PyCParser main file
 # by Albert Zeyer, 2011
-# code under LGPL
+# code under BSD 2-Clause License
 
 import ctypes, _ctypes
 from inspect import isclass

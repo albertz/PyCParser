@@ -1,6 +1,6 @@
 # PyCParser - interpreter
 # by Albert Zeyer, 2011
-# code under LGPL
+# code under BSD 2-Clause License
 
 import cparser
 from cparser import *

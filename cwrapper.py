@@ -1,6 +1,6 @@
 # PyCParser - C wrapper
 # by Albert Zeyer, 2011
-# code under LGPL
+# code under BSD 2-Clause License
 
 import cparser
 import ctypes
