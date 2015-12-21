@@ -1408,7 +1408,10 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				state = 20
 			elif state == 25: # 'str
 				if c == "'":
-					yield CChar(laststr)
+					if len(laststr) > 1 and laststr[0] == '\0':  # hacky check for '\0abc'-like strings.
+						yield CChar(int(laststr[1:], 8))
+					else:
+						yield CChar(laststr)
 					laststr = ""
 					state = 0
 				elif c == "\\": state = 26
@@ -1718,7 +1721,7 @@ class _CBaseWithOptBody(object):
 			assert isinstance(self.body, CBody)
 			self.body.contentlist.append(obj)
 
-	def _copy(self, value, parent=None, name=None):
+	def _copy(self, value, parent=None, name=None, leave_out_attribs=()):
 		if isinstance(value, (int, long, float, str, unicode)) or value is None:
 			return value
 		elif isinstance(value, list):
@@ -1730,6 +1733,8 @@ class _CBaseWithOptBody(object):
 		elif isinstance(value, (_CBase, _CBaseWithOptBody, CType, CBody)):
 			new = value.__class__.__new__(value.__class__)
 			for k, v in vars(value).items():
+				if k in leave_out_attribs:
+					continue
 				if k == "parent":
 					new.parent = parent
 				else:
@@ -1738,8 +1743,8 @@ class _CBaseWithOptBody(object):
 		else:
 			assert False, "dont know how to handle %r %r (%s)" % (name, value, value.__class__)
 
-	def copy(self):
-		return self._copy(self, parent=self.parent)
+	def copy(self, leave_out_attribs=("body",)):
+		return self._copy(self, parent=self.parent, leave_out_attribs=leave_out_attribs)
 
 	def depth(self):
 		if self.parent is None: return 1

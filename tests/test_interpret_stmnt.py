@@ -2235,3 +2235,26 @@ def test_interpret_ptr_comma_tuple():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_octal():
+	state = parse("""
+	int f() {
+		return (int) '\\014';
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 12
