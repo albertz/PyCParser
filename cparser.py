@@ -1896,7 +1896,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
 	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
 	class ctype(baseClass): pass
-	ctype.__name__ = obj.name or "<anonymous-struct>"
+	ctype.__name__ = str(obj.name or "<anonymous-struct>")
 	obj._ctype = ctype
 	fields = []
 	for c in obj.body.contentlist:
