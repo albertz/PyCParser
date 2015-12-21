@@ -859,7 +859,7 @@ class Helpers:
 		# Should be safe as long as `a` already contains all the refs.
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
 		aPtr.contents.value = op(aPtr.contents.value, bValue)
-		a = self.interpreter._storePtr(a, offset=bValue)
+		a = self.interpreter._storePtr(a, offset=op(0, bValue))
 		return a
 
 	def ptrArithmetic(self, a, op, bValue):
@@ -1606,6 +1606,7 @@ class Interpreter:
 		self.globalsStructWrapper = GlobalsTypeWrapper(self.globalScope, "structs")
 		self.globalsUnionsWrapper = GlobalsTypeWrapper(self.globalScope, "unions")
 		self.wrappedValues = WrappedValues()  # attrib -> obj
+		self.ctypes_wrapped = CTypesWrapper()
 		self.mallocs = {}  # ptr addr -> ctype obj
 		# Note: The pointerStorage will only weakly ref the ctype objects.
 		# When the real ctype objects go out of scope, we don't want to
@@ -1616,7 +1617,7 @@ class Interpreter:
 		self.constStrings = {}  # str -> ctype c_char_p
 		self.globalsDict = {
 			"ctypes": ctypes,
-			"ctypes_wrapped": CTypesWrapper(),
+			"ctypes_wrapped": self.ctypes_wrapped,
 			"helpers": Helpers(self),
 			"g": self.globalsWrapper,
 			"structs": self.globalsStructWrapper,
@@ -1656,16 +1657,19 @@ class Interpreter:
 			return self.constStrings[s]
 		# Array so that we have the len info.
 		# c_byte because we always treat `char` as c_byte to avoid problems.
-		t = ctypes.c_byte * (len(s) + 1)
+		t = self.ctypes_wrapped.c_byte * (len(s) + 1)
 		buf = t(*map(ord, s))
 		self.constStrings[s] = buf
 		return buf
 
 	def _malloc(self, size):
-		buf = (ctypes.c_byte * size)()
+		if size == 0: size = 1
+		buf = (self.ctypes_wrapped.c_byte * size)()
 		ptr_addr = _ctype_get_ptr_addr(buf)
 		self.mallocs[ptr_addr] = buf
-		return ctypes.cast(buf, ctypes.c_void_p)
+		ret = ctypes.cast(ctypes.pointer(buf[0]), ctypes.c_void_p)
+		self._storePtr(ret)
+		return ret
 
 	def _realloc(self, ptr_addr, size):
 		if not ptr_addr:
@@ -1693,6 +1697,9 @@ class Interpreter:
 			return ptr  # Nothing needed to store.
 		if ptr_addr in self.pointerStorage:
 			return ptr
+		if ptr_addr - offset in self.pointerStorage:
+			self.pointerStorage[ptr_addr] = self.pointerStorage[ptr_addr - offset]
+			return ptr
 		objs = _ctype_collect_objects(ptr)
 		for obj in objs:
 			obj_ptr_addr = _ctype_get_ptr_addr(obj)
@@ -1717,7 +1724,7 @@ class Interpreter:
 		ptr = ctypes.pointer(obj)
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr != addr:  # might be different if we had an offset in _setPtr
-			Helpers.assignPtr(ptr, ptr_addr)
+			Helpers.assignPtr(ptr, addr)
 		return ptr
 
 	def _translateFuncToPyAst(self, func):

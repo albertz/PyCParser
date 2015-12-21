@@ -2065,6 +2065,7 @@ def test_interpret_gc_malloc():
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	interpreter.dumpFunc("PyObject_GC_Malloc", output=sys.stdout)
+	interpreter.dumpFunc("PyObject_GC_Del", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
