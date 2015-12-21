@@ -69,6 +69,7 @@ class Wrapper:
 		wrapCFunc(state, "fputc", restype=ctypes.c_int, argtypes=(ctypes.c_int, FileP))
 		wrapCFunc(state, "fgets", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_int, FileP))
 		wrapCFunc(state, "fread", restype=ctypes.c_size_t, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, FileP))		
+		wrapCFunc(state, "fwrite", restype=ctypes.c_size_t, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, FileP))
 		wrapCFunc(state, "fflush", restype=ctypes.c_int, argtypes=(FileP,))
 		wrapCFunc(state, "ftell", restype=ctypes.c_long, argtypes=(FileP,))
 		wrapCFunc(state, "rewind", restype=CVoidType, argtypes=(FileP,))
