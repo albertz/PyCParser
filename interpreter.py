@@ -1283,6 +1283,11 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.body = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, middleAstNode, middleType)
 		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, rightAstNode, rightType)
 		return a, commonType
+	elif stmnt._op.content == ",":
+		a = ast.Tuple(ctx=ast.Load())
+		a.elts = (leftAstNode, rightAstNode)
+		b = ast.Subscript(value=a, slice=ast.Num(n=1), ctx=ast.Load())
+		return b, rightType
 	elif isPointerType(leftType):
 		if isinstance(leftType, CArrayType):
 			# The value-AST will be a pointer.
@@ -1298,7 +1303,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			leftAstNode, leftType,
 			stmnt._op.content,
 			rightAstNode, rightType), leftType
-	elif stmnt._op.content in OpBin:
+	elif stmnt._op.content in OpBin:  # except comparisons. handled above
 		a = ast.BinOp()
 		a.op = OpBin[stmnt._op.content]()
 		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
@@ -1306,13 +1311,6 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		commonType = stmnt.getValueType(funcEnv.globalScope.stateStruct)
 		# Note: No pointer arithmetic here, that case is caught above.
 		return getAstNode_newTypeInstance(funcEnv.interpreter, commonType, a), commonType
-	elif stmnt._op.content == ",":
-		a = ast.Tuple(ctx=ast.Load())
-		left_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
-		right_ast = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
-		a.elts = (left_ast, right_ast)
-		b = ast.Subscript(value=a, slice=ast.Num(n=1), ctx=ast.Load())
-		return b, rightType
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
