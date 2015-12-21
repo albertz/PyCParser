@@ -155,6 +155,7 @@ class Wrapper:
 		wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 		wrapCFunc(state, "isspace", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 		wrapCFunc(state, "isdigit", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+		wrapCFunc(state, "isxdigit", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
 		def assert_wrap(x): assert x
