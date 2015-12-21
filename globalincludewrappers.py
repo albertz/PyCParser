@@ -63,6 +63,7 @@ class Wrapper:
 		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"), name="stdout")
 		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"), name="stderr")
 		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
+		wrapCFunc(state, "sprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
 		wrapCFunc(state, "vfprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p, ctypes.c_void_p)) # TODO
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
 		wrapCFunc(state, "fgets", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_int, FileP))
