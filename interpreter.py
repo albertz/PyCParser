@@ -1150,6 +1150,25 @@ def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
 	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
 	return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
 
+def getAstNode_ptrSubstract(stateStruct, aAst, aType, bAst, bType):
+	if isinstance(aType, CArrayType):
+		aType = CPointerType(aType.arrayOf)
+	if isinstance(bType, CArrayType):
+		bType = CPointerType(bType.arrayOf)
+	assert isPointerType(aType)
+	assert isPointerType(bType)
+	assert isSameType(stateStruct, aType, bType)
+	aValueAst = getAstNode_valueFromObj(stateStruct, aAst, aType)
+	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
+	subAst = ast.BinOp(left=aValueAst, op=ast.Sub(), right=bValueAst)
+	aCType = getCType(aType.pointerOf, stateStruct)
+	assert aCType is not None
+	s = ctypes.sizeof(aCType)
+	divAst = ast.BinOp(left=subAst, op=ast.Div(), right=ast.Num(n=s))
+	resultAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_long"), divAst)
+	return resultAst
+
+
 def _resolveSingleStatement(stmnt):
 	if not isinstance(stmnt, CStatement): return stmnt
 	if stmnt._op is None and stmnt._rightexpr is None:
@@ -1268,6 +1287,12 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		if isinstance(leftType, CArrayType):
 			# The value-AST will be a pointer.
 			leftType = CPointerType(ptr=leftType.arrayOf)
+		if isPointerType(rightType):
+			assert stmnt._op.content == "-"
+			return getAstNode_ptrSubstract(
+				funcEnv.globalScope.stateStruct,
+				leftAstNode, leftType,
+				rightAstNode, rightType), CStdIntType("ptrdiff_t")
 		return getAstNode_ptrBinOpExpr(
 			funcEnv.globalScope.stateStruct,
 			leftAstNode, leftType,
