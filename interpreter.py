@@ -13,6 +13,7 @@ import sys
 import inspect
 import goto
 from weakref import ref, WeakValueDictionary
+from sortedcontainers.sortedset import SortedSet
 
 
 class CWrapValue(CType):
@@ -1564,14 +1565,22 @@ def _ctype_collect_objects(obj):
 	d = {}  # id(o) -> o
 	def collect(o):
 		if o is None: return
-		if isinstance(o, dict): return  # not sure, ctypes sometimes has that in _objects
 		if id(o) in d: return
 		d[id(o)] = o
-		visit(o)
-	def visit(b):
-		if b._objects:
-			for o in b._objects.values():
-				collect(o)
+		visit_c(o)
+	def visit_generic(o):
+		if isinstance(o, dict):
+			for s in o.values():
+				visit_generic(s)
+		elif isinstance(o, tuple):
+			for s in o:
+				visit_generic(s)
+		elif isinstance(o, str):
+			pass
+		else:
+			collect(o)
+	def visit_c(b):
+		visit_generic(b._objects)
 		collect(b._b_base_)
 	collect(obj)
 	return d.values()
@@ -1583,7 +1592,7 @@ def _fixCType(t, wrap=False):
 	return t
 
 
-class CTypesWrapper:
+class CTypesWrapper(object):
 	def __setattr__(self, name, value):
 		self.__dict__[name] = value
 
@@ -1612,6 +1621,7 @@ class Interpreter:
 		# When the real ctype objects go out of scope, we don't want to
 		# keep them alive.
 		self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
+		self.pointerStorageRanges = SortedSet()  # (ptr-addr,size) tuples
 		# Here we hold constant strings, because they need some global
 		# storage which will not get freed.
 		self.constStrings = {}  # str -> ctype c_char_p
@@ -1660,6 +1670,7 @@ class Interpreter:
 		t = self.ctypes_wrapped.c_byte * (len(s) + 1)
 		buf = t(*map(ord, s))
 		self.constStrings[s] = buf
+		self._storePtr(buf)
 		return buf
 
 	def _malloc(self, size):
@@ -1704,8 +1715,24 @@ class Interpreter:
 		for obj in objs:
 			obj_ptr_addr = _ctype_get_ptr_addr(obj)
 			if ptr_addr == obj_ptr_addr + offset:
-				self.pointerStorage[ptr_addr] = obj
+				self.pointerStorage[obj_ptr_addr] = obj
+				if offset != 0:
+					self.pointerStorage[ptr_addr] = obj
+				obj_size = ctypes.sizeof(obj)
+				self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
 				return ptr
+		# This is slower. Check pointerStorageRanges if we have it.
+		for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
+			reverse=True, maximum=(ptr_addr + 1, 0), inclusive=(True, False)
+		):
+			if obj_ptr_addr + obj_size <= ptr_addr: break
+			# Found it!
+			obj = self.pointerStorage.get(obj_ptr_addr, None)
+			if obj is None:  # not alive anymore
+				self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
+				break
+			self.pointerStorage[ptr_addr] = obj
+			return ptr
 		# Note: This can also/esp happen when the ptr was not allocated by us.
 		# Not sure how to handle that yet...
 		raise NotImplementedError(
@@ -1798,15 +1825,14 @@ class Interpreter:
 			if arg is None:
 				return ctyp()
 			elif isinstance(arg, (str,unicode)):
-				return ctypes.cast(ctypes.c_char_p(arg), ctyp)
+				return self._make_string(arg)
 			assert isinstance(arg, (list,tuple))
 			o = (ctyp._type_ * (len(arg) + 1))()
 			for i in xrange(len(arg)):
 				o[i] = self._castArgToCType(arg[i], typ.pointerOf)
 			op = ctypes.pointer(o)
 			op = ctypes.cast(op, ctyp)
-			# TODO: what when 'o' goes out of scope and freed?
-			return op
+			return self._storePtr(op)
 		elif isinstance(arg, (int,long)):
 			t = minCIntTypeForNums(arg)
 			if t is None: t = "int64_t" # it's an overflow; just take a big type
