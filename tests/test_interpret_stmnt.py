@@ -2317,7 +2317,7 @@ def test_interpret_macro_version_hex():
 def test_interpret_double_macro_rec():
 	"""
 	Check cpre2_parse() for correctly substituting macros
-	-- not applying the same macro twice.
+	-- not applying the same macro twice in recursion.
 	"""
 	state = parse("""
 	int a() { return 2; }
@@ -2338,3 +2338,20 @@ def test_interpret_double_macro_rec():
 	print "result:", r_a, r_b
 	assert r_a.value == 2
 	assert r_b.value == 3
+
+
+def test_interpret_double_macro_rec_linear():
+	state = parse("""
+	int a() { return 2; }
+	#define b a
+	#define x (1 + b() + b())
+	int f() { return x; }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r_a.value == 5
