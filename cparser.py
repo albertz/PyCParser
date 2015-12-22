@@ -2206,6 +2206,8 @@ def getValueType(stateStruct, obj):
 			base_type = base_type.type
 		assert isinstance(base_type, (CFuncPointerDecl,CFunc))
 		return base_type.type  # return-type
+	if isinstance(obj, CFunc):
+		return obj
 	if isinstance(obj, CSizeofSymbol):
 		return CFunc(type=CStdIntType("size_t"))
 	if isinstance(obj, CStr):

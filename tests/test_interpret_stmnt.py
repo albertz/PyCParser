@@ -2340,6 +2340,21 @@ def test_interpret_double_macro_rec():
 	assert r_b.value == 3
 
 
+def test_interpret_simple_add_two_b():
+	state = parse("""
+	int a() { return 2; }
+	int f() { return 1 + a() + a(); }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
+
+
 def test_interpret_double_macro_rec_linear():
 	state = parse("""
 	int a() { return 2; }
@@ -2354,4 +2369,4 @@ def test_interpret_double_macro_rec_linear():
 	print "Run:"
 	r = interpreter.runFunc("f")
 	print "result:", r
-	assert r_a.value == 5
+	assert r.value == 5
