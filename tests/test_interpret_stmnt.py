@@ -2258,3 +2258,58 @@ def test_interpret_octal():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 12
+
+
+def test_interpret_macro_version_hex():
+	state = parse("""
+	/* Values for PY_RELEASE_LEVEL */
+	#define PY_RELEASE_LEVEL_ALPHA	0xA
+	#define PY_RELEASE_LEVEL_BETA	0xB
+	#define PY_RELEASE_LEVEL_GAMMA	0xC     /* For release candidates */
+	#define PY_RELEASE_LEVEL_FINAL	0xF	/* Serial should be 0 here */
+						/* Higher for patch releases */
+
+	/* Version parsed out into numeric values */
+	/*--start constants--*/
+	#define PY_MAJOR_VERSION	2
+	#define PY_MINOR_VERSION	7
+	#define PY_MICRO_VERSION	5
+	#define PY_RELEASE_LEVEL	PY_RELEASE_LEVEL_FINAL
+	#define PY_RELEASE_SERIAL	0
+
+	/* Version as a string */
+	#define PY_VERSION      	"2.7.5"
+	/*--end constants--*/
+
+	/* Subversion Revision number of this file (not of the repository). Empty
+	   since Mercurial migration. */
+	#define PY_PATCHLEVEL_REVISION  ""
+
+	/* Version as a single 4-byte hex number, e.g. 0x010502B2 == 1.5.2b2.
+	   Use this for numeric comparisons, e.g. #if PY_VERSION_HEX >= ... */
+	#define PY_VERSION_HEX ((PY_MAJOR_VERSION << 24) | \
+				(PY_MINOR_VERSION << 16) | \
+				(PY_MICRO_VERSION <<  8) | \
+				(PY_RELEASE_LEVEL <<  4) | \
+				(PY_RELEASE_SERIAL << 0))
+
+	long f() {
+		return PY_VERSION_HEX;
+	}
+	""")
+	print "Parsed:"
+	print "f:", state.funcs["f"]
+	print "f body:"
+	assert isinstance(state.funcs["f"].body, CBody)
+	pprint(state.funcs["f"].body.contentlist)
+
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r, hex(r.value)
+	assert isinstance(r, ctypes.c_long)
+	assert r.value == 0x20705f0
+

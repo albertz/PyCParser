@@ -2201,9 +2201,10 @@ def getValueType(stateStruct, obj):
 	if isinstance(obj, CChar):
 		return CBuiltinType(("char",))
 	if isinstance(obj, CNumber):
+		# TODO handle typeSpec
 		if isinstance(obj.content, float):
 			return CBuiltinType(("double",))
-		t = minCIntTypeForNums(obj.content, minBits=8, maxBits=64, useUnsignedTypes=True)
+		t = minCIntTypeForNums(obj.content, minBits=32, maxBits=64, useUnsignedTypes=True)
 		assert t, "no int type for %r" % obj
 		return CStdIntType(t)
 	assert False, "no type for %r" % obj
