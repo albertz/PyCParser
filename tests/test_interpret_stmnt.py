@@ -2370,3 +2370,22 @@ def test_interpret_double_macro_rec_linear():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_undefined_macro():
+	state = parse("""
+	int f() {
+	#if not_defined_macro
+		return -3;
+	#endif
+		return 5;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5

@@ -646,7 +646,7 @@ def cpreprocess_evaluate_single(state, arg):
 		state.error("preprocessor eval single: '" + arg + "' is not a valid macro name")
 		return 0
 	if arg not in state.macros:
-		state.error("preprocessor eval single: '" + arg + "' is unknown")
+		# This is not an error.
 		return 0
 	try:
 		resolved = state.macros[arg]()
