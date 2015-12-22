@@ -1321,7 +1321,7 @@ def cpre2_parse_number(stateStruct, s):
 		stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
 		return 0
 
-def cpre2_parse(stateStruct, input, brackets = None):
+def cpre2_parse(stateStruct, input, brackets=None):
 	"""
 	:type stateStruct: State
 	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution
@@ -1339,14 +1339,14 @@ def cpre2_parse(stateStruct, input, brackets = None):
 	import itertools
 	input = itertools.chain(input, "\n")
 	input = iter(input)
-	buffer = ""
-	marked_macros = set()
+	macro_blacklist = set()
+	buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
 	while True:
-		if buffer:
-			c = buffer[0]
-			buffer = buffer[1:]
+		if buffer_stack[-1][1]:
+			c = buffer_stack[-1][1][0]
+			buffer_stack[-1][1] = buffer_stack[-1][1][1:]
+			# finalize handling will be at the end of the loop
 		else:
-			marked_macros.clear()
 			try:
 				c = next(input)
 			except StopIteration:
@@ -1424,8 +1424,7 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					if laststr in stateStruct.macros and laststr not in marked_macros:
-						marked_macros.add(laststr)
+					if laststr in stateStruct.macros and laststr not in macro_blacklist:
 						macroname = laststr
 						macroargs = []
 						macrobrackets = []
@@ -1509,8 +1508,9 @@ def cpre2_parse(stateStruct, input, brackets = None):
 				except Exception as e:
 					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + repr(e))
 					resolved = ""
-				resolved += c
-				buffer = resolved + buffer
+				buffer_stack += [[macroname, resolved]]
+				macro_blacklist.add(macroname)
+				buffer_stack[-2][1] = c + buffer_stack[-2][1]
 				state = 0
 			elif state == 40: # op
 				if c in OpChars:
@@ -1525,6 +1525,11 @@ def cpre2_parse(stateStruct, input, brackets = None):
 					breakLoop = False
 			else:
 				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
+		# Finalize buffer_stack here. Here because the macro_blacklist needs to be active
+		# in the code above.
+		if len(buffer_stack) > 1 and not buffer_stack[-1][1]:
+			macro_blacklist.remove(buffer_stack[-1][0])
+			buffer_stack = buffer_stack[:-1]
 
 def cpre2_tokenstream_asCCode(input):
 	needspace = False
