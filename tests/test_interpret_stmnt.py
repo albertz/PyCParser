@@ -2313,3 +2313,28 @@ def test_interpret_macro_version_hex():
 	assert isinstance(r, ctypes.c_long)
 	assert r.value == 0x20705f0
 
+
+def test_interpret_double_macro_rec():
+	"""
+	Check cpre2_parse() for correctly substituting macros
+	-- not applying the same macro twice.
+	"""
+	state = parse("""
+	int a() { return 2; }
+	int b() { return 3; }
+	#define a b
+	#define b a
+	int f_a() { return a(); }
+	int f_b() { return b(); }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f_a", output=sys.stdout)
+	interpreter.dumpFunc("f_b", output=sys.stdout)
+	print "Run:"
+	r_a = interpreter.runFunc("f_a")
+	r_b = interpreter.runFunc("f_b")
+	print "result:", r_a, r_b
+	assert r_a.value == 2
+	assert r_b.value == 3

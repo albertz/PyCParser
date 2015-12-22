@@ -1340,11 +1340,13 @@ def cpre2_parse(stateStruct, input, brackets = None):
 	input = itertools.chain(input, "\n")
 	input = iter(input)
 	buffer = ""
+	marked_macros = set()
 	while True:
 		if buffer:
 			c = buffer[0]
 			buffer = buffer[1:]
 		else:
+			marked_macros.clear()
 			try:
 				c = next(input)
 			except StopIteration:
@@ -1422,7 +1424,8 @@ def cpre2_parse(stateStruct, input, brackets = None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					if laststr in stateStruct.macros:
+					if laststr in stateStruct.macros and laststr not in marked_macros:
+						marked_macros.add(laststr)
 						macroname = laststr
 						macroargs = []
 						macrobrackets = []
