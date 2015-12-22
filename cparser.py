@@ -1342,11 +1342,14 @@ def cpre2_parse(stateStruct, input, brackets=None):
 	macro_blacklist = set()
 	buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
 	while True:
-		if buffer_stack[-1][1]:
-			c = buffer_stack[-1][1][0]
-			buffer_stack[-1][1] = buffer_stack[-1][1][1:]
+		c = None
+		for i in reversed(range(len(buffer_stack))):
+			if not buffer_stack[i][1]: continue
+			c = buffer_stack[i][1][0]
+			buffer_stack[i][1] = buffer_stack[i][1][1:]
 			# finalize handling will be at the end of the loop
-		else:
+			break
+		if c is None:
 			try:
 				c = next(input)
 			except StopIteration:
@@ -1432,6 +1435,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 						if stateStruct.macros[macroname].args is None:
 							state = 32 # finalize macro directly. there can't be any args
 						breakLoop = False
+						laststr = ""
 					else:
 						if laststr == "__FILE__":
 							yield CStr(stateStruct.curFile())
@@ -1527,7 +1531,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
 		# Finalize buffer_stack here. Here because the macro_blacklist needs to be active
 		# in the code above.
-		if len(buffer_stack) > 1 and not buffer_stack[-1][1]:
+		if not laststr and len(buffer_stack) > 1 and not buffer_stack[-1][1]:
 			macro_blacklist.remove(buffer_stack[-1][0])
 			buffer_stack = buffer_stack[:-1]
 
