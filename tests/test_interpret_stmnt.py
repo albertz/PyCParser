@@ -2391,13 +2391,11 @@ def test_interpret_undefined_macro():
 	assert r.value == 5
 
 
-def test_interpret_macro_max():
+def test_interpret_macro_call_twice():
 	state = parse("""
-	#define MAX(x, y) ((x) < (y) ? (y) : (x))
-	#define MIN(x, y) ((x) < (y) ? (x) : (y))
-	int f(int a, int b) {
-		int l = MIN(2, MAX(MAX(a, b), 1));
-		return l;
+	#define INC(x) (x + 1)
+	int f(int a) {
+		return INC(INC(a));
 	}
 	""")
 	interpreter = Interpreter()
@@ -2405,6 +2403,6 @@ def test_interpret_macro_max():
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run:"
-	r = interpreter.runFunc("f", 1, 3)
+	r = interpreter.runFunc("f", 3)
 	print "result:", r
-	assert r.value == 2
+	assert r.value == 5
