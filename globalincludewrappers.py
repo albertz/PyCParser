@@ -182,7 +182,9 @@ class Wrapper:
 		state.macros["SIG_DFL"] = Macro(rightside="(void (*)(int))0")
 		state.macros["SIG_IGN"] = Macro(rightside="(void (*)(int))1")
 		state.macros["SIG_ERR"] = Macro(rightside="((void (*)(int))-1)")
-		
+	def handle_locale_h(self, state):
+		pass
+
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
 		return getattr(self, funcname, None)
