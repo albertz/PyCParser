@@ -2389,3 +2389,210 @@ def test_interpret_undefined_macro():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_macro_max():
+	state = parse("""
+	typedef long Py_ssize_t;
+	int memcpy(void*,void*,int) { return 0; }
+	void* memset(void*,int,int) { return 0; }
+	int strlen(char*) { return 0; }
+
+	/* this is sort of a hack.  there's at least one place (formatting
+	   floats) where some stringlib code takes a different path if it's
+	   compiled as unicode. */
+	#define STRINGLIB_IS_UNICODE     0
+
+	#define STRINGLIB_OBJECT         PyStringObject
+	#define STRINGLIB_CHAR           char
+	#define STRINGLIB_TYPE_NAME      "string"
+	#define STRINGLIB_PARSE_CODE     "S"
+	#define STRINGLIB_EMPTY          nullstring
+	#define STRINGLIB_ISSPACE        Py_ISSPACE
+	#define STRINGLIB_ISLINEBREAK(x) ((x == '\\n') || (x == '\\r'))
+	#define STRINGLIB_ISDECIMAL(x)   ((x >= '0') && (x <= '9'))
+	#define STRINGLIB_TODECIMAL(x)   (STRINGLIB_ISDECIMAL(x) ? (x - '0') : -1)
+	#define STRINGLIB_TOUPPER        Py_TOUPPER
+	#define STRINGLIB_TOLOWER        Py_TOLOWER
+	#define STRINGLIB_FILL           memset
+	#define STRINGLIB_STR            PyString_AS_STRING
+	#define STRINGLIB_LEN            PyString_GET_SIZE
+	#define STRINGLIB_NEW            PyString_FromStringAndSize
+	#define STRINGLIB_RESIZE         _PyString_Resize
+	#define STRINGLIB_CHECK          PyString_Check
+	#define STRINGLIB_CHECK_EXACT    PyString_CheckExact
+	#define STRINGLIB_TOSTR          PyObject_Str
+	#define STRINGLIB_GROUPING       _PyString_InsertThousandsGrouping
+	#define STRINGLIB_GROUPING_LOCALE _PyString_InsertThousandsGroupingLocale
+
+	#define STRINGLIB_WANT_CONTAINS_OBJ 1
+
+	#include <locale.h>
+
+	#define MAX(x, y) ((x) < (y) ? (y) : (x))
+	#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+	typedef struct {
+		const char *grouping;
+		char previous;
+		Py_ssize_t i; /* Where we're currently pointing in grouping. */
+	} GroupGenerator;
+
+	static void
+	_GroupGenerator_init(GroupGenerator *self, const char *grouping)
+	{
+		self->grouping = grouping;
+		self->i = 0;
+		self->previous = 0;
+	}
+
+	/* Returns the next grouping, or 0 to signify end. */
+	static Py_ssize_t
+	_GroupGenerator_next(GroupGenerator *self)
+	{
+		/* Note that we don't really do much error checking here. If a
+		   grouping string contains just CHAR_MAX, for example, then just
+		   terminate the generator. That shouldn't happen, but at least we
+		   fail gracefully. */
+		switch (self->grouping[self->i]) {
+		case 0:
+			return self->previous;
+		case CHAR_MAX:
+			/* Stop the generator. */
+			return 0;
+		default: {
+			char ch = self->grouping[self->i];
+			self->previous = ch;
+			self->i++;
+			return (Py_ssize_t)ch;
+		}
+		}
+	}
+
+	/* Fill in some digits, leading zeros, and thousands separator. All
+	   are optional, depending on when we're called. */
+	static void
+	fill(STRINGLIB_CHAR **digits_end, STRINGLIB_CHAR **buffer_end,
+		 Py_ssize_t n_chars, Py_ssize_t n_zeros, const char* thousands_sep,
+		 Py_ssize_t thousands_sep_len)
+	{
+	#if STRINGLIB_IS_UNICODE
+		Py_ssize_t i;
+	#endif
+
+		if (thousands_sep) {
+			*buffer_end -= thousands_sep_len;
+
+			/* Copy the thousands_sep chars into the buffer. */
+	#if STRINGLIB_IS_UNICODE
+			/* Convert from the char's of the thousands_sep from
+			   the locale into unicode. */
+			for (i = 0; i < thousands_sep_len; ++i)
+				(*buffer_end)[i] = thousands_sep[i];
+	#else
+			/* No conversion, just memcpy the thousands_sep. */
+			memcpy(*buffer_end, thousands_sep, thousands_sep_len);
+	#endif
+		}
+
+		*buffer_end -= n_chars;
+		*digits_end -= n_chars;
+		memcpy(*buffer_end, *digits_end, n_chars * sizeof(STRINGLIB_CHAR));
+
+		*buffer_end -= n_zeros;
+		STRINGLIB_FILL(*buffer_end, '0', n_zeros);
+	}
+
+	Py_ssize_t
+	_Py_InsertThousandsGrouping(STRINGLIB_CHAR *buffer,
+								Py_ssize_t n_buffer,
+								STRINGLIB_CHAR *digits,
+								Py_ssize_t n_digits,
+								Py_ssize_t min_width,
+								const char *grouping,
+								const char *thousands_sep)
+	{
+		Py_ssize_t count = 0;
+		Py_ssize_t n_zeros;
+		int loop_broken = 0;
+		int use_separator = 0; /* First time through, don't append the
+								  separator. They only go between
+								  groups. */
+		STRINGLIB_CHAR *buffer_end = NULL;
+		STRINGLIB_CHAR *digits_end = NULL;
+		Py_ssize_t l;
+		Py_ssize_t n_chars;
+		Py_ssize_t thousands_sep_len = strlen(thousands_sep);
+		Py_ssize_t remaining = n_digits; /* Number of chars remaining to
+											be looked at */
+		/* A generator that returns all of the grouping widths, until it
+		   returns 0. */
+		GroupGenerator groupgen;
+		_GroupGenerator_init(&groupgen, grouping);
+
+		if (buffer) {
+			buffer_end = buffer + n_buffer;
+			digits_end = digits + n_digits;
+		}
+
+		while ((l = _GroupGenerator_next(&groupgen)) > 0) {
+			l = MIN(l, MAX(MAX(remaining, min_width), 1));
+			n_zeros = MAX(0, l - remaining);
+			n_chars = MAX(0, MIN(remaining, l));
+
+			/* Use n_zero zero's and n_chars chars */
+
+			/* Count only, don't do anything. */
+			count += (use_separator ? thousands_sep_len : 0) + n_zeros + n_chars;
+
+			if (buffer) {
+				/* Copy into the output buffer. */
+				fill(&digits_end, &buffer_end, n_chars, n_zeros,
+					 use_separator ? thousands_sep : NULL, thousands_sep_len);
+			}
+
+			/* Use a separator next time. */
+			use_separator = 1;
+
+			remaining -= n_chars;
+			min_width -= l;
+
+			if (remaining <= 0 && min_width <= 0) {
+				loop_broken = 1;
+				break;
+			}
+			min_width -= thousands_sep_len;
+		}
+		if (!loop_broken) {
+			/* We left the loop without using a break statement. */
+
+			l = MAX(MAX(remaining, min_width), 1);
+			n_zeros = MAX(0, l - remaining);
+			n_chars = MAX(0, MIN(remaining, l));
+
+			/* Use n_zero zero's and n_chars chars */
+			count += (use_separator ? thousands_sep_len : 0) + n_zeros + n_chars;
+			if (buffer) {
+				/* Copy into the output buffer. */
+				fill(&digits_end, &buffer_end, n_chars, n_zeros,
+					 use_separator ? thousands_sep : NULL, thousands_sep_len);
+			}
+		}
+		return count;
+	}
+
+	Py_ssize_t
+	_Py_InsertThousandsGroupingLocale(STRINGLIB_CHAR *buffer,
+									  Py_ssize_t n_buffer,
+									  STRINGLIB_CHAR *digits,
+									  Py_ssize_t n_digits,
+									  Py_ssize_t min_width)
+	{
+			struct lconv *locale_data = localeconv();
+			const char *grouping = locale_data->grouping;
+			const char *thousands_sep = locale_data->thousands_sep;
+
+			return _Py_InsertThousandsGrouping(buffer, n_buffer, digits, n_digits,
+											   min_width, grouping, thousands_sep);
+	}
+	""", withGlobalIncludeWrappers=True)
