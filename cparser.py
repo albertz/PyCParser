@@ -3860,9 +3860,15 @@ def parse_code(source_code, state=None):
 		state = State()
 		state.autoSetupSystemMacros()
 
-	preprocessed = state.preprocess_source_code(source_code)
-	tokens = cpre2_parse(state, preprocessed)
-	cpre3_parse(state, tokens)
+	try:
+		preprocessed = state.preprocess_source_code(source_code)
+		tokens = cpre2_parse(state, preprocessed)
+		cpre3_parse(state, tokens)
+	except Exception as e:
+		state.error("internal exception: %r" % e)
+		print "parsing errors:"
+		for s in state._errors: print s
+		raise
 
 	return state
 
