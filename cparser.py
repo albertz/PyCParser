@@ -1291,7 +1291,12 @@ class CChar(_CBase):
 		assert 0 <= content <= 255, "CChar expects number in range 0-255, got " + str(content)
 		_CBase.__init__(self, content, rawstr, **kwargs)
 	def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
-	def asCCode(self, indent=""): return indent + "'" + escape_cstr(self.content) + '"'
+	def asCCode(self, indent=""):
+		if isinstance(self.content, str):
+			return indent + "'" + escape_cstr(self.content) + "'"
+		else:
+			assert isinstance(self.content, int)
+			return indent + "'" + escape_cstr(chr(self.content)) + "'"
 class CNumber(_CBase):
 	typeSpec = None  # prefix like "f", "i" or so, or None
 	def asCCode(self, indent=""): return indent + self.rawstr
@@ -1345,15 +1350,45 @@ def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
 			args.append("")
 		else:
 			if not args: args.append("")
-			args[-1] += s.asCCode()
+			args[-1] += " " + s.asCCode()
 	stateStruct.error("cpre2 parse args: runaway")
 	return args
+
+class _Pre2ParseStream:
+	def __init__(self, input):
+		self.input = input
+		self.macro_blacklist = set()
+		self.buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
+
+	def next_char(self):
+		for i in reversed(range(len(self.buffer_stack))):
+			if not self.buffer_stack[i][1]: continue
+			c = self.buffer_stack[i][1][0]
+			self.buffer_stack[i][1] = self.buffer_stack[i][1][1:]
+			# finalize handling will be in finalize_char()
+			return c
+		try:
+			return next(self.input)
+		except StopIteration:
+			return None
+
+	def add_macro(self, macroname, resolved, c):
+		self.buffer_stack += [[macroname, resolved]]
+		self.macro_blacklist.add(macroname)
+		self.buffer_stack[-2][1] = c + self.buffer_stack[-2][1]
+
+	def finalize_char(self, laststr):
+		# Finalize buffer_stack here. Here because the macro_blacklist needs to be active
+		# in the code above.
+		if not laststr and len(self.buffer_stack) > 1 and not self.buffer_stack[-1][1]:
+			self.macro_blacklist.remove(self.buffer_stack[-1][0])
+			self.buffer_stack = self.buffer_stack[:-1]
 
 def cpre2_parse(stateStruct, input, brackets=None):
 	"""
 	:type stateStruct: State
-	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution.
-		usually via cpreprocess_parse().
+	:param str | iterable[char] | _Pre2ParseStream input: chars of preprocessed C code.
+		except of macro substitution. usually via cpreprocess_parse().
 	:param list[str] | None brackets: opening brackets stack
 	:returns token iterator. this will also substitute macros
 	The input comes more or less from cpreprocess_parse().
@@ -1361,26 +1396,15 @@ def cpre2_parse(stateStruct, input, brackets=None):
 	"""
 	state = 0
 	if brackets is None: brackets = []
-	intial_bracket_len = len(brackets)
+	if not isinstance(input, _Pre2ParseStream):
+		input = _Pre2ParseStream(input)
 	laststr = ""
 	macroname = ""
 	macroargs = []
-	input = iter(input)
-	macro_blacklist = set()
-	buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
 	while True:
-		c = None
-		for i in reversed(range(len(buffer_stack))):
-			if not buffer_stack[i][1]: continue
-			c = buffer_stack[i][1][0]
-			buffer_stack[i][1] = buffer_stack[i][1][1:]
-			# finalize handling will be at the end of the loop
-			break
+		c = input.next_char()
 		if c is None:
-			try:
-				c = next(input)
-			except StopIteration:
-				break
+			break
 		breakLoop = False
 		while not breakLoop:
 			breakLoop = True
@@ -1454,7 +1478,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 			elif state == 30: # identifier
 				if c in NumberChars + LetterChars + "_": laststr += c
 				else:
-					if laststr in stateStruct.macros and laststr not in macro_blacklist:
+					if laststr in stateStruct.macros and laststr not in input.macro_blacklist:
 						macroname = laststr
 						macroargs = []
 						state = 31
@@ -1479,8 +1503,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 						state = 32
 						breakLoop = False
 					else:
-						brackets.append(c)
-						macroargs = _cpre2_parse_args(stateStruct, input, brackets=brackets)
+						macroargs = _cpre2_parse_args(stateStruct, input, brackets=brackets + [c])
 						state = 32
 						# break loop, we consumed this char
 				else:
@@ -1492,9 +1515,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 				except Exception as e:
 					stateStruct.error("cpre2 parse unfold macro " + macroname + " error: " + repr(e))
 					resolved = ""
-				buffer_stack += [[macroname, resolved]]
-				macro_blacklist.add(macroname)
-				buffer_stack[-2][1] = c + buffer_stack[-2][1]
+				input.add_macro(macroname, resolved, c)
 				state = 0
 			elif state == 40: # op
 				if c in OpChars:
@@ -1509,11 +1530,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 					breakLoop = False
 			else:
 				stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
-		# Finalize buffer_stack here. Here because the macro_blacklist needs to be active
-		# in the code above.
-		if not laststr and len(buffer_stack) > 1 and not buffer_stack[-1][1]:
-			macro_blacklist.remove(buffer_stack[-1][0])
-			buffer_stack = buffer_stack[:-1]
+		input.finalize_char(laststr)
 
 def cpre2_tokenstream_asCCode(input):
 	needspace = False
@@ -3487,7 +3504,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 			if curCObj.name is None:
 				curCObj.name = token.content
 			else:
-				stateStruct.error("cpre3 parse single after " + str(curCObj) + ": got second identifier '" + token.content + "'")
+				stateStruct.error("cpre3 parse single after %s: got second identifier %s" % (curCObj, token))
 		elif isinstance(curCObj, CStatement):
 			curCObj._cpre3_handle_token(stateStruct, token)
 			if isinstance(curCObj, CGotoLabel):
@@ -3498,7 +3515,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
 		elif curCObj is not None and isinstance(curCObj.body, CStatement):
 			curCObj.body._cpre3_handle_token(stateStruct, token)
 		elif isinstance(curCObj, _CControlStructure):
-			stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected identifier '" + token.content + "'")
+			stateStruct.error("cpre3 parse after %s: didn't expected identifier %s" % (curCObj, token))
 		elif curCObj is None:
 			curCObj = CStatement(parent=parentCObj)
 			curCObj._cpre3_handle_token(stateStruct, token)
