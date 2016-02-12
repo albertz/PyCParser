@@ -1262,6 +1262,9 @@ def cpreprocess_parse(stateStruct, input):
 		elif c == "\t": stateStruct.incIncludeLineChar(char=4, charMod=4)
 		else: stateStruct.incIncludeLineChar(char=1)
 
+	# yield dummy additional new-line at end
+	yield "\n"
+
 class _CBase(object):
 	def __init__(self, content=None, rawstr=None, **kwargs):
 		self.content = content
@@ -1321,10 +1324,36 @@ def cpre2_parse_number(stateStruct, s):
 		stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
 		return 0
 
+def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
+	"""
+	:type stateStruct: State
+	:param iterable[char] input: like cpre2_parse
+	:param list[str] brackets: opening brackets stack
+	:param sep_type: the separator type, e.g. CSemicolon or COp
+	:returns list of args, where each arg is a list of tokens from cpre2_parse.
+	:rtype: list[list[token]]
+	"""
+	initial_bracket_len = len(brackets)
+	args = []
+	for s in cpre2_parse(stateStruct, input, brackets=brackets):
+		if len(brackets) < initial_bracket_len:
+			# We got the final closing bracket. We have finished parsing the args.
+			assert isinstance(s, CClosingBracket)
+			assert len(brackets) == initial_bracket_len - 1
+			return args
+		if len(brackets) == initial_bracket_len and s == separator:
+			args.append("")
+		else:
+			if not args: args.append("")
+			args[-1] += s.asCCode()
+	stateStruct.error("cpre2 parse args: runaway")
+	return args
+
 def cpre2_parse(stateStruct, input, brackets=None):
 	"""
 	:type stateStruct: State
-	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution
+	:param str | iterable[char] input: chars of preprocessed C code. except of macro substitution.
+		usually via cpreprocess_parse().
 	:param list[str] | None brackets: opening brackets stack
 	:returns token iterator. this will also substitute macros
 	The input comes more or less from cpreprocess_parse().
@@ -1332,12 +1361,10 @@ def cpre2_parse(stateStruct, input, brackets=None):
 	"""
 	state = 0
 	if brackets is None: brackets = []
+	intial_bracket_len = len(brackets)
 	laststr = ""
 	macroname = ""
 	macroargs = []
-	macrobrackets = []
-	import itertools
-	input = itertools.chain(input, "\n")
 	input = iter(input)
 	macro_blacklist = set()
 	buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
@@ -1373,7 +1400,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
 					state = 30
 				elif c in OpeningBrackets:
 					yield COpeningBracket(c, brackets=list(brackets))
-					brackets += [c]
+					brackets.append(c)
 				elif c in ClosingBrackets:
 					if len(brackets) == 0 or ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(brackets[-1]) - 1] != c:
 						stateStruct.error("cpre2 parse: got '" + c + "' but bracket level was " + str(brackets))
@@ -1430,7 +1457,6 @@ def cpre2_parse(stateStruct, input, brackets=None):
 					if laststr in stateStruct.macros and laststr not in macro_blacklist:
 						macroname = laststr
 						macroargs = []
-						macrobrackets = []
 						state = 31
 						if stateStruct.macros[macroname].args is None:
 							state = 32 # finalize macro directly. there can't be any args
@@ -1447,65 +1473,19 @@ def cpre2_parse(stateStruct, input, brackets=None):
 						state = 0
 						breakLoop = False
 			elif state == 31: # after macro identifier
-				if not macrobrackets and c in SpaceChars + "\n": pass
+				if c in SpaceChars + "\n": pass
 				elif c in OpeningBrackets:
-					if len(macrobrackets) == 0 and c != "(":
+					if c != "(":
 						state = 32
 						breakLoop = False
 					else:
-						if macrobrackets:
-							if len(macroargs) == 0: macroargs = [""]
-							macroargs[-1] += c
-						macrobrackets += [c]
-				elif c in ClosingBrackets:
-					if len(macrobrackets) == 0:
+						brackets.append(c)
+						macroargs = _cpre2_parse_args(stateStruct, input, brackets=brackets)
 						state = 32
-						breakLoop = False
-					elif ClosingBrackets[len(OpeningBrackets) - OpeningBrackets.index(macrobrackets[-1]) - 1] != c:
-						stateStruct.error("cpre2 parse: got '" + c + "' but macro-bracket level was " + str(macrobrackets))
-						# ignore
-					else:
-						macrobrackets[:] = macrobrackets[:-1]
-						if macrobrackets:
-							if len(macroargs) == 0: macroargs = [""]
-							macroargs[-1] += c
-						else:
-							state = 32
-							# break loop, we consumed this char
-				elif c == ",":
-					if macrobrackets:
-						if len(macrobrackets) == 1:
-							if len(macroargs) == 0: macroargs = ["",""]
-							else: macroargs += [""]
-						else:
-							if len(macroargs) == 0: macroargs = [""]
-							macroargs[-1] += c
-					else:
-						state = 32
-						breakLoop = False
+						# break loop, we consumed this char
 				else:
-					if macrobrackets:
-						if len(macroargs) == 0: macroargs = [""]
-						macroargs[-1] += c
-						if c == "'": state = 311
-						elif c == '"': state = 313
-					else:
-						state = 32
-						breakLoop = False
-			elif state == 311: # in 'str in macro
-				macroargs[-1] += c
-				if c == "'": state = 31
-				elif c == "\\": state = 312
-			elif state == 312: # in escape in 'str in macro
-				macroargs[-1] += c
-				state = 311
-			elif state == 313: # in "str in macro
-				macroargs[-1] += c
-				if c == '"': state = 31
-				elif c == "\\": state = 314
-			elif state == 314: # in escape in "str in macro
-				macroargs[-1] += c
-				state = 313
+					state = 32
+					breakLoop = False
 			elif state == 32: # finalize macro
 				try:
 					resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
