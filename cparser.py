@@ -3304,7 +3304,12 @@ class CElseStatement(_CControlStructure):
 				last = base.body
 			else:
 				break
-			if not isinstance(last, CIfStatement): break
+			if not isinstance(last, CIfStatement):
+				if isinstance(last, (CForStatement, CWhileStatement)) and isinstance(last.body, CIfStatement):
+					# loop without curly braced body but directly an if
+					last = last.body
+				else:
+					break
 			if last.elsePart is not None:
 				base = last.elsePart
 			else:
