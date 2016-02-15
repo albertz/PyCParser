@@ -2482,3 +2482,21 @@ def test_interpret_for_if_else():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+
+def test_interpret_char_array_cast_len():
+	state = parse("""
+	int f() {
+		char formatbuf[(int)5];
+		return sizeof(formatbuf);
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
