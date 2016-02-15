@@ -2426,26 +2426,19 @@ def test_interpret_macro_concat():
 	assert r.value == 5
 
 
-def test_interpret_macro_with_const():
+def test_interpret_cast_const_void_p():
 	state = parse("""
-	void * memchr(const void *s, int c, size_t n) { return s; }
-
-	#define findchar(target, target_len, c)                         \\
-	  ((char *)memchr((const void *)(target), c, target_len))
-
-	int
-	countchar(const char *target, int target_len, char c, int maxcount)
-	{
-		int count=0;
-		const char *start=target;
-		const char *end=target+target_len;
-
-		while ( (start=findchar(start, end-start, c)) != 0 ) {
-			count++;
-			if (count >= maxcount)
-				break;
-			start += 1;
-		}
-		return count;
+	int f(const char *target) {
+		const void * x = 0;
+		x = (const void *)(target);
+		return 5;
 	}
 	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f", 0)
+	print "result:", r
+	assert r.value == 5
