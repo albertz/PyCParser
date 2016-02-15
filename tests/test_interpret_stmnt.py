@@ -2460,3 +2460,25 @@ def test_interpret_cast_const_int():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_for_if_else():
+	state = parse("""
+	int f() {
+		int i;
+		for (i = 0; i < 10; ++i)
+		if (i <= 2) {}
+		else {
+			return 5;
+		}
+		return -1;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
