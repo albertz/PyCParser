@@ -2406,3 +2406,21 @@ def test_interpret_macro_call_twice():
 	r = interpreter.runFunc("f", 3)
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_macro_concat():
+	state = parse("""
+	#define PREFIX( x) foo_ ## x
+	int f() {
+		int foo_bar = 5;
+		return PREFIX( bar);
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5

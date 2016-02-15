@@ -1350,7 +1350,8 @@ def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
 			args.append("")
 		else:
 			if not args: args.append("")
-			args[-1] += " " + s.asCCode()
+			if args[-1]: args[-1] += " "
+			args[-1] += s.asCCode()
 	stateStruct.error("cpre2 parse args: runaway")
 	return args
 
