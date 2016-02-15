@@ -183,7 +183,11 @@ class Wrapper:
 		state.macros["SIG_IGN"] = Macro(rightside="(void (*)(int))1")
 		state.macros["SIG_ERR"] = Macro(rightside="((void (*)(int))-1)")
 	def handle_locale_h(self, state):
-		pass
+		struct_lconv = state.structs["lconv"] = CStruct(name="stat") # TODO
+		struct_lconv.body = CBody(parent=struct_lconv)
+		CVarDecl(parent=struct_lconv, name="grouping", type=ctypes.c_char_p).finalize(state)
+		CVarDecl(parent=struct_lconv, name="thousands_sep", type=ctypes.c_char_p).finalize(state)
+		wrapCFunc(state, "localeconv", restype=struct_lconv, argtypes=())
 
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
