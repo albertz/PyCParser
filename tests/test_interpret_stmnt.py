@@ -2439,7 +2439,7 @@ def test_interpret_cast_const_void_p():
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run:"
-	r = interpreter.runFunc("f", 0)
+	r = interpreter.runFunc("f", "x")
 	print "result:", r
 	assert r.value == 5
 
@@ -2457,6 +2457,6 @@ def test_interpret_cast_const_int():
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run:"
-	r = interpreter.runFunc("f", 0)
+	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5

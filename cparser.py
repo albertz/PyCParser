@@ -2472,6 +2472,9 @@ class CStatement(_CBaseWithOptBody):
 						return
 					elif token.content == "sizeof":
 						obj = CSizeofSymbol()
+					elif token.content in stateStruct.Attribs:
+						self.attribs += [token.content]
+						return
 					else:
 						obj = findObjInNamespace(stateStruct, self.parent, token.content)
 						if obj is None:
