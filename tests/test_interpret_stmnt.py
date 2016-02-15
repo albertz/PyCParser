@@ -2424,3 +2424,28 @@ def test_interpret_macro_concat():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_macro_with_const():
+	state = parse("""
+	void * memchr(const void *s, int c, size_t n) { return s; }
+
+	#define findchar(target, target_len, c)                         \\
+	  ((char *)memchr((const void *)(target), c, target_len))
+
+	int
+	countchar(const char *target, int target_len, char c, int maxcount)
+	{
+		int count=0;
+		const char *start=target;
+		const char *end=target+target_len;
+
+		while ( (start=findchar(start, end-start, c)) != 0 ) {
+			count++;
+			if (count >= maxcount)
+				break;
+			start += 1;
+		}
+		return count;
+	}
+	""")
