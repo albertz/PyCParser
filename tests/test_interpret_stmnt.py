@@ -2442,3 +2442,21 @@ def test_interpret_cast_const_void_p():
 	r = interpreter.runFunc("f", 0)
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_cast_const_int():
+	state = parse("""
+	int f() {
+		int x = 0;
+		x = (const int)(5);
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f", 0)
+	print "result:", r
+	assert r.value == 5
