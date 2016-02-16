@@ -1221,6 +1221,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 				rightType = rightType.type
 			if isinstance(rightType, CPointerType):
 				return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
+			elif isinstance(rightType, CArrayType):
+				return getAstNodeArrayIndex(rightAstNode, 0), rightType.arrayOf
 			elif isinstance(rightType, CFuncPointerDecl):
 				return rightAstNode, rightType # we cannot really dereference a funcptr with ctypes ...
 			else:

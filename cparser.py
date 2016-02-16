@@ -2846,8 +2846,12 @@ class CStatement(_CBaseWithOptBody):
 			elif self._op.content == "!":  # not-op
 				return CBuiltinType(("char",))  # 0 or 1, not sure
 			elif self._op.content == "*":
-				assert isinstance(v, CPointerType)
-				return v.pointerOf
+				if isinstance(v, CPointerType):
+					return v.pointerOf
+				elif isinstance(v, CArrayType):
+					return v.arrayOf
+				else:
+					assert False, "invalid pointer deref type %r" % v
 			elif self._op.content in ("+","-","++","--","~"):  # OpPrefixFuncs
 				return v
 			else:

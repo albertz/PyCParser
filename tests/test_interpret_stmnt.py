@@ -2540,8 +2540,8 @@ def test_interpret_char_mask():
 	typedef struct { char ob_sval[1]; } PyStringObject;
 	#define Py_CHARMASK(c)		((unsigned char)((c) & 0xff))
 	int f() {
-		PyStringObject _a = { "A" };
-		PyStringObject _b = { "B" };
+		PyStringObject _a, _b;
+		_a.ob_sval[0] = 'A'; _b.ob_sval[0] = 'B';
 		PyStringObject *a = &_a, *b = &_b;
         int c = Py_CHARMASK(*a->ob_sval) - Py_CHARMASK(*b->ob_sval);
 		return c;
@@ -2554,4 +2554,4 @@ def test_interpret_char_mask():
 	print "Run:"
 	r = interpreter.runFunc("f")
 	print "result:", r
-	assert r.value == -1
+	assert r.value == 255
