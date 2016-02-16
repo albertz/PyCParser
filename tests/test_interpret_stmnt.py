@@ -2535,7 +2535,7 @@ def test_interpret_int_float_cast():
 	assert r.value == 3
 
 
-def test_interpret_char_mask():
+def test_interpret_char_mask_ptr_deref():
 	state = parse("""
 	typedef struct { char ob_sval[1]; } PyStringObject;
 	#define Py_CHARMASK(c)		((unsigned char)((c) & 0xff))
@@ -2555,3 +2555,22 @@ def test_interpret_char_mask():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 255
+
+
+def test_interpret_char_mask_subscript():
+	state = parse("""
+	#define Py_CHARMASK(c)		((unsigned char)((c) & 0xff))
+	int f() {
+		const char* s = "hello";
+        int c = Py_CHARMASK(s[1]);
+		return c;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == ord('e')
