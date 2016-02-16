@@ -126,6 +126,7 @@ class GlobalScope:
 	def getVar(self, name):
 		if name in self.vars: return self.vars[name]
 		decl = self.findIdentifier(name)
+		if self.interpreter.debug_print_getVar: print("+ getVar %s" % decl)
 		assert isinstance(decl, CVarDecl)
 
 		# Note: To avoid infinite loops, we must first create the object.
@@ -1661,6 +1662,8 @@ class Interpreter:
 			"values": self.wrappedValues,
 			"intp": self
 			}
+		self.debug_print_getFunc = False
+		self.debug_print_getVar = False
 	
 	def _cStateWrapperError(self, s):
 		print "Error:", s
@@ -1821,6 +1824,7 @@ class Interpreter:
 	
 	def _translateFuncToPy(self, funcname):
 		cfunc = self._cStateWrapper.funcs[funcname]
+		if self.debug_print_getFunc: print("+ getFunc %s" % cfunc)
 		funcEnv = self._translateFuncToPyAst(cfunc)
 		pyAst = funcEnv.astNode
 		compiled = self._compile(pyAst)
