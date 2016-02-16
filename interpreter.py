@@ -1782,7 +1782,7 @@ class Interpreter:
 			ptr, objs, ptr_addr, [hex(_ctype_get_ptr_addr(o) + offset) for o in objs]))
 
 	def _getPtr(self, addr, ptr_type=None):
-		assert isinstance(addr, int)
+		assert isinstance(addr, (int, long))
 		if addr == 0:
 			assert ptr_type
 			return ptr_type()
