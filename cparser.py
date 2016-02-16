@@ -2490,6 +2490,8 @@ class CStatement(_CBaseWithOptBody):
 						return
 					elif (token.content,) in stateStruct.CBuiltinTypes:
 						obj = CBuiltinType((token.content,))
+					elif token.content in stateStruct.StdIntTypes:
+						obj = CStdIntType(token.content)
 					else:
 						obj = findObjInNamespace(stateStruct, self.parent, token.content)
 						if obj is None:

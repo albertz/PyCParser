@@ -2485,7 +2485,7 @@ def test_interpret_for_if_else():
 
 
 
-def test_interpret_char_array_cast_len():
+def test_interpret_char_array_cast_len_int():
 	state = parse("""
 	int f() {
 		char formatbuf[(int)5];
@@ -2500,3 +2500,36 @@ def test_interpret_char_array_cast_len():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_char_array_cast_len_sizet():
+	state = parse("""
+	int f() {
+		char formatbuf[(size_t)5];
+		return sizeof(formatbuf);
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
+
+
+def test_interpret_int_float_cast():
+	state = parse("""
+	int f() {
+		return int(3.2);
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 3
