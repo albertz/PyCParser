@@ -420,6 +420,13 @@ def isPointerType(t, checkWrapValue=False):
 		if issubclass(t, ctypes.c_void_p): return True
 	return False
 
+def isVoidPtrType(t):
+	if isinstance(t, CPointerType):
+		return t.pointerOf == CBuiltinType(("void",))
+	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"):
+		return True
+	return False
+
 def isValueType(t):
 	if isinstance(t, (CBuiltinType,CStdIntType)): return True
 	from inspect import isclass
@@ -607,6 +614,10 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		return ast.Call(func=typeAst, args=[], keywords=[], starargs=argAst, kwargs=None)
 
 	if isinstance(argType, CWrapFuncType):
+		if isVoidPtrType(objType):
+			vAst = getAstNode_newTypeInstance(interpreter, CFuncPointerDecl(), argAst=argAst, argType=argType)
+			astCast = getAstNodeAttrib("ctypes", "cast")
+			return makeAstNodeCall(astCast, vAst, typeAst)
 		assert isinstance(objType, CFuncPointerDecl)  # what other case could there be?
 		return makeAstNodeCall(getAstNodeAttrib("helpers", "makeFuncPtr"), typeAst, argAst)
 
