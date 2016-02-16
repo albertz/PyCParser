@@ -353,6 +353,8 @@ def getAstNodeForVarType(interpreter, t):
 	elif isinstance(t, CStdIntType):
 		return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
 	elif isinstance(t, CPointerType):
+		if t.pointerOf == CBuiltinType(("void",)):
+			return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
 		a = getAstNodeAttrib("ctypes", "POINTER")
 		return makeAstNodeCall(a, getAstNodeForVarType(interpreter, t.pointerOf))
 	elif isinstance(t, CTypedef):
@@ -949,7 +951,7 @@ def astForCast(funcEnv, new_type, arg_ast):
 	bValueAst = arg_ast
 
 	if isPointerType(aType):
-		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		astVoidP = makeAstNodeCall(astVoidPT, bValueAst)
 		return makeAstNodeCall(astCast, astVoidP, aTypeAst)
