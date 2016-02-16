@@ -2533,3 +2533,25 @@ def test_interpret_int_float_cast():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 3
+
+
+def test_interpret_char_mask():
+	state = parse("""
+	typedef struct { char ob_sval[1]; } PyStringObject;
+	#define Py_CHARMASK(c)		((unsigned char)((c) & 0xff))
+	int f() {
+		PyStringObject _a = { "A" };
+		PyStringObject _b = { "B" };
+		PyStringObject *a = &_a, *b = &_b;
+        int c = Py_CHARMASK(*a->ob_sval) - Py_CHARMASK(*b->ob_sval);
+		return c;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == -1
