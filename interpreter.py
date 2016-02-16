@@ -443,7 +443,7 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 		from inspect import isclass
 		if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
 			# Only c_void_p supports to get the pointer-value via the value-attrib.
-			astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+			astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
 			astCast = getAstNodeAttrib("ctypes", "cast")
 			astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
 		else:
@@ -455,7 +455,7 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 		return astValue
 	elif isinstance(objType, CArrayType):
 		# cast array to ptr
-		astVoidPT = getAstNodeAttrib("ctypes", "c_void_p")
+		astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		castToPtr = makeAstNodeCall(astCast, objAst, astVoidPT)
 		astValue = getAstNodeAttrib(castToPtr, "value")
