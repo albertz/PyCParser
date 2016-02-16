@@ -2886,7 +2886,7 @@ class CStatement(_CBaseWithOptBody):
 			return v1
 		elif self._op.content in ("=","*=","-=","+=","/=","%=","&=","^=","|="):  # assign
 			return v1
-		elif self._op.content in ("+","-","*","/","&","^","|"):
+		elif self._op.content in ("+","-","*","/","&","^","|","%"):
 			return getCommonValueType(stateStruct, v1, v2)
 		else:
 			assert False, "invalid bin op %r" % self._op
