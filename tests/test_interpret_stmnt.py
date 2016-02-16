@@ -2574,3 +2574,20 @@ def test_interpret_char_mask_subscript():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == ord('e')
+
+
+def test_interpret_op_mod():
+	state = parse("""
+	int f() {
+		int j = 11, tabsize = 8;
+        return tabsize - (j % tabsize);
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
