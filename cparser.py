@@ -2162,6 +2162,19 @@ def getConstValue(stateStruct, obj):
 	if hasattr(obj, "getConstValue"): return obj.getConstValue(stateStruct)
 	if isinstance(obj, (CNumber,CStr,CChar)):
 		return obj.content
+	if isinstance(obj, CFuncCall):  # maybe a cast
+		t = obj.base
+		while isinstance(t, CTypedef):
+			t = t.type
+		if isinstance(t, (CBuiltinType, CStdIntType)):  # only number types
+			assert len(obj.args) == 1
+			v = getConstValue(stateStruct, obj.args[0])
+			if v is None: return None  # cannot handle anyway
+			ctype = getCType(t, stateStruct)
+			if isIntType(obj.base): v = int(v)
+			if v: cv = ctype(v)
+			else: cv = ctype()
+			return cv.value
 	return None
 
 def getValueType(stateStruct, obj):
