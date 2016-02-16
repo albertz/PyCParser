@@ -45,7 +45,7 @@ class CWrapValue(CType):
 	def getConstValue(self, stateStruct):
 		value = self.value
 		if isinstance(value, _ctypes._Pointer):
-			value = ctypes.cast(value, ctypes.c_void_p)
+			value = ctypes.cast(value, wrapCTypeClass(ctypes.c_void_p))
 		if isinstance(value, ctypes._SimpleCData):
 			value = value.value
 		return value
@@ -833,7 +833,7 @@ class Helpers:
 	@staticmethod
 	def copy(a):
 		if isinstance(a, ctypes.c_void_p):
-			return ctypes.cast(a, ctypes.c_void_p)
+			return ctypes.cast(a, wrapCTypeClass(ctypes.c_void_p))
 		if isinstance(a, ctypes._Pointer):
 			return ctypes.cast(a, a.__class__)
 		if isinstance(a, ctypes.Array):
@@ -887,7 +887,7 @@ class Helpers:
 		if issubclass(t, ctypes._Pointer):
 			# A Python func wrapped in CFuncType cannot handle any pointer type
 			# other than void-ptr.
-			t = ctypes.c_void_p
+			t = wrapCTypeClass(ctypes.c_void_p)
 		return _fixCType(t, wrap=True)
 
 	@staticmethod
@@ -1584,7 +1584,7 @@ def _set_linecache(filename, source):
 	linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 
 def _ctype_ptr_get_value(ptr):
-	ptr = ctypes.cast(ptr, ctypes.c_void_p)
+	ptr = ctypes.cast(ptr, wrapCTypeClass(ctypes.c_void_p))
 	return ptr.value or 0
 
 def _ctype_get_ptr_addr(obj):
@@ -1718,7 +1718,7 @@ class Interpreter:
 		buf = (self.ctypes_wrapped.c_byte * size)()
 		ptr_addr = _ctype_get_ptr_addr(buf)
 		self.mallocs[ptr_addr] = buf
-		ret = ctypes.cast(ctypes.pointer(buf), ctypes.c_void_p)
+		ret = ctypes.cast(ctypes.pointer(buf), wrapCTypeClass(ctypes.c_void_p))
 		self._storePtr(ret)
 		return ret
 
@@ -1730,9 +1730,9 @@ class Interpreter:
 		except KeyError:
 			raise Exception("_realloc: address 0x%x was not allocated by us" % ptr_addr)
 		if buf._length_ >= size:
-			return ctypes.cast(buf, ctypes.c_void_p)
+			return ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p))
 		ptr = self._malloc(size)
-		ctypes.memmove(ptr, ctypes.cast(buf, ctypes.c_void_p), ctypes.c_size_t(buf._length_))
+		ctypes.memmove(ptr, ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p)), ctypes.c_size_t(buf._length_))
 		return ptr
 
 	def _free(self, ptr_addr):
