@@ -2205,6 +2205,15 @@ def getValueType(stateStruct, obj):
 				base_type = stateStruct.unions[base_type.name]
 			assert base_type.body is not None
 		return base_type.body.vars[obj.name].type
+	if isinstance(obj, CArrayIndexRef):
+		t = getValueType(stateStruct, obj.base)
+		while isinstance(t, CTypedef):
+			t = t.type
+		if isinstance(t, CArrayType):
+			return t.arrayOf
+		elif isinstance(t, CPointerType):
+			return t.pointerOf
+		assert False, "unknown attrib base type %r of obj %r" % (t, obj)
 	if isinstance(obj, CFuncCall):
 		from interpreter import CWrapValue
 		if isinstance(obj.base, CWrapValue):
