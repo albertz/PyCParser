@@ -2689,6 +2689,30 @@ def test_interpret_offsetof():
 		long placeholder;
 		binaryfunc nb_add;
 	} PyNumberMethods;
+	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+	int f() {
+		int offset = offsetof(PyNumberMethods, nb_add);
+		return offset;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == ctypes.sizeof(ctypes.c_long)
+
+
+def test_interpret_offsetof_substruct():
+	state = parse("""
+	typedef int PyObject;
+	typedef PyObject * (*binaryfunc)(PyObject *, PyObject *);
+	typedef struct {
+		long placeholder;
+		binaryfunc nb_add;
+	} PyNumberMethods;
 	typedef struct _heaptypeobject {
 		PyNumberMethods as_number;
 	} PyHeapTypeObject;
