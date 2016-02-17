@@ -2730,3 +2730,32 @@ def test_interpret_offsetof_substruct():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == ctypes.sizeof(ctypes.c_long)
+
+
+def test_interpret_offsetof_subsubstruct():
+	state = parse("""
+	typedef struct {
+		long placeholder;
+		long here;
+	} SubSubStruct;
+	typedef struct {
+		long placeholder;
+		SubSubStruct sub;
+	} SubStruct;
+	typedef struct {
+		SubStruct sub;
+	} BaseStruct;
+	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+	int f() {
+		int offset = offsetof(BaseStruct, sub.sub.here);
+		return offset;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == ctypes.sizeof(ctypes.c_long) * 2
