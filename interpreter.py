@@ -857,8 +857,7 @@ class Helpers:
 		# WARNING: This can be dangerous/unsafe.
 		# It will correctly copy the content. However, we might loose any Python obj refs.
 		# TODO: Fix this somehow?
-		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
-		aPtr.contents.value = bValue
+		_ctype_ptr_set_value(a, bValue)
 		return a
 
 	@staticmethod
@@ -1604,6 +1603,11 @@ def _ctype_ptr_get_value(ptr):
 	ptr = ctypes.cast(ptr, wrapCTypeClass(ctypes.c_void_p))
 	return ptr.value or 0
 
+def _ctype_ptr_set_value(ptr, addr):
+	assert isinstance(addr, (int, long))
+	aPtr = ctypes.cast(ctypes.pointer(ptr), ctypes.POINTER(ctypes.c_void_p))
+	aPtr.contents.value = addr
+
 def _ctype_get_ptr_addr(obj):
 	return _ctype_ptr_get_value(ctypes.pointer(obj))
 
@@ -1810,7 +1814,7 @@ class Interpreter:
 		ptr = ctypes.pointer(obj)
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr != addr:  # might be different if we had an offset in _setPtr
-			Helpers.assignPtr(ptr, addr)
+			_ctype_ptr_set_value(ptr, addr)
 		return ptr
 
 	def _translateFuncToPyAst(self, func):
