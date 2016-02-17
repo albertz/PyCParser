@@ -1799,8 +1799,9 @@ class CTypedef(_CBaseWithOptBody):
 	def getCType(self, stateStruct): return getCType(self.type, stateStruct)
 	def asCCode(self, indent=""):
 		return indent + "typedef\n" + asCCode(self.type, indent, fullDecl=True) + " " + self.name
-	
-class CFuncPointerDecl(_CBaseWithOptBody):
+
+class CFuncPointerBase(object): pass
+class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
 	def finalize(self, stateStruct, addToContent=None):
 		if self._finalized:
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
@@ -2259,8 +2260,8 @@ def getCommonValueType(stateStruct, t1, t2):
 	if t1 == CBuiltinType(("void","*")):
 		if t2 == CBuiltinType(("void","*")):
 			return t1
-		if isinstance(t2, CPointerType):
-			return t2;
+		if isinstance(t2, (CPointerType, CFuncPointerBase)):
+			return t2
 		if isinstance(t2, CArrayType):
 			return CPointerType(t2.arrayOf)
 		assert isinstance(t2, (CBuiltinType, CStdIntType))
@@ -2286,6 +2287,10 @@ def getCommonValueType(stateStruct, t1, t2):
 		if isinstance(t2, CArrayType):
 			t2 = CPointerType(t2.arrayOf)
 		return getCommonValueType(stateStruct, t1, t2)
+	if isinstance(t1, CFuncPointerBase):
+		return t1  # ...
+	if isinstance(t2, CFuncPointerBase):
+		return t2  # ...
 	# No pointers.
 	if isinstance(t1, CBuiltinType) and isinstance(t2, CBuiltinType):
 		tup1 = t1.builtinType

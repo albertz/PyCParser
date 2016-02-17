@@ -50,7 +50,7 @@ class CWrapValue(CType):
 			value = value.value
 		return value
 
-class CWrapFuncType(CType):
+class CWrapFuncType(CType, CFuncPointerBase):
 	def __init__(self, func):
 		"""
 		:type func: CFunc
