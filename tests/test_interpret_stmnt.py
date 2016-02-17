@@ -2645,3 +2645,37 @@ def test_interpret_py_init_slots_array():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 42
+
+
+def test_interpret_py_init_slots_array_simple():
+	state = parse("""
+	typedef int PyObject;
+	typedef PyObject * (*binaryfunc)(PyObject *, PyObject *);
+	typedef struct {
+		binaryfunc nb_add;
+	} PyNumberMethods;
+	typedef struct _heaptypeobject {
+		PyNumberMethods as_number;
+	} PyHeapTypeObject;
+	typedef struct {
+		char *name;
+		int offset;
+		int flags;
+	} slotdef;
+	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+	static slotdef slotdefs[] = {
+		{"__add__", offsetof(PyHeapTypeObject, as_number.nb_add), 42},
+		{0}
+	};
+	int f() {
+		return slotdefs[0].flags;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
