@@ -2763,10 +2763,10 @@ def test_interpret_offsetof_subsubstruct():
 
 def test_interpret_ptr_with_offset_in_array():
 	state = parse("""
-	typedef struct {
+	typedef struct PyHeapTypeObject {
 		long a, b;
 	} PyHeapTypeObject;
-	typedef struct {
+	typedef struct slotdef {
 		char *name;
 		int offset;
 		int flags;

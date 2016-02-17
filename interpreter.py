@@ -1123,6 +1123,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		assert False, "cannot handle " + str(stmnt)
 
 def getAstNode_assign(stateStruct, aAst, aType, bAst, bType):
+	if isPointerType(bType):
+		bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
 	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
 	if isPointerType(aType):
 		return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
