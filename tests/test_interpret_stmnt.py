@@ -2795,3 +2795,41 @@ def test_interpret_ptr_with_offset_in_array():
 	print "result:", r
 	assert r.value == ctypes.sizeof(ctypes.c_long)
 
+
+def test_interpret_func_ptr_ternary():
+	state = parse("""
+	typedef int (*func)(int);
+	static int g(int x) { return x + 1; }
+	int f() {
+		func fp = 1 ? g : 0;
+		if(!fp)
+			return -1;
+		return (*fp)(4);
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
+
+
+def test_interpret_ternary_void_p_and_int_p():
+	state = parse("""
+	int f() {
+		int x = 5;
+		int* xp = 1 ? &x : ((void*)0);
+		return *xp;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
