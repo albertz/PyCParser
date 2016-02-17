@@ -1215,12 +1215,27 @@ def _resolveOffsetOf(stateStruct, stmnt):
 	if stmnt._leftexpr is not None: return
 	if stmnt._op.content != "&": return
 	rightexpr = _resolveSingleStatement(stmnt._rightexpr)
+	attrib_chain = []
+	while isinstance(rightexpr, CAttribAccessRef):
+		attrib_chain = [rightexpr.name] + attrib_chain
+		rightexpr = rightexpr.base
 	if not isinstance(rightexpr, CPtrAccessRef): return
 	zero_ptr_type = _getZeroPtrTypeOrNone(rightexpr.base)
 	if zero_ptr_type is None: return
-	c_type = getCType(zero_ptr_type, stateStruct)
-	field = getattr(c_type, rightexpr.name)
-	return field.offset
+	attrib_chain = [rightexpr.name] + attrib_chain
+	offset = 0
+	base = zero_ptr_type
+	for k in attrib_chain:
+		while isinstance(base, CTypedef):
+			base = base.type
+		assert isinstance(base, (CStruct, CUnion))
+		c_type = getCType(base, stateStruct)
+		field = getattr(c_type, k)
+		offset += field.offset
+		sub = base.findAttrib(stateStruct, k)
+		assert isinstance(sub, CVarDecl)
+		base = sub.type
+	return offset
 
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)

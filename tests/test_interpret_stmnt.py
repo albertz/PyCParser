@@ -779,7 +779,7 @@ def test_interpreter_global_char_array():
 	assert r.value == 4
 
 
-def test_interpreter_offset_of():
+def test_interpreter_offset_of_direct():
 	state = parse("""
 	typedef struct _typeobject { long foo; long bar; } PyTypeObject;
 	int f() {
