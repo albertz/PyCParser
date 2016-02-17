@@ -2591,3 +2591,57 @@ def test_interpret_op_mod():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_py_init_slots_array():
+	state = parse("""
+	typedef int PyObject;
+	typedef PyObject * (*binaryfunc)(PyObject *, PyObject *);
+	typedef struct {
+		binaryfunc nb_add;
+	} PyNumberMethods;
+	typedef struct _heaptypeobject {
+		PyNumberMethods as_number;
+	} PyHeapTypeObject;
+	static PyObject *
+	wrap_binaryfunc_l(PyObject *self, PyObject *args, void *wrapped) { return 0; }
+	#define SLOT1BINFULL(FUNCNAME, TESTFUNC, SLOTNAME, OPSTR, ROPSTR) \\
+	static PyObject * FUNCNAME(PyObject *self, PyObject *other) { return 0; }
+	#define SLOT1BIN(FUNCNAME, SLOTNAME, OPSTR, ROPSTR) \\
+		SLOT1BINFULL(FUNCNAME, FUNCNAME, SLOTNAME, OPSTR, ROPSTR)
+	SLOT1BIN(slot_nb_add, nb_add, "__add__", "__radd__")
+	typedef PyObject *(*wrapperfunc)(PyObject *self, PyObject *args,
+									 void *wrapped);
+	struct wrapperbase {
+		char *name;
+		int offset;
+		void *function;
+		wrapperfunc wrapper;
+		char *doc;
+		int flags;
+		PyObject *name_strobj;
+	};
+	typedef struct wrapperbase slotdef;
+	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+	#define ETSLOT(NAME, SLOT, FUNCTION, WRAPPER, DOC) \\
+	{NAME, offsetof(PyHeapTypeObject, SLOT), (void *)(FUNCTION), WRAPPER, \\
+	 DOC, 42}
+	#define BINSLOT(NAME, SLOT, FUNCTION, DOC) \\
+	ETSLOT(NAME, as_number.SLOT, FUNCTION, wrap_binaryfunc_l, \\
+			"x." NAME "(y) <==> x" DOC "y")
+	static slotdef slotdefs[] = {
+		BINSLOT("__add__", nb_add, slot_nb_add, "+"),
+		{0}
+	};
+	int f() {
+		return slotdefs[0].flags;
+    }
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
