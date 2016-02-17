@@ -2252,19 +2252,17 @@ def getCommonValueType(stateStruct, t1, t2):
 		t1 = getBuiltinTypeForCType(stateStruct, t1)
 	if isclass(t2) and issubclass(t2, ctypes._SimpleCData):
 		t2 = getBuiltinTypeForCType(stateStruct, t2)
-	if t1 == ctypes.c_void_p:
+	if t1 in (ctypes.c_void_p, CPointerType(CVoidType()), CPointerType(CBuiltinType(("void",)))):
 		t1 = CBuiltinType(("void","*"))
-	if t2 == ctypes.c_void_p:
-		t2 = CBuiltinType(("void","*"))
-	if t1 == CPointerType(CVoidType()):
-		t1 = CBuiltinType(("void","*"))
-	if t2 == CPointerType(CVoidType()):
+	if t2 in (ctypes.c_void_p, CPointerType(CVoidType()), CPointerType(CBuiltinType(("void",)))):
 		t2 = CBuiltinType(("void","*"))
 	if t1 == CBuiltinType(("void","*")):
 		if t2 == CBuiltinType(("void","*")):
 			return t1
 		if isinstance(t2, CPointerType):
-			return getCommonValueType(stateStruct, t2, t1)
+			return t2;
+		if isinstance(t2, CArrayType):
+			return CPointerType(t2.arrayOf)
 		assert isinstance(t2, (CBuiltinType, CStdIntType))
 		return t1
 	if t2 == CBuiltinType(("void","*")):
