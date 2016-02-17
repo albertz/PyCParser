@@ -2472,7 +2472,7 @@ def test_interpret_for_if_else():
 			return 5;
 		}
 		return -1;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2490,7 +2490,7 @@ def test_interpret_char_array_cast_len_int():
 	int f() {
 		char formatbuf[(int)5];
 		return sizeof(formatbuf);
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2507,7 +2507,7 @@ def test_interpret_char_array_cast_len_sizet():
 	int f() {
 		char formatbuf[(size_t)5];
 		return sizeof(formatbuf);
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2523,7 +2523,7 @@ def test_interpret_int_float_cast():
 	state = parse("""
 	int f() {
 		return int(3.2);
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2545,7 +2545,7 @@ def test_interpret_char_mask_ptr_deref():
 		PyStringObject *a = &_a, *b = &_b;
         int c = Py_CHARMASK(*a->ob_sval) - Py_CHARMASK(*b->ob_sval);
 		return c;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2564,7 +2564,7 @@ def test_interpret_char_mask_subscript():
 		const char* s = "hello";
         int c = Py_CHARMASK(s[1]);
 		return c;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2581,7 +2581,7 @@ def test_interpret_op_mod():
 	int f() {
 		int j = 11, tabsize = 8;
         return tabsize - (j % tabsize);
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2635,7 +2635,7 @@ def test_interpret_py_init_slots_array():
 	};
 	int f() {
 		return slotdefs[0].flags;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2669,7 +2669,7 @@ def test_interpret_py_init_slots_array_simple():
 	};
 	int f() {
 		return slotdefs[0].flags;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2720,7 +2720,7 @@ def test_interpret_offsetof_substruct():
 	int f() {
 		int offset = offsetof(PyHeapTypeObject, as_number.nb_add);
 		return offset;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2749,7 +2749,7 @@ def test_interpret_offsetof_subsubstruct():
 	int f() {
 		int offset = offsetof(BaseStruct, sub.sub.here);
 		return offset;
-    }
+	}
 	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
@@ -2759,3 +2759,39 @@ def test_interpret_offsetof_subsubstruct():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == ctypes.sizeof(ctypes.c_long) * 2
+
+
+def test_interpret_ptr_with_offset_in_array():
+	state = parse("""
+	typedef struct {
+		long a, b;
+	} PyHeapTypeObject;
+	typedef struct {
+		char *name;
+		int offset;
+		int flags;
+	} slotdef;
+	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
+	static slotdef slotdefs[] = {
+		{"a", offsetof(PyHeapTypeObject, a), 1},
+		{"b", offsetof(PyHeapTypeObject, b), 2},
+		{0}
+	};
+	int f() {
+		slotdef *p;
+		for (p = slotdefs; p->name; p++) {
+			if(p[1].name && p->offset > p[1].offset)
+				return -1;
+		}
+		return slotdefs[1].offset;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == ctypes.sizeof(ctypes.c_long)
+
