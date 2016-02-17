@@ -378,7 +378,7 @@ def getAstNodeForVarType(interpreter, t):
 		assert isinstance(v, (int,long))
 		arrayLen = ast.Num(n=v)
 		return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
-	elif isinstance(t, CFuncPointerDecl):
+	elif isinstance(t, (CFuncPointerDecl, CFunc)):
 		return makeAstNodeCall(
 			getAstNodeAttrib("ctypes", "CFUNCTYPE"),
 			makeAstNodeCall(
@@ -389,6 +389,8 @@ def getAstNodeForVarType(interpreter, t):
 		)
 	elif isinstance(t, CWrapValue):
 		return getAstNodeForVarType(interpreter, t.getCType(None))
+	elif isinstance(t, CWrapFuncType):
+		return getAstNodeForVarType(interpreter, t.func)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
 		except DidNotFindCTypesBasicType: pass
@@ -620,6 +622,8 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 			vAst = getAstNode_newTypeInstance(interpreter, CFuncPointerDecl(), argAst=argAst, argType=argType)
 			astCast = getAstNodeAttrib("ctypes", "cast")
 			return makeAstNodeCall(astCast, vAst, typeAst)
+		if isinstance(objType, CWrapFuncType):
+			return argAst
 		assert isinstance(objType, CFuncPointerDecl)  # what other case could there be?
 		return makeAstNodeCall(getAstNodeAttrib("helpers", "makeFuncPtr"), typeAst, argAst)
 
