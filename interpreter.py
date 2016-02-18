@@ -905,6 +905,13 @@ class Helpers:
 		func.C_funcPtr = funcCType(func)
 		return func.C_funcPtr
 
+	@staticmethod
+	def checkedFuncPtrCall(f, *args):
+		if _ctype_ptr_get_value(f) == 0:
+			raise Exception("checkedFuncPtrCall: tried to call NULL ptr")
+		return f(*args)
+
+
 def astForHelperFunc(helperFuncName, *astArgs):
 	helperFuncAst = getAstNodeAttrib("helpers", helperFuncName)
 	a = ast.Call(keywords=[], starargs=None, kwargs=None)
@@ -1084,13 +1091,14 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.
-			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
 			while isinstance(pType, CTypedef):
 				pType = pType.type
 			assert isinstance(pType, CFuncPointerDecl)
-			a.func = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType)
-			a.args = autoCastArgs(funcEnv, pType.args, stmnt.args)
+			a = makeAstNodeCall(
+				Helpers.checkedFuncPtrCall,
+				getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType),
+				*autoCastArgs(funcEnv, pType.args, stmnt.args))
 			return a, pType.type
 	elif isinstance(stmnt, CArrayIndexRef):
 		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)

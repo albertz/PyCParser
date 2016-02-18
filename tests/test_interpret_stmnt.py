@@ -2894,6 +2894,7 @@ def test_interpret_func_ptr_call_with_check():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("PyObject_Hash", output=sys.stdout)
 	print "Run:"
 	r = interpreter.runFunc("f")
 	print "result:", r
