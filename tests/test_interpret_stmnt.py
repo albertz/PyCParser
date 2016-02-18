@@ -2979,3 +2979,33 @@ def test_interpret_local_obj_bracy_init_func_ptr():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 42
+
+
+def test_interpret_func_ptr_bracy_init():
+	state = parse("""
+	#include <assert.h>
+	typedef long (*hashfunc)();
+	typedef struct _type {
+	    hashfunc tp_hash;
+	} PyTypeObject;
+	static long hash1() { return 42; }
+	static long hash2() { return -5; }
+	int f() {
+		hashfunc h;
+		h = hash1;
+		PyTypeObject dummy = {hash1};
+		assert(dummy.tp_hash != 0);
+		assert(dummy.tp_hash == hash1);
+		assert(dummy.tp_hash != hash2);
+		return dummy.tp_hash();
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
+
