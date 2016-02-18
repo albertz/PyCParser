@@ -2899,3 +2899,45 @@ def test_interpret_func_ptr_call_with_check():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 11
+
+
+def test_interpret_func_ptr_via_created_obj():
+	state = parse("""
+	#include <stdlib.h>
+	#include <assert.h>
+	typedef struct _obj {
+		int dummy;
+	} PyObject;
+	typedef long (*hashfunc)(PyObject *);
+	typedef struct _type {
+		PyObject base;
+	    hashfunc tp_hash;
+	} PyTypeObject;
+	static long hash1(PyObject*);
+	PyObject* new_type() {
+		PyObject* obj = (PyObject*) malloc(sizeof(PyTypeObject));
+		PyTypeObject* tobj = (PyTypeObject*) obj;
+		tobj->tp_hash = 0;
+		assert(tobj->tp_hash == 0);
+		tobj->tp_hash = hash1;
+		assert(tobj->tp_hash != 0);
+		return obj;
+	}
+	static long hash1(PyObject*) { return 42; }
+	int f() {
+		PyObject* obj = new_type();
+		PyTypeObject* tobj = (PyTypeObject*) obj;
+		int x = tobj->tp_hash(0);
+		free(obj);
+		return x;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("new_type", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
