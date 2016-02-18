@@ -2861,3 +2861,40 @@ def test_interpret_if_if_else_hanging():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 2
+
+
+def test_interpret_func_ptr_call_with_check():
+	state = parse("""
+	#define NULL 0
+	typedef struct _obj {
+		struct _type* ob_type;
+	} PyObject;
+	typedef long (*hashfunc)(PyObject *);
+	typedef struct _type {
+	    hashfunc tp_hash;
+	} PyTypeObject;
+	long PyObject_Hash(PyObject *v) {
+		PyTypeObject *tp = v->ob_type;
+		if (tp->tp_hash != NULL)
+			return (*tp->tp_hash)(v);
+		return -10;
+	}
+	static long hash1(PyObject*) { return 1; }
+	int f() {
+		PyTypeObject t1 = { hash1 };
+		PyObject o1 = { &t1 };
+		int x1 = PyObject_Hash(&o1);
+		PyTypeObject t2 = { NULL };
+		PyObject o2 = { &t2 };
+		int x2 = PyObject_Hash(&o2);
+		return x1 - x2;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 11
