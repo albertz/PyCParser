@@ -166,7 +166,10 @@ class Wrapper:
 		wrapCFunc(state, "toupper", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
 	def handle_wctype_h(self, state): pass
 	def handle_assert_h(self, state):
-		def assert_wrap(x): assert x
+		def assert_wrap(x):
+			if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
+				x = ctypes.cast(x, ctypes.c_void_p)
+			assert x.value
 		state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType, name="assert")
 	def handle_fcntl_h(self, state):
 		state.macros["O_RDONLY"] = Macro(rightside="0x0000")
