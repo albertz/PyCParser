@@ -632,7 +632,9 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 
 	if isinstance(argType, CWrapFuncType):
 		if isVoidPtrType(objType):
-			vAst = getAstNode_newTypeInstance(interpreter, CFuncPointerDecl(), argAst=argAst, argType=argType)
+			vAst = getAstNode_newTypeInstance(
+				interpreter, CFuncPointerDecl(type=argType.func.type, args=argType.func.args),
+				argAst=argAst, argType=argType)
 			astCast = getAstNodeAttrib("ctypes", "cast")
 			return makeAstNodeCall(astCast, vAst, typeAst)
 		if isinstance(objType, CWrapFuncType):

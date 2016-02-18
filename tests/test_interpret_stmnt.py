@@ -2984,12 +2984,12 @@ def test_interpret_local_obj_bracy_init_func_ptr():
 def test_interpret_func_ptr_bracy_init():
 	state = parse("""
 	#include <assert.h>
-	typedef long (*hashfunc)();
+	typedef long (*hashfunc)(long);
 	typedef struct _type {
 	    hashfunc tp_hash;
 	} PyTypeObject;
-	static long hash1() { return 42; }
-	static long hash2() { return -5; }
+	static long hash1(long) { return 42; }
+	static long hash2(long) { return -5; }
 	int f() {
 		hashfunc h;
 		h = hash1;
@@ -2997,7 +2997,7 @@ def test_interpret_func_ptr_bracy_init():
 		assert(dummy.tp_hash != 0);
 		assert(dummy.tp_hash == hash1);
 		assert(dummy.tp_hash != hash2);
-		return dummy.tp_hash();
+		return dummy.tp_hash(13);
 	}
 	""", withGlobalIncludeWrappers=True)
 	interpreter = Interpreter()
