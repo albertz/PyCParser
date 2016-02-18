@@ -409,15 +409,17 @@ def makeAstNodeCall(func, *args):
 		func = getAstNodeAttrib("helpers", name)
 	return ast.Call(func=func, args=list(args), keywords=[], starargs=None, kwargs=None)
 
-def isPointerType(t, checkWrapValue=False):
+def isPointerType(t, checkWrapValue=False, alsoFuncPtr=False):
+	while isinstance(t, CTypedef):
+		t = t.type
 	if isinstance(t, CPointerType): return True
 	if isinstance(t, CArrayType): return True
 	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"): return True
-	# Don't treat CFuncPointerDecl as ptr. Should be treated special.
-	if isinstance(t, CTypedef):
-		return isPointerType(t.type, checkWrapValue=checkWrapValue)
 	if checkWrapValue and isinstance(t, CWrapValue):
-		return isPointerType(t.getCType(None), checkWrapValue=True)
+		return isPointerType(t.getCType(None), checkWrapValue=True, alsoFuncPtr=alsoFuncPtr)
+	if alsoFuncPtr:
+		if isinstance(t, CWrapFuncType): return True
+		if isinstance(t, CFuncPointerDecl): return True
 	from inspect import isclass
 	if isclass(t):
 		if issubclass(t, _ctypes._Pointer): return True
@@ -439,17 +441,31 @@ def isValueType(t):
 			if issubclass(t, c): return True
 	return False
 
-def getAstNode_valueFromObj(stateStruct, objAst, objType):
+def makeCastToVoidP(v):
+	astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
+	astCast = getAstNodeAttrib("ctypes", "cast")
+	return makeAstNodeCall(astCast, v, astVoidPT)
+
+def makeCastToVoidP_value(v):
+	castToPtr = makeCastToVoidP(v)
+	astValue = getAstNodeAttrib(castToPtr, "value")
+	return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+
+def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
+	if isPartOfCOp:  # usually ==, != or so.
+		# Some types need special handling. We cast them to integer.
+		if isinstance(objType, CFuncPointerDecl):
+			return makeCastToVoidP_value(objAst)  # return address
+		if isinstance(objType, CWrapFuncType):
+			return ast.Num(-1)  # dummy address, non-zero
 	if isinstance(objType, CFuncPointerDecl):
-		# It's already the value.
+		# It's already the value. See also CWrapFuncType below.
 		return objAst
 	elif isPointerType(objType):
 		from inspect import isclass
 		if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
 			# Only c_void_p supports to get the pointer-value via the value-attrib.
-			astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
-			astCast = getAstNodeAttrib("ctypes", "cast")
-			astVoidP = makeAstNodeCall(astCast, objAst, astVoidPT)
+			astVoidP = makeCastToVoidP(objAst)
 		else:
 			astVoidP = objAst
 		astValue = getAstNodeAttrib(astVoidP, "value")
@@ -459,19 +475,15 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType):
 		return astValue
 	elif isinstance(objType, CArrayType):
 		# cast array to ptr
-		astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
-		astCast = getAstNodeAttrib("ctypes", "cast")
-		castToPtr = makeAstNodeCall(astCast, objAst, astVoidPT)
-		astValue = getAstNodeAttrib(castToPtr, "value")
-		return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+		return makeCastToVoidP_value(objAst)
 	elif isinstance(objType, CTypedef):
 		t = objType.type
-		return getAstNode_valueFromObj(stateStruct, objAst, t)
+		return getAstNode_valueFromObj(stateStruct, objAst, t, isPartOfCOp=isPartOfCOp)
 	elif isinstance(objType, CWrapValue):
 		# It's already the value. See astAndTypeForStatement().
 		return getAstNode_valueFromObj(stateStruct, objAst, objType.getCType(stateStruct))
 	elif isinstance(objType, CWrapFuncType):
-		# It's already the value. See astAndTypeForStatement().
+		# It's already the value. See astAndTypeForStatement(). And CFuncPointerDecl above.
 		return objAst
 	else:
 		assert False, "bad type: " + str(objType)
@@ -1280,11 +1292,15 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
 			a.op = OpUnary[stmnt._op.content]()
-			if isPointerType(rightType):
+			if isinstance(rightType, CWrapFuncType):
+				assert stmnt._op.content == "!", "the only supported unary op for ptr types is '!'"
+				a.operand = ast.Num(-1)  # dummy non-zero address
+				rightType = ctypes.c_int
+			elif isPointerType(rightType, alsoFuncPtr=True):
 				assert stmnt._op.content == "!", "the only supported unary op for ptr types is '!'"
 				a.operand = makeAstNodeCall(
 					ast.Name(id="bool", ctx=ast.Load()),
-					rightAstNode)
+					makeCastToVoidP_value(rightAstNode))
 				rightType = ctypes.c_int
 			else:
 				a.operand = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
@@ -1311,20 +1327,20 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a = ast.BoolOp()
 		a.op = OpBinBool[stmnt._op.content]()
 		a.values = [
-			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType),
-			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)]
+			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True),
+			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)]
 		return getAstNode_newTypeInstance(funcEnv.interpreter, ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content in OpBinCmp:
 		a = ast.Compare()
 		a.ops = [OpBinCmp[stmnt._op.content]()]
-		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
-		a.comparators = [getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)]
+		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)
+		a.comparators = [getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)]
 		return getAstNode_newTypeInstance(funcEnv.interpreter, ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		commonType = getCommonValueType(funcEnv.globalScope.stateStruct, middleType, rightType)
 		a = ast.IfExp()
-		a.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
+		a.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)
 		a.body = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, middleAstNode, middleType)
 		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, rightAstNode, rightType)
 		return a, commonType
