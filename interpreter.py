@@ -481,7 +481,7 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 		return getAstNode_valueFromObj(stateStruct, objAst, t, isPartOfCOp=isPartOfCOp)
 	elif isinstance(objType, CWrapValue):
 		# It's already the value. See astAndTypeForStatement().
-		return getAstNode_valueFromObj(stateStruct, objAst, objType.getCType(stateStruct))
+		return getAstNode_valueFromObj(stateStruct, objAst, objType.getCType(stateStruct), isPartOfCOp=isPartOfCOp)
 	elif isinstance(objType, CWrapFuncType):
 		# It's already the value. See astAndTypeForStatement(). And CFuncPointerDecl above.
 		return objAst
@@ -1109,7 +1109,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			assert isinstance(pType, CFuncPointerDecl)
 			a = makeAstNodeCall(
 				Helpers.checkedFuncPtrCall,
-				getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, pAst, pType),
+				pAst,
 				*autoCastArgs(funcEnv, pType.args, stmnt.args))
 			return a, pType.type
 	elif isinstance(stmnt, CArrayIndexRef):
@@ -1187,7 +1187,7 @@ def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
 	assert isPointerType(aType)
 	opAst = ast.Str(opStr)
 	assert not isPointerType(bType)
-	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
+	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
 	return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
 
 def getAstNode_ptrSubstract(stateStruct, aAst, aType, bAst, bType):
@@ -1198,8 +1198,8 @@ def getAstNode_ptrSubstract(stateStruct, aAst, aType, bAst, bType):
 	assert isPointerType(aType)
 	assert isPointerType(bType)
 	assert isSameType(stateStruct, aType, bType)
-	aValueAst = getAstNode_valueFromObj(stateStruct, aAst, aType)
-	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
+	aValueAst = getAstNode_valueFromObj(stateStruct, aAst, aType, isPartOfCOp=True)
+	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
 	subAst = ast.BinOp(left=aValueAst, op=ast.Sub(), right=bValueAst)
 	aCType = getCType(aType.pointerOf, stateStruct)
 	assert aCType is not None
@@ -1367,8 +1367,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 	elif stmnt._op.content in OpBin:  # except comparisons. handled above
 		a = ast.BinOp()
 		a.op = OpBin[stmnt._op.content]()
-		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType)
-		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
+		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)
+		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)
 		commonType = stmnt.getValueType(funcEnv.globalScope.stateStruct)
 		# Note: No pointer arithmetic here, that case is caught above.
 		return getAstNode_newTypeInstance(funcEnv.interpreter, commonType, a), commonType
@@ -1383,7 +1383,7 @@ def astForCWhile(funcEnv, stmnt):
 	assert isinstance(stmnt.args[0], CStatement)
 
 	whileAst = ast.While(body=[], orelse=[])
-	whileAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+	whileAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[0]), isPartOfCOp=True)
 
 	funcEnv.pushScope(whileAst.body)
 	if stmnt.body is not None:
@@ -1409,7 +1409,7 @@ def astForCFor(funcEnv, stmnt):
 
 	if stmnt.args[1]:  # non-empty statement
 		ifTestAst = ast.If(body=[ast.Pass()], orelse=[ast.Break()])
-		ifTestAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[1]))
+		ifTestAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[1]), isPartOfCOp=True)
 		whileAst.body.append(ifTestAst)
 	
 	funcEnv.pushScope(whileAst.body)
@@ -1437,7 +1437,7 @@ def astForCDoWhile(funcEnv, stmnt):
 	funcEnv.popScope()
 
 	ifAst = ast.If(body=[ast.Continue()], orelse=[ast.Break()])
-	ifAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.whilePart.args[0]))
+	ifAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.whilePart.args[0]), isPartOfCOp=True)
 	whileAst.body.append(ifAst)
 	
 	return whileAst
@@ -1448,7 +1448,7 @@ def astForCIf(funcEnv, stmnt):
 	assert isinstance(stmnt.args[0], CStatement)
 
 	ifAst = ast.If(body=[], orelse=[])
-	ifAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[0]))
+	ifAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[0]), isPartOfCOp=True)
 
 	funcEnv.pushScope(ifAst.body)
 	if stmnt.body is not None:
@@ -1479,7 +1479,7 @@ def astForCSwitch(funcEnv, stmnt):
 	switchValueAst, switchValueType = astAndTypeForCStatement(funcEnv, stmnt.args[0])
 	a = ast.Assign()
 	a.targets = [ast.Name(id=switchVarName, ctx=ast.Store())]
-	a.value = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, switchValueAst, switchValueType)
+	a.value = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, switchValueAst, switchValueType, isPartOfCOp=True)
 	funcEnv.getBody().append(a)
 	
 	fallthroughVarName = funcEnv.registerNewVar("_switchfallthrough")
@@ -1505,7 +1505,7 @@ def astForCSwitch(funcEnv, stmnt):
 				ast.Compare(
 					left=ast.Name(id=switchVarName, ctx=ast.Load()),
 					ops=[ast.Eq()],
-					comparators=[getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, c.args[0]))]
+					comparators=[getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, c.args[0]), isPartOfCOp=True)]
 					)
 				])
 			funcEnv.getBody().append(curCase)
