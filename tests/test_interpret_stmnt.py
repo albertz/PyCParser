@@ -2914,6 +2914,7 @@ def test_interpret_func_ptr_via_created_obj():
 	    hashfunc tp_hash;
 	} PyTypeObject;
 	static long hash1(PyObject*);
+	static long hash2(PyObject*) { return -5; }
 	PyObject* new_type() {
 		PyObject* obj = (PyObject*) malloc(sizeof(PyTypeObject));
 		PyTypeObject* tobj = (PyTypeObject*) obj;
@@ -2923,6 +2924,7 @@ def test_interpret_func_ptr_via_created_obj():
 		PyTypeObject dummy = {hash1};
 		assert(dummy.tp_hash != 0);
 		assert(dummy.tp_hash == hash1);
+		assert(dummy.tp_hash != hash2);
 		assert(tobj->tp_hash != 0);
 		assert(tobj->tp_hash == dummy.tp_hash);
 		return obj;
