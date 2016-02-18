@@ -2920,7 +2920,11 @@ def test_interpret_func_ptr_via_created_obj():
 		tobj->tp_hash = 0;
 		assert(tobj->tp_hash == 0);
 		tobj->tp_hash = hash1;
+		PyTypeObject dummy = {hash1};
+		assert(dummy.tp_hash != 0);
+		assert(dummy.tp_hash == hash1);
 		assert(tobj->tp_hash != 0);
+		assert(tobj->tp_hash == dummy.tp_hash);
 		return obj;
 	}
 	static long hash1(PyObject*) { return 42; }
