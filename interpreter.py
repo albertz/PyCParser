@@ -1150,8 +1150,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
 def getAstNode_assign(stateStruct, aAst, aType, bAst, bType):
 	if isPointerType(bType):
 		bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
-	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
-	if isPointerType(aType):
+	bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
+	if isPointerType(aType, alsoFuncPtr=True):
 		return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
 	return makeAstNodeCall(Helpers.assign, aAst, bValueAst)
 
