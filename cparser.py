@@ -3343,12 +3343,16 @@ class CElseStatement(_CControlStructure):
 					last = last.body
 				else:
 					break
+			assert isinstance(last, CIfStatement)
 			if last.elsePart is not None:
 				base = last.elsePart
 			else:
 				lastIf = last
+				# if the if-part of the last has a real body (curly braces), we can stop
+				if isinstance(lastIf.body, CBody): break
+				# otherwise, we might be the else-part of another inner hanging if
 				base = lastIf
-	
+
 		if lastIf is not None:
 			lastIf.elsePart = self
 		else:
