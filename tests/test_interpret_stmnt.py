@@ -2833,3 +2833,31 @@ def test_interpret_ternary_void_p_and_int_p():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_if_if_else_hanging():
+	state = parse("""
+	int f() {
+		int a = 1, b = 2, c = 3, x = -5;
+		if (a == 2) {
+			x = 1;
+			if (b == 2)
+				return -1;
+		}
+		else {
+			x = 2;
+			if (c == 2) {
+				return -2;
+			}
+		}
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 2
