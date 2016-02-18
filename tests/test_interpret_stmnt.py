@@ -2921,7 +2921,7 @@ def test_interpret_func_ptr_via_created_obj():
 		tobj->tp_hash = 0;
 		assert(tobj->tp_hash == 0);
 		tobj->tp_hash = hash1;
-		PyTypeObject dummy = {hash1};
+		PyTypeObject dummy = {{}, hash1};
 		assert(dummy.tp_hash != 0);
 		assert(dummy.tp_hash == hash1);
 		assert(dummy.tp_hash != hash2);
@@ -2943,6 +2943,36 @@ def test_interpret_func_ptr_via_created_obj():
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
 	interpreter.dumpFunc("new_type", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
+
+
+def test_interpret_local_obj_bracy_init_func_ptr():
+	state = parse("""
+	#include <assert.h>
+	typedef int (*hashfunc)(int);
+	typedef struct _obj {
+		hashfunc v;
+	} PyObject;
+	static int hash1(int) { return 42; }
+	static int hash2(int) { return 43; }
+	int f() {
+		PyObject obj = {hash1};
+		assert(obj.v != 0);
+		assert(obj.v == hash1);
+		assert(obj.v != hash2);
+		int x = obj.v(13);
+		obj.v = 0;
+		assert(obj.v == 0);
+		return x;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
 	print "Run:"
 	r = interpreter.runFunc("f")
 	print "result:", r
