@@ -51,11 +51,12 @@ class CWrapValue(CType):
 		return value
 
 class CWrapFuncType(CType, CFuncPointerBase):
-	def __init__(self, func):
+	def __init__(self, func, funcEnv):
 		"""
 		:type func: CFunc
 		"""
 		self.func = func
+		self.funcEnv = funcEnv
 	def getCType(self, stateStruct):
 		return self.func.getCType(stateStruct)
 
@@ -457,7 +458,7 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 		if isinstance(objType, CFuncPointerDecl):
 			return makeCastToVoidP_value(objAst)  # return address
 		if isinstance(objType, CWrapFuncType):
-			return ast.Num(-1)  # dummy address, non-zero
+			return makeFuncPtrValue(objAst, objType)
 	if isinstance(objType, CFuncPointerDecl):
 		# It's already the value. See also CWrapFuncType below.
 		return objAst
@@ -1009,7 +1010,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 	if isinstance(stmnt, (CVarDecl,CFuncArgDecl)):
 		return funcEnv.getAstNodeForVarDecl(stmnt), stmnt.type
 	elif isinstance(stmnt, CFunc):
-		return funcEnv.getAstNodeForVarDecl(stmnt), CWrapFuncType(stmnt)
+		return funcEnv.getAstNodeForVarDecl(stmnt), CWrapFuncType(stmnt, funcEnv=funcEnv)
 	elif isinstance(stmnt, CStatement):
 		return astAndTypeForCStatement(funcEnv, stmnt)
 	elif isinstance(stmnt, CAttribAccessRef):
@@ -1262,6 +1263,13 @@ def _resolveOffsetOf(stateStruct, stmnt):
 		base = sub.type
 	return offset
 
+def makeFuncPtrValue(argAst, argType):
+	assert isinstance(argType, CWrapFuncType)
+	interpreter = argType.funcEnv.interpreter
+	v = getAstNode_newTypeInstance(interpreter, CBuiltinType(("void", "*")), argAst, argType)
+	astValue = getAstNodeAttrib(v, "value")
+	return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
 	if stmnt._leftexpr is None: # prefixed only
@@ -1294,13 +1302,11 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			a.op = OpUnary[stmnt._op.content]()
 			if isinstance(rightType, CWrapFuncType):
 				assert stmnt._op.content == "!", "the only supported unary op for ptr types is '!'"
-				a.operand = ast.Num(-1)  # dummy non-zero address
+				a.operand = makeFuncPtrValue(rightAstNode, rightType)
 				rightType = ctypes.c_int
 			elif isPointerType(rightType, alsoFuncPtr=True):
 				assert stmnt._op.content == "!", "the only supported unary op for ptr types is '!'"
-				a.operand = makeAstNodeCall(
-					ast.Name(id="bool", ctx=ast.Load()),
-					makeCastToVoidP_value(rightAstNode))
+				a.operand = makeCastToVoidP_value(rightAstNode)
 				rightType = ctypes.c_int
 			else:
 				a.operand = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)

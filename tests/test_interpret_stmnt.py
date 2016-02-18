@@ -2966,6 +2966,8 @@ def test_interpret_local_obj_bracy_init_func_ptr():
 		int x = obj.v(13);
 		obj.v = 0;
 		assert(obj.v == 0);
+		obj.v = hash2;
+		assert(obj.v == hash2);
 		return x;
 	}
 	""", withGlobalIncludeWrappers=True)
