@@ -3044,7 +3044,7 @@ def test_interpret_array_access_ptr_heap():
 
 		i = hash & mask;
 		ep = &ep0[i];
-		_iwashere = 1;
+		_iwashere = 1; //+ i;
 		if (ep->me_key == NULL || ep->me_key == key)
 			return ep;
 		return 0;
@@ -3092,6 +3092,7 @@ def test_interpret_array_access_ptr_heap():
 		PyDictEntry* entry = d->ma_lookup(d, &key_stack, 13);
 		assert(_iwashere);
 		assert(entry);
+		//assert(entry == &d->ma_table[_iwashere - 1]);
 		//assert(entry >= d->ma_smalltable);
 		//assert(entry < d + 1);
 		PyObject_GC_Del(d);
