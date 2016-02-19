@@ -3036,15 +3036,13 @@ def test_interpret_array_access_ptr_heap():
 	static PyDictEntry *
 	lookdict_string(PyDictObject *mp, PyObject *key, register long hash) {
 		register size_t i;
-		register size_t perturb;
-		register PyDictEntry *freeslot;
 		register size_t mask = (size_t)mp->ma_mask;
 		PyDictEntry *ep0 = mp->ma_table;
 		register PyDictEntry *ep;
 
 		i = hash & mask;
 		ep = &ep0[i];
-		_iwashere = 1; //+ i;
+		_iwashere = 1;
 		if (ep->me_key == NULL || ep->me_key == key)
 			return ep;
 		return 0;
@@ -3092,9 +3090,6 @@ def test_interpret_array_access_ptr_heap():
 		PyDictEntry* entry = d->ma_lookup(d, &key_stack, 13);
 		assert(_iwashere);
 		assert(entry);
-		//assert(entry == &d->ma_table[_iwashere - 1]);
-		//assert(entry >= d->ma_smalltable);
-		//assert(entry < d + 1);
 		PyObject_GC_Del(d);
 		return 42;
 	}
