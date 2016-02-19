@@ -1827,13 +1827,13 @@ class Interpreter:
 			reverse=True, maximum=(ptr_addr + 1, 0), inclusive=(True, False)
 		):
 			if obj_ptr_addr + obj_size <= ptr_addr: break
-			# Found it!
 			obj = self.pointerStorage.get(obj_ptr_addr, None)
 			if obj is None:  # not alive anymore
 				self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
-				break
-			self.pointerStorage[ptr_addr] = obj
-			return ptr
+			elif obj_ptr_addr <= ptr_addr:
+				# Found it!
+				self.pointerStorage[ptr_addr] = obj
+				return ptr
 		# Note: This can also/esp happen when the ptr was not allocated by us.
 		# Not sure how to handle that yet...
 		raise NotImplementedError(
