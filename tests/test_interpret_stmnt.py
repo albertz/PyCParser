@@ -3009,3 +3009,103 @@ def test_interpret_func_ptr_bracy_init():
 	print "result:", r
 	assert r.value == 42
 
+
+def test_interpret_array_access_ptr_heap():
+	state = parse("""
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <string.h>
+	#include <assert.h>
+	typedef struct _object { int v; } PyObject;
+	typedef long Py_ssize_t;
+	typedef struct _dictentry {
+		Py_ssize_t me_hash;
+		PyObject *me_key;
+		PyObject *me_value;
+	} PyDictEntry;
+	#define PyDict_MINSIZE 8
+	typedef struct _dictobject PyDictObject;
+	struct _dictobject {
+		PyObject base;
+		Py_ssize_t ma_mask;
+		PyDictEntry *ma_table;
+		PyDictEntry *(*ma_lookup)(PyDictObject *mp, PyObject *key, long hash);
+		PyDictEntry ma_smalltable[PyDict_MINSIZE];
+	};
+	static int _iwashere = 0;
+	static PyDictEntry *
+	lookdict_string(PyDictObject *mp, PyObject *key, register long hash) {
+		register size_t i;
+		register size_t perturb;
+		register PyDictEntry *freeslot;
+		register size_t mask = (size_t)mp->ma_mask;
+		PyDictEntry *ep0 = mp->ma_table;
+		register PyDictEntry *ep;
+
+		i = hash & mask;
+		ep = &ep0[i];
+		_iwashere = 1;
+		if (ep->me_key == NULL || ep->me_key == key)
+			return ep;
+		return 0;
+	}
+	typedef union _gc_head {
+		struct {
+			union _gc_head *gc_next;
+			union _gc_head *gc_prev;
+			Py_ssize_t gc_refs;
+		} gc;
+		long double dummy;  /* force worst-case alignment */
+	} PyGC_Head;
+	#define AS_GC(o) ((PyGC_Head *)(o)-1)
+	#define FROM_GC(g) ((PyObject *)(((PyGC_Head *)g)+1))
+	PyObject* _PyObject_GC_Malloc(size_t basicsize) {
+		PyObject *op;
+		PyGC_Head *g;
+		g = (PyGC_Head *)malloc(sizeof(PyGC_Head) + basicsize);
+		memset(g, 0, sizeof(PyGC_Head));
+		g->gc.gc_refs = -1;
+		op = FROM_GC(g);
+		return op;
+	}
+	void PyObject_GC_Del(void *op) {
+		PyGC_Head *g = AS_GC(op);
+		free(g);
+	}
+	#define INIT_NONZERO_DICT_SLOTS(mp) do {  \\
+		(mp)->ma_table = (mp)->ma_smalltable; \\
+		(mp)->ma_mask = PyDict_MINSIZE - 1;   \\
+		} while(0)
+	static PyObject* dict_new() {
+		PyObject *self;
+		self = (PyObject*) _PyObject_GC_Malloc(sizeof(PyDictObject));
+		memset(self, 0, sizeof(PyDictObject));
+		PyDictObject *d = (PyDictObject *)self;
+		assert(d->ma_table == NULL);
+		INIT_NONZERO_DICT_SLOTS(d);
+		d->ma_lookup = lookdict_string;
+		return self;
+	}
+	int f() {
+		PyDictObject* d = (PyDictObject*) dict_new();
+		PyObject key_stack;
+		PyDictEntry* entry = d->ma_lookup(d, &key_stack, 13);
+		assert(_iwashere);
+		assert(entry);
+		//assert(entry >= d->ma_smalltable);
+		//assert(entry < d + 1);
+		PyObject_GC_Del(d);
+		return 42;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("dict_new", output=sys.stdout)
+	interpreter.dumpFunc("lookdict_string", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 42
+
