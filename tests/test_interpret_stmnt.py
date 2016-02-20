@@ -3210,58 +3210,21 @@ def test_interpret_void_p_p_incr():
 	assert r.value == ord('b')
 
 
-def test_interpret_static_array_ptr():
+def test_interpret_static_func_ptr_to_void_p():
 	state = parse("""
-	typedef struct _obj {
-		int *a, *b;
-	} PyObject;
-	typedef PyObject* (*wrapperfunc)(PyObject*,PyObject*,void*);
-	typedef PyObject* (*unaryfunc)(PyObject*);
+	typedef int (*unaryfunc)(int);
 	typedef struct _typeobj {
 		unaryfunc tp_repr;
 	} PyTypeObject;
-	static PyObject* type_repr(PyObject *self) { return self; }
-	typedef struct _slot {
-		char* name;
-		int offset;
-		void *function;
-		wrapperfunc wrapper;
-		char *doc;
-	} Slot;
-	static PyObject* slot_tp_repr(PyObject *self) { return self; }
-	static PyObject* wrap_unaryfunc(PyObject *self, PyObject *args, void *wrapped) {
-		unaryfunc func = (unaryfunc)wrapped;
-		return (*func)(self);
-	}
-	#define offsetof(type, member) ( (int) & ((type*)0) -> member )
-	#define TPSLOT(NAME, SLOT, FUNCTION, WRAPPER, DOC) \\
-		{NAME, offsetof(PyTypeObject, SLOT), (void *)(FUNCTION), WRAPPER, (DOC)}
-	static Slot slots[] = {
-		{"foo"},
-		{"bar"},
-	    TPSLOT("__repr__", tp_repr, slot_tp_repr, wrap_unaryfunc,
-			"x.__repr__() <==> repr(x)"),
-		{0}
-	};
-	static void look(Slot* p, void* wrapper) {
-		Slot* s;
-		s = p;
+	static int type_repr(int x) { return x; }
+	static void look(void* wrapper) {
 		void* w;
 		w = wrapper;
 	}
 	int f() {
-		PyTypeObject my_type;
-		my_type.tp_repr = type_repr;
-		Slot* p;
-		int c = 0;
-	    for (p = slots; p->name; p++) {
-	    	void** ptr = (void**) (((char*) &my_type) + p->offset);
-	    	if(p->wrapper == 0) continue;
-			if(!ptr || !*ptr) continue;
-			look(p, *ptr);
-			c++;
-	    }
-		return c;
+		PyTypeObject my_type = {type_repr};
+		look((void*) my_type.tp_repr);
+		return 42;
 	}
 	""")
 	interpreter = Interpreter()
@@ -3273,4 +3236,52 @@ def test_interpret_static_array_ptr():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == 1
+	assert r.value == 42
+
+
+def test_interpret_func_to_void_p():
+	state = parse("""
+	static int* type_repr(int x) { return x; }
+	static void look(void* wrapper) {
+		void* w;
+		w = wrapper;
+	}
+	int f() {
+		look((void*) type_repr);
+		return 42;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("look", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
+def test_interpret_func_addr_to_void_p():
+	state = parse("""
+	static int* type_repr(int x) { return x; }
+	static void look(void* wrapper) {
+		void* w;
+		w = wrapper;
+	}
+	int f() {
+		look((void*) &type_repr);
+		return 42;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("look", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
