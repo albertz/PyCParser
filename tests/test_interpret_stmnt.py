@@ -3152,21 +3152,33 @@ def test_interpret_for_loop_continue():
 def test_interpret_void_p_p():
 	state = parse("""
 	static void** slotptr() {
-		char* s = "foo";
+		const char* s = "foo";
 		return (void**) s;
 	}
 	int f() {
 		void** p = slotptr();
-		return (p == 0) ? 5 : 13;
+		return ((const char*) p)[1];
 	}
 	""")
+	print "Parsed:"
+	print "slotptr:", state.funcs["slotptr"]
+	assert isinstance(state.funcs["slotptr"].body, CBody)
+	f_content = state.funcs["slotptr"].body.contentlist
+	assert isinstance(f_content[1], CReturnStatement)
+	print "slotptr return body:"
+	pprint(f_content[1].body)
+	assert isinstance(f_content[1].body, CStatement)
+	assert isinstance(f_content[1].body._leftexpr, CFuncCall)
+	cast_base = f_content[1].body._leftexpr.base
+	pprint(cast_base)
+	assert isType(cast_base)
 	interpreter = Interpreter()
 	interpreter.register(state)
-
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("slotptr", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == 13
+	assert r.value == ord('o')

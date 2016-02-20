@@ -422,6 +422,16 @@ def isSameType(stateStruct, type1, type2):
 	ctype2 = getCType(type2, stateStruct)
 	return ctype1 == ctype2
 
+def isType(t):
+	if isinstance(t, CType): return True
+	if isinstance(t, CStatement):
+		return t.isCType()
+	try:
+		if issubclass(t, _ctypes._SimpleCData): return True
+	except Exception: pass # e.g. typeerror or so
+	if isinstance(t, (CType,CStruct,CUnion,CEnum,CTypedef)): return True
+	return False
+
 def getSizeOf(t, stateStruct):
 	t = getCType(t, stateStruct)
 	return ctypes.sizeof(t)
@@ -2544,7 +2554,9 @@ class CStatement(_CBaseWithOptBody):
 				self._state = 20
 				self._leftexpr = CPtrAccessRef(parent=self, base=self._leftexpr)
 			elif isinstance(token, COp):
-				if token.content in OpPostfixFuncs:
+				if token == COp("*") and isType(self._leftexpr):
+					self._leftexpr = CPointerType(self._leftexpr)
+				elif token.content in OpPostfixFuncs:
 					subStatement = CStatement(parent=self)
 					subStatement._leftexpr = self._leftexpr
 					subStatement._op = token
@@ -2897,14 +2909,8 @@ class CStatement(_CBaseWithOptBody):
 	def isCType(self):
 		if self._leftexpr is None: return False # all prefixed stuff is not a type
 		if self._rightexpr is not None: return False # same thing, prefixed stuff is not a type
-		t = self._leftexpr
-		try:
-			if issubclass(t, _ctypes._SimpleCData): return True
-		except Exception: pass # e.g. typeerror or so
-		if isinstance(t, (CType,CStruct,CUnion,CEnum,CTypedef)): return True
-		if isinstance(t, CStatement): return t.isCType()
-		return False
-	
+		return isType(self._leftexpr)
+
 	def asType(self):
 		assert self._leftexpr is not None
 		assert self._rightexpr is None
