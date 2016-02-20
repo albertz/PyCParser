@@ -436,6 +436,29 @@ def test_interpret_goto_into_nested_for_loop():
 	assert r.value == 5
 
 
+def test_interpret_goto_with_if_else():
+	state = parse("""
+	int f() {
+		int x = 1;
+		goto here;
+		here:
+		if(x <= 3) x = 5;
+		else x = 13;
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 5
+
+
 def test_interpret_for_loop_empty():
 	state = parse("""
 	int f() {
@@ -3115,7 +3138,7 @@ def test_interpret_for_loop_continue():
 		}
 		return i;
 	}
-	""", withGlobalIncludeWrappers=True)
+	""")
 	interpreter = Interpreter()
 	interpreter.register(state)
 	print "Func dump:"

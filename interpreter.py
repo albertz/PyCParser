@@ -268,7 +268,7 @@ class FuncEnv:
 			body=[], decorator_list=[])
 	def __repr__(self):
 		try: return "<" + self.__class__.__name__ + " of " + self.astNode.name + ">"
-		except: return "<" + self.__class__.__name__ + " in invalid state>"			
+		except Exception: return "<" + self.__class__.__name__ + " in invalid state>"
 	def _registerNewVar(self, varName, varDecl):
 		if varDecl is not None:
 			assert id(varDecl) not in self.varNames
@@ -285,8 +285,22 @@ class FuncEnv:
 		return self.globalScope.findIdentifier(varName) is not None
 	def registerNewVar(self, varName, varDecl=None):
 		return self.scopeStack[-1].registerNewVar(varName, varDecl)
-	def registerNewUnscopedVarName(self, varName):
-		return self._registerNewVar(varName, None)
+	def registerNewUnscopedVarName(self, varName, initNone=True):
+		"""
+		:type varName: str
+		:return: Python var name
+		:rtype: str
+		This will register a new var which is available in all scopes
+		and we init it with None at the very beginning.
+		"""
+		varName = self._registerNewVar(varName, None)
+		if initNone:
+			a = ast.Assign()
+			a.targets = [ast.Name(id=varName, ctx=ast.Store())]
+			a.value = ast.Name(id="None", ctx=ast.Load())
+			# Add at the very front because this var might not be assigned otherwise when there is a goto.
+			self.scopeStack[0].body.insert(0, a)
+		return varName
 	def getAstNodeForVarDecl(self, varDecl):
 		assert varDecl is not None
 		if id(varDecl) in self.varNames:
@@ -1409,11 +1423,28 @@ def astForCFor(funcEnv, stmnt):
 	# introduce dummy 'if' AST so that we have a scope for the for-loop (esp. the first statement)
 	ifAst = ast.If(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	funcEnv.pushScope(ifAst.body)
+
+	var_first_iteration = funcEnv.registerNewUnscopedVarName("first_iteration")
+	a = ast.Assign()
+	a.targets = [ast.Name(id=var_first_iteration, ctx=ast.Store())]
+	a.value = ast.Name(id="True", ctx=ast.Load())
+	ifAst.body.append(a)
 	if stmnt.args[0]:  # could be empty
 		cStatementToPyAst(funcEnv, stmnt.args[0])
 	
 	whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 	ifAst.body.append(whileAst)
+
+	ifFirstIterAst = ast.If(body=[], orelse=[], test=ast.Name(id=var_first_iteration, ctx=ast.Load()))
+	a = ast.Assign()
+	a.targets = [ast.Name(id=var_first_iteration, ctx=ast.Store())]
+	a.value = ast.Name(id="False", ctx=ast.Load())
+	ifFirstIterAst.body.append(a)
+	if stmnt.args[2]:  # could be empty
+		funcEnv.pushScope(ifFirstIterAst.orelse)
+		cStatementToPyAst(funcEnv, stmnt.args[2])
+		funcEnv.popScope() # ifFirstIterAst
+	whileAst.body.append(ifFirstIterAst)
 
 	if stmnt.args[1]:  # non-empty statement
 		ifTestAst = ast.If(body=[ast.Pass()], orelse=[ast.Break()])
@@ -1423,8 +1454,6 @@ def astForCFor(funcEnv, stmnt):
 	funcEnv.pushScope(whileAst.body)
 	if stmnt.body is not None:
 		cCodeToPyAstList(funcEnv, stmnt.body)
-	if stmnt.args[2]:  # could be empty
-		cStatementToPyAst(funcEnv, stmnt.args[2])
 	funcEnv.popScope() # whileAst / main for-body
 	
 	funcEnv.popScope() # ifAst
@@ -1875,7 +1904,7 @@ class Interpreter:
 		base.popScope()
 		base.astNode.body.append(astForCReturn(base, None))
 		if base.needGotoHandling:
-			gotoVarName = base.registerNewUnscopedVarName("goto")
+			gotoVarName = base.registerNewUnscopedVarName("goto", initNone=False)
 			base.astNode = goto.transform_goto(base.astNode, gotoVarName)
 		return base
 
