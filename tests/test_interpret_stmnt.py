@@ -3105,3 +3105,22 @@ def test_interpret_array_access_ptr_heap():
 	print "result:", r
 	assert r.value == 42
 
+
+def test_interpret_for_loop_continue():
+	state = parse("""
+	int f() {
+		int i = 0;
+		for (; i < 5; ++i) {
+			continue;
+		}
+		return i;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert r.value == 5
