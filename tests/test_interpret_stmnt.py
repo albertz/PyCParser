@@ -3182,3 +3182,29 @@ def test_interpret_void_p_p():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ord('o')
+
+
+def test_interpret_void_p_p_incr():
+	state = parse("""
+	static void** slotptr() {
+		const char* ptr = "foobar";
+		long offset = 1;
+		if (ptr != 0)
+			ptr += offset;
+		return (void**) ptr;
+	}
+	int f() {
+		void** p = slotptr();
+		return ((const char*) p)[2];
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("slotptr", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord('b')
