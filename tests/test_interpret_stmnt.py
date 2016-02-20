@@ -3147,3 +3147,26 @@ def test_interpret_for_loop_continue():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert r.value == 5
+
+
+def test_interpret_void_p_p():
+	state = parse("""
+	static void** slotptr() {
+		char* s = "foo";
+		return (void**) s;
+	}
+	int f() {
+		void** p = slotptr();
+		return (p == 0) ? 5 : 13;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
