@@ -900,7 +900,7 @@ class Helpers:
 
 	def augAssignPtr(self, a, op, bValue):
 		# `a` is itself a pointer.
-		assert op in ("+","-")
+		assert op in ("+=","-=")
 		op = OpBinFuncs[op]
 		bValue *= ctypes.sizeof(a._type_)
 		aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
@@ -911,7 +911,8 @@ class Helpers:
 		return a
 
 	def ptrArithmetic(self, a, op, bValue):
-		return self.augAssignPtr(self.copy(a), op, bValue)
+		assert op in ("+","-")
+		return self.augAssignPtr(self.copy(a), op + "=", bValue)
 
 	@staticmethod
 	def fixReturnType(t):
