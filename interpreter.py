@@ -925,14 +925,15 @@ class Helpers:
 			t = wrapCTypeClass(ctypes.c_void_p)
 		return _fixCType(t, wrap=True)
 
-	@staticmethod
-	def makeFuncPtr(funcCType, func):
+	def makeFuncPtr(self, funcCType, func):
 		assert inspect.isfunction(func)
 		if getattr(func, "C_funcPtr", None):
 			return func.C_funcPtr
 		# We store the pointer in the func itself
 		# so that it don't get out of scope (because of casts).
 		func.C_funcPtr = funcCType(func)
+		func.C_funcPtrStorage = PointerStorage(ptr=func.C_funcPtr, value=func)
+		self.interpreter._storePtr(func.C_funcPtr, value=func.C_funcPtrStorage)
 		return func.C_funcPtr
 
 	@staticmethod
@@ -1707,6 +1708,9 @@ def _ctype_collect_objects(obj):
 		else:
 			collect(o)
 	def visit_c(b):
+		# Usually, we get a ctypes object with _objects and _b_base_ here.
+		# However, sometimes get ctypes.CThunkObject here which does not have these attribs.
+		if not hasattr(b, "_objects"): return
 		visit_generic(b._objects)
 		collect(b._b_base_)
 	collect(obj)
@@ -1728,6 +1732,12 @@ class CTypesWrapper(object):
 		t_wrapped = wrapCTypeClass(t)
 		self.__dict__[name] = t_wrapped
 		return t_wrapped
+
+
+class PointerStorage:
+	def __init__(self, ptr, value):
+		self.ptr = ptr
+		self.valueRef = ref(value)
 
 
 class Interpreter:
@@ -1830,13 +1840,20 @@ class Interpreter:
 		except KeyError:
 			raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
 
-	def _storePtr(self, ptr, offset=0):
-		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array))
+	def _storePtr(self, ptr, offset=0, value=None):
+		assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr))
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr == 0:
 			return ptr  # Nothing needed to store.
 		if ptr_addr in self.pointerStorage:
 			return ptr
+		if value is not None:
+			# No extra logic.
+			assert isinstance(value, PointerStorage)
+			assert offset == 0
+			self.pointerStorage[ptr_addr] = value
+			return ptr
+		assert not isinstance(ptr, ctypes._CFuncPtr)  # should have been catched above
 		if ptr_addr - offset in self.pointerStorage:
 			self.pointerStorage[ptr_addr] = self.pointerStorage[ptr_addr - offset]
 			return ptr
@@ -1879,6 +1896,8 @@ class Interpreter:
 			obj = self.pointerStorage[addr]
 		except KeyError:
 			raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
+		if isinstance(obj, PointerStorage):
+			return obj.ptr
 		ptr = ctypes.pointer(obj)
 		ptr_addr = _ctype_ptr_get_value(ptr)
 		if ptr_addr != addr:  # might be different if we had an offset in _setPtr
