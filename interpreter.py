@@ -1308,6 +1308,10 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			else:
 				assert False, str(stmnt) + " has bad type " + str(rightType)
 		elif stmnt._op.content == "&":
+			if isinstance(rightType, CWrapFuncType):
+				# Leave function as-is.
+				# A pointer to a function is handled just like the function itself.
+				return rightAstNode, rightType
 			# We need to catch offsetof-like calls here because ctypes doesn't allow
 			# NULL pointer access. offsetof is like `&(struct S*)(0)->attrib`.
 			offset = _resolveOffsetOf(funcEnv.globalScope.stateStruct, stmnt)
