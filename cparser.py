@@ -1249,7 +1249,6 @@ def cpreprocess_parse(stateStruct, input):
 					elif state == 2:
 						if arg is None: arg = ""
 						arg += "/" + c
-						breakLoop = False
 					else:
 						stateStruct.error("preproc parse: internal error after possible comment. didn't expect state " + str(state))
 						state = 0 # best we can do
