@@ -3449,7 +3449,7 @@ def test_interpret_local_func_ptr_type():
 
 def test_interpret_struct_return():
 	state = parse("""
-	typedef struct {
+	typedef struct _complex {
 		int real;
 		int imag;
 	} Py_complex;
