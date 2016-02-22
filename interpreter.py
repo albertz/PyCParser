@@ -1931,7 +1931,7 @@ class Interpreter:
 						ast.Name(id="Exception", ctx=ast.Load()),
 						ast.Str(s="Function '%s' only predeclared. Body is missing. Missing C source code."
 								  % func.name)
-					)))
+						), inst=None, tback=None))
 			else:
 				assert False, "unknown no-body-mode: %r" % noBodyMode
 		else:
