@@ -3426,3 +3426,22 @@ def test_interpret_sys_types_h():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_local_func_ptr_type():
+	state = parse("""
+	typedef int PyObject;
+	int f() {
+	    PyObject *(*iternext)(PyObject *);
+		return 42;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
