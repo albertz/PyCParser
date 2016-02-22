@@ -3285,3 +3285,33 @@ def test_interpret_func_addr_to_void_p():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_func_call_pass_array():
+	state = parse("""
+	typedef struct PyMethodDef {
+		char* name;
+	} PyMethodDef;
+	typedef int PyObject;
+	static PyObject* PyCFunction_New(PyMethodDef*) { return 0; }
+	static struct PyMethodDef tp_new_methoddef[] = {
+		{"__new__"},
+		{0}
+	};
+	int f() {
+		PyObject *func;
+		func = PyCFunction_New(tp_new_methoddef);
+		if (func == 0)
+			return 13;
+		return -1;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
