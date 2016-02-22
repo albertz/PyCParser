@@ -1855,6 +1855,9 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
 			if allowPredec and d[obj.name].body is None:
 				# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
 				d[obj.name] = obj
+			elif "extern" in d[obj.name].attribs:
+				# Otherwise, if we explicitely use the "extern" attribute, it's also ok.
+				d[obj.name] = obj
 			else:
 				# Otherwise however, it is an error.
 				stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
