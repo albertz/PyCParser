@@ -3323,8 +3323,9 @@ def test_interpret_struct_same_name_as_typedef():
 		char* ml_name;
 	} PyMethodDef;
 	int f() {
-	    struct PyMethodDef *tp_methods = 0;
-		return 42;
+		PyMethodDef m = {"foo"};
+	    struct PyMethodDef* mp = &m;
+		return mp->ml_name[1];
 	}
 	""")
 	interpreter = Interpreter()
@@ -3335,7 +3336,7 @@ def test_interpret_struct_same_name_as_typedef():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == 13
+	assert r.value == ord('o')
 
 
 def test_interpret_func_ptr_in_static_array():
@@ -3369,7 +3370,6 @@ def test_interpret_func_ptr_in_static_array():
 		}
 		return 0;
 	}
-
 	int f() {
 		add_methods(&PyBaseObject_Type, PyBaseObject_Type.tp_methods);
 		return 42;
@@ -3383,4 +3383,4 @@ def test_interpret_func_ptr_in_static_array():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == 13
+	assert r.value == 42
