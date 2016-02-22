@@ -3445,3 +3445,34 @@ def test_interpret_local_func_ptr_type():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_struct_return():
+	state = parse("""
+	typedef struct {
+		int real;
+		int imag;
+	} Py_complex;
+	Py_complex c_sum(Py_complex a, Py_complex b) {
+		Py_complex r;
+		r.real = a.real + b.real;
+		r.imag = a.imag + b.imag;
+		return r;
+	}
+	int f() {
+		Py_complex s;
+		Py_complex a = {1, 2};
+		Py_complex b = {3, 5};
+		s = c_sum(a, b);
+		return s.real + s.imag;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 11
