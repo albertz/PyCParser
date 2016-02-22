@@ -1665,7 +1665,7 @@ def _unparse(pyAst):
 	from cStringIO import StringIO
 	output = StringIO()
 	from py_demo_unparse import Unparser
-	Unparser(pyAst, output)
+	Unparser(pyAst, file=output)
 	output.write("\n")
 	return output.getvalue()
 
@@ -1909,7 +1909,7 @@ class Interpreter:
 			_ctype_ptr_set_value(ptr, addr)
 		return ptr
 
-	def _translateFuncToPyAst(self, func):
+	def _translateFuncToPyAst(self, func, noBodyMode="warn-empty"):
 		assert isinstance(func, CFunc)
 		base = FuncEnv(globalScope=self.globalScope)
 		assert func.name is not None
@@ -1923,7 +1923,17 @@ class Interpreter:
 		if func.body is None:
 			# TODO: search in other C files
 			# Hack for now: ignore :)
-			print "TODO (missing C source code file):", func.name, "is not loaded yet"
+			if noBodyMode == "warn-empty":
+				print "TODO (missing C source code file):", func.name, "is not loaded yet"
+			elif noBodyMode == "code-with-exception":
+				base.astNode.body.append(
+					ast.Raise(type=makeAstNodeCall(
+						ast.Name(id="Exception", ctx=ast.Load()),
+						ast.Str(s="Function '%s' only predeclared. Body is missing. Missing C source code."
+								  % func.name)
+					)))
+			else:
+				assert False, "unknown no-body-mode: %r" % noBodyMode
 		else:
 			cCodeToPyAstList(base, func.body)
 		base.popScope()

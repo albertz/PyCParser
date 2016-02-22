@@ -26,12 +26,12 @@ class Unparser:
     output source code for the abstract syntax; original formatting
     is disregarded. """
 
-    def __init__(self, tree, file = sys.stdout):
+    def __init__(self, tree, indent=0, file=sys.stdout):
         """Unparser(tree, file=sys.stdout) -> None.
          Print the source for tree to file."""
         self.f = file
         self.future_imports = []
-        self._indent = 0
+        self._indent = indent
         self.dispatch(tree)
         self.f.write("")
         self.f.flush()
