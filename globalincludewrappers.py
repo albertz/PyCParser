@@ -191,9 +191,11 @@ class Wrapper:
 		CVarDecl(parent=struct_lconv, name="grouping", type=ctypes.c_char_p).finalize(state)
 		CVarDecl(parent=struct_lconv, name="thousands_sep", type=ctypes.c_char_p).finalize(state)
 		wrapCFunc(state, "localeconv", restype=struct_lconv.getCType(state), argtypes=())
+	def handle_sys_types_h(self, state):
+		pass  # dummy
 
 	def find_handler_func(self, filename):
-		funcname = "handle_" + filename.replace("/", "__").replace(".", "_")
+		funcname = "handle_" + filename.replace("/", "_").replace(".", "_")
 		return getattr(self, funcname, None)
 		
 	def readGlobalInclude(self, state, oldFunc, filename):
