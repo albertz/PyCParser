@@ -3315,3 +3315,72 @@ def test_interpret_func_call_pass_array():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 13
+
+
+def test_interpret_struct_same_name_as_typedef():
+	state = parse("""
+	typedef struct PyMethodDef {
+		char* ml_name;
+	} PyMethodDef;
+	int f() {
+	    struct PyMethodDef *tp_methods = 0;
+		return 42;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
+
+
+def test_interpret_func_ptr_in_static_array():
+	state = parse("""
+	typedef struct _methdef {
+		char* ml_name;
+	} PyMethodDef;
+	typedef struct _typeobj {
+		char* name;
+	    PyMethodDef *tp_methods;
+	} PyTypeObject;
+	static PyMethodDef object_methods[] = {
+		{"__reduce_ex__"},
+		{"__reduce__"},
+		{0}
+	};
+	PyTypeObject PyBaseObject_Type = {
+		"foo",
+    	object_methods /* tp_methods */
+	};
+	typedef int PyObject;
+	PyObject* PyDescr_NewMethod(PyTypeObject *type, PyMethodDef *method) {
+		PyMethodDef* m;
+		m = method;
+		return 0;
+	}
+	static int add_methods(PyTypeObject *type, PyMethodDef *meth) {
+		for (; meth->ml_name != 0; meth++) {
+			PyObject *descr;
+			descr = PyDescr_NewMethod(type, meth);
+		}
+		return 0;
+	}
+
+	int f() {
+		add_methods(&PyBaseObject_Type, PyBaseObject_Type.tp_methods);
+		return 42;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
