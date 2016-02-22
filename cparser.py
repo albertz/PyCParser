@@ -3664,7 +3664,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				assert curCObj.name is None
 				CStatement.overtake(curCObj)
 				curCObj._cpre3_handle_token(stateStruct, token)
-			elif not curCObj._type_tokens and token.content in stateStruct.typedefs:
+			elif not curCObj._type_tokens and not curCObj.isDerived() and token.content in stateStruct.typedefs:
 				curCObj._type_tokens += [token.content]
 			else:
 				if curCObj._finalized:
