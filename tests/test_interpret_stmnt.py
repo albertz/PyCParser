@@ -3407,3 +3407,22 @@ def test_interpret_func_ptr_in_static_array():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_sys_types_h():
+	state = parse("""
+	#include <sys/types.h>
+	int f() {
+		size_t x = 42;
+		return (int) x;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
