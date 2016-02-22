@@ -3400,6 +3400,8 @@ def test_interpret_func_ptr_in_static_array():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("add_methods", output=sys.stdout)
+	interpreter.dumpFunc("PyDescr_NewMethod", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r

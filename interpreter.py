@@ -171,6 +171,7 @@ class GlobalScope:
 		def getEmpty():
 			emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl_type)
 			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
+			self.interpreter._storePtr(ctypes.pointer(v_empty))
 			return v_empty
 		self.vars[name] = getEmpty()
 
