@@ -1842,7 +1842,7 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
 		return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
 
 
-def _addToParent(obj, stateStruct, dictName=None, listName=None):
+def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=True):
 	assert dictName or listName
 	assert hasattr(obj.parent, "body")
 	d = getattr(obj.parent.body, dictName or listName)
@@ -1851,10 +1851,13 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None):
 			# might be part of a typedef, so don't error
 			return
 
-		# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
-		# Otherwise however, it is an error.
-		if obj.name in d and d[obj.name].body is not None:
-			stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
+		if obj.name in d:
+			if allowPredec and d[obj.name].body is None:
+				# If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
+				d[obj.name] = obj
+			else:
+				# Otherwise however, it is an error.
+				stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
 		else:
 			d[obj.name] = obj
 	else:
@@ -1862,7 +1865,7 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None):
 		d.append(obj)
 
 
-def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToContent=None):
+def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToContent=None, allowPredec=True):
 	if obj._finalized:
 		stateStruct.error("internal error: " + str(obj) + " finalized twice")
 		return
@@ -1875,7 +1878,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
 	
 	if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
-		_addToParent(obj=obj, stateStruct=stateStruct, dictName=dictName, listName=listName)
+		_addToParent(obj=obj, stateStruct=stateStruct, dictName=dictName, listName=listName, allowPredec=allowPredec)
 
 
 class CFunc(_CBaseWithOptBody):
@@ -1892,7 +1895,7 @@ class CFunc(_CBaseWithOptBody):
 		return s
 
 class CVarDecl(_CBaseWithOptBody):
-	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="vars", **kwargs)
+	finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="vars", allowPredec=False, **kwargs)
 	def clearDeclForNextVar(self):
 		if hasattr(self, "bitsize"): delattr(self, "bitsize")
 		while self._type_tokens and self._type_tokens[-1] in ("*",):
