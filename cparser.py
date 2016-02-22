@@ -382,16 +382,20 @@ class CArrayType(CType):
 		self.arrayOf = arrayOf
 		self.arrayLen = arrayLen
 	def getCType(self, stateStruct):
+		try:
+			t = getCType(self.arrayOf, stateStruct)
+		except Exception as e:
+			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to int")
+			t = ctypes.c_int
+			if stateStruct.IndirectSimpleCTypes:
+				t = wrapCTypeClassIfNeeded(t)
+		if not self.arrayLen:
+			return ctypes.POINTER(t)
 		l = getConstValue(stateStruct, self.arrayLen)
 		if l is None:
 			stateStruct.error("%s: error getting array len, falling back to 1" % self)
 			l = 1
-		try:
-			t = getCType(self.arrayOf, stateStruct)
-			return t * l
-		except Exception as e:
-			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to int")
-		return ctypes.c_int * l
+		return t * l
 	def asCCode(self, indent=""): return "%s%s[%s]" % (indent, asCCode(self.arrayOf), asCCode(self.arrayLen))
 
 
@@ -2842,6 +2846,7 @@ class CStatement(_CBaseWithOptBody):
 				assert False, self._state
 
 	def getConstValue(self, stateStruct):
+		if not self: return None
 		if self._leftexpr is None: # prefixed only
 			func = OpPrefixFuncs[self._op.content]
 			v = getConstValue(stateStruct, self._rightexpr)
