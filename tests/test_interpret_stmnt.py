@@ -3339,6 +3339,27 @@ def test_interpret_struct_same_name_as_typedef():
 	assert r.value == ord('o')
 
 
+def test_interpret_struct_same_name_as_typedef_2():
+	state = parse("""
+	typedef struct PyMethodDef {
+		char* ml_name;
+	} PyMethodDef;
+	int f() {
+	    struct PyMethodDef m = {"foo"};
+		return m.ml_name[1];
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord('o')
+
+
 def test_interpret_func_ptr_in_static_array():
 	state = parse("""
 	typedef struct _methdef {
