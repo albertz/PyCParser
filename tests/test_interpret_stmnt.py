@@ -3584,6 +3584,34 @@ def test_interpret_var_args_vsprintf():
 	assert r.value == ord('2')
 
 
+def test_interpret_var_args_va_list_param():
+	state = parse("""
+	#include <stdarg.h>
+	void h(va_list) {}
+	void g(const char* format, ...) {
+		va_list vargs;
+		va_start(vargs, format);
+		h(vargs);
+		va_end(vargs);
+	}
+	int f() {
+		g("foo");
+		return 42;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	interpreter.dumpFunc("h", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
+
+
 def test_interpret_goto_named_func():
 	state = parse("""
 	int g() { return 42; }
