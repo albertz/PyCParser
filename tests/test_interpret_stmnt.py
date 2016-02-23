@@ -3562,7 +3562,7 @@ def test_interpret_var_args_vsprintf():
 		va_list vargs;
 		PyObject* string;
 		va_start(vargs, format);
-		vsprintf(format, vargs);
+		vsprintf(buffer, format, vargs);
 		va_end(vargs);
 	}
 	int f() {

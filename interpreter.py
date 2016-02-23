@@ -169,7 +169,7 @@ class GlobalScope:
 				decl_type.arrayLen = CNumber(arrayLen)
 
 		def getEmpty():
-			emptyValueAst = getAstNode_newTypeInstance(self.interpreter, decl_type)
+			emptyValueAst = getAstNode_newTypeInstance(FuncEnv(self), decl_type)
 			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
 			self.interpreter._storePtr(ctypes.pointer(v_empty))
 			return v_empty
@@ -181,7 +181,7 @@ class GlobalScope:
 				v = decl.body.getConstValue(self.stateStruct)
 				assert v is not None and v == 0, "Global: Initializing pointer type " + str(decl_type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
 			else:
-				valueAst = getAstNode_newTypeInstance(self.interpreter, decl_type, bodyAst, bodyType)
+				valueAst = getAstNode_newTypeInstance(FuncEnv(self), decl_type, bodyAst, bodyType)
 				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
 				self.interpreter.helpers.assign(self.vars[name], value)
 
@@ -504,7 +504,8 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 	else:
 		assert False, "bad type: " + str(objType)
 
-def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
+def _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type):
+	interpreter = funcEnv.interpreter
 	stateStruct = interpreter.globalScope.stateStruct
 	while isinstance(f_arg_type, CTypedef):
 		f_arg_type = f_arg_type.type
@@ -541,7 +542,7 @@ def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
 		# Somewhat like autoCastArgs():
 		s_args = []
 		for _f_arg_type, _s_arg_ast, _s_arg_type in zip(f_args, s_arg_ast.elts, s_arg_type):
-			_s_arg_ast = _makeVal(interpreter, _f_arg_type, _s_arg_ast, _s_arg_type)
+			_s_arg_ast = _makeVal(funcEnv, _f_arg_type, _s_arg_ast, _s_arg_type)
 			s_args += [_s_arg_ast]
 		return makeAstNodeCall(typeAst, *s_args)
 
@@ -566,17 +567,18 @@ def _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type):
 			# The new type instance might add some checks.
 			need_cast = True
 		if need_cast:
-			s_arg_ast = getAstNode_newTypeInstance(interpreter, f_arg_type, s_arg_ast, s_arg_type)
+			s_arg_ast = getAstNode_newTypeInstance(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
 	return s_arg_ast
 
 
-def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
+def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 	"""
 	Create a new instance of type `objType`.
 	It can optionally be initialized with `argAst` (already AST) which is of type `argType`.
 	If `argType` is None, `argAst` is supposed to be a value (e.g. via getAstNode_valueFromObj).
 	:type interpreter: Interpreter
 	"""
+	interpreter = funcEnv.interpreter
 	origObjType = objType
 	while isinstance(objType, CTypedef):
 		objType = objType.type
@@ -638,7 +640,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# Somewhat like autoCastArgs():
 		s_args = []
 		for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
-			s_arg_ast = _makeVal(interpreter, f_arg_type, s_arg_ast, s_arg_type)
+			s_arg_ast = _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
 			s_args += [s_arg_ast]
 		return makeAstNodeCall(typeAst, *s_args)
 
@@ -648,7 +650,7 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 	if isinstance(argType, CWrapFuncType):
 		if isVoidPtrType(objType):
 			vAst = getAstNode_newTypeInstance(
-				interpreter, CFuncPointerDecl(type=argType.func.type, args=argType.func.args),
+				funcEnv, CFuncPointerDecl(type=argType.func.type, args=argType.func.args),
 				argAst=argAst, argType=argType)
 			astCast = getAstNodeAttrib("ctypes", "cast")
 			return makeAstNodeCall(astCast, vAst, typeAst)
@@ -732,16 +734,16 @@ class FuncCodeblockScope:
 			a.value = ast.Name(id="None", ctx=ast.Load())
 		elif isinstance(varDecl, CFuncArgDecl):
 			# Note: We just assume that the parameter has the correct/same type.
-			a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type, ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
+			a.value = getAstNode_newTypeInstance(self.funcEnv, varDecl.type, ast.Name(id=varName, ctx=ast.Load()), varDecl.type)
 		elif isinstance(varDecl, CVarDecl):
 			if varDecl.body is not None:
 				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
 				v = getConstValue(self.funcEnv.globalScope.stateStruct, varDecl.body)
 				if v is not None and not v:
 					bodyAst = t = None
-				a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type, bodyAst, t)
+				a.value = getAstNode_newTypeInstance(self.funcEnv, varDecl.type, bodyAst, t)
 			else:	
-				a.value = getAstNode_newTypeInstance(self.funcEnv.interpreter, varDecl.type)
+				a.value = getAstNode_newTypeInstance(self.funcEnv, varDecl.type)
 		elif isinstance(varDecl, CFunc):
 			# TODO: register func, ...
 			a.value = ast.Name(id="None", ctx=ast.Load())
@@ -1040,7 +1042,7 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
 			f_arg_ctype = getCType(f_arg_type, funcEnv.globalScope.stateStruct)
 			s_arg_ctype = getCType(s_arg_type, funcEnv.globalScope.stateStruct)
 			if s_arg_ctype != f_arg_ctype:
-				s_arg_ast = getAstNode_newTypeInstance(funcEnv.interpreter, f_arg_type, s_arg_ast, s_arg_type)
+				s_arg_ast = getAstNode_newTypeInstance(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
 		r_args += [s_arg_ast]
 	return r_args
 
@@ -1076,11 +1078,11 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		# TODO handle stmnt.typeSpec
 		if isinstance(stmnt.content, float):
 			t = CBuiltinType(("double",))
-			return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=stmnt.content)), t
+			return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
 		t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
 		t = CStdIntType(t)
-		return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=stmnt.content)), t
+		return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
 	elif isinstance(stmnt, CStr):
 		s = str(stmnt.content)
 		l = len(s) + 1
@@ -1100,7 +1102,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				b = a  # Will (should) be ignored anyway. Should be None.
 			else:
 				# We expect the return by value. Thus create a new ctype around.
-				b = getAstNode_newTypeInstance(funcEnv.interpreter, stmnt.base.type, a)
+				b = getAstNode_newTypeInstance(funcEnv, stmnt.base.type, a)
 			return b, stmnt.base.type
 		elif isinstance(stmnt.base, CSizeofSymbol):
 			assert len(stmnt.args) == 1
@@ -1133,14 +1135,14 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				aType = stmnt.base
 			args = [astAndTypeForStatement(funcEnv, a) for a in stmnt.args]
 			if len(args) == 0:
-				return getAstNode_newTypeInstance(funcEnv.interpreter, aType)
+				return getAstNode_newTypeInstance(funcEnv, aType)
 			if len(args) == 1:
 				bAst, bType = args[0]
 			else:
 				tup = ast.Tuple(elts=[a[0] for a in args], ctx=ast.Load())
 				bAst = getAstNodeArrayIndex(tup, -1)
 				bType = args[-1][1]
-			return getAstNode_newTypeInstance(funcEnv.interpreter, aType, bAst, bType), aType
+			return getAstNode_newTypeInstance(funcEnv, aType, bAst, bType), aType
 		else:
 			# Expect func ptr call.
 			pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
@@ -1304,8 +1306,7 @@ def _resolveOffsetOf(stateStruct, stmnt):
 
 def makeFuncPtrValue(argAst, argType):
 	assert isinstance(argType, CWrapFuncType)
-	interpreter = argType.funcEnv.interpreter
-	v = getAstNode_newTypeInstance(interpreter, CBuiltinType(("void", "*")), argAst, argType)
+	v = getAstNode_newTypeInstance(argType.funcEnv, CBuiltinType(("void", "*")), argAst, argType)
 	astValue = getAstNodeAttrib(v, "value")
 	return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
 
@@ -1338,7 +1339,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			offset = _resolveOffsetOf(funcEnv.globalScope.stateStruct, stmnt)
 			if offset is not None:
 				t = CStdIntType("intptr_t")
-				return getAstNode_newTypeInstance(funcEnv.interpreter, t, ast.Num(n=offset)), t
+				return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=offset)), t
 			return makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode), CPointerType(rightType)
 		elif stmnt._op.content in OpUnary:
 			a = ast.UnaryOp()
@@ -1353,7 +1354,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 				rightType = ctypes.c_int
 			else:
 				a.operand = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
-			return getAstNode_newTypeInstance(funcEnv.interpreter, rightType, a), rightType
+			return getAstNode_newTypeInstance(funcEnv, rightType, a), rightType
 		else:
 			assert False, "unary prefix op " + str(stmnt._op) + " is unknown"
 	if stmnt._op is None:
@@ -1378,20 +1379,20 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.values = [
 			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True),
 			getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)]
-		return getAstNode_newTypeInstance(funcEnv.interpreter, ctypes.c_int, a), ctypes.c_int
+		return getAstNode_newTypeInstance(funcEnv, ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content in OpBinCmp:
 		a = ast.Compare()
 		a.ops = [OpBinCmp[stmnt._op.content]()]
 		a.left = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)
 		a.comparators = [getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)]
-		return getAstNode_newTypeInstance(funcEnv.interpreter, ctypes.c_int, a), ctypes.c_int
+		return getAstNode_newTypeInstance(funcEnv, ctypes.c_int, a), ctypes.c_int
 	elif stmnt._op.content == "?:":
 		middleAstNode, middleType = astAndTypeForStatement(funcEnv, stmnt._middleexpr)
 		commonType = getCommonValueType(funcEnv.globalScope.stateStruct, middleType, rightType)
 		a = ast.IfExp()
 		a.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)
-		a.body = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, middleAstNode, middleType)
-		a.orelse = getAstNode_newTypeInstance(funcEnv.interpreter, commonType, rightAstNode, rightType)
+		a.body = getAstNode_newTypeInstance(funcEnv, commonType, middleAstNode, middleType)
+		a.orelse = getAstNode_newTypeInstance(funcEnv, commonType, rightAstNode, rightType)
 		return a, commonType
 	elif stmnt._op.content == ",":
 		a = ast.Tuple(ctx=ast.Load())
@@ -1420,7 +1421,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 		a.right = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)
 		commonType = stmnt.getValueType(funcEnv.globalScope.stateStruct)
 		# Note: No pointer arithmetic here, that case is caught above.
-		return getAstNode_newTypeInstance(funcEnv.interpreter, commonType, a), commonType
+		return getAstNode_newTypeInstance(funcEnv, commonType, a), commonType
 	else:
 		assert False, "binary op " + str(stmnt._op) + " is unknown"
 
@@ -1611,7 +1612,7 @@ def astForCReturn(funcEnv, stmnt):
 	if stmnt is None:
 		# No error for non-void return, because this will be the final return of the func,
 		# and we just want a safe return in all cases.
-		emptyAst = getAstNode_newTypeInstance(funcEnv.interpreter, funcEnv.func.type)
+		emptyAst = getAstNode_newTypeInstance(funcEnv, funcEnv.func.type)
 		returnValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, emptyAst, funcEnv.func.type)
 	else:
 		assert isinstance(stmnt.body, CStatement)
@@ -1940,11 +1941,11 @@ class Interpreter:
 		for arg in func.args:
 			if isinstance(arg.type, CVariadicArgsType):
 				name = base.registerNewUnscopedVarName("varargs", initNone=False)
-				assert name is not None
+				assert name
 				base.astNode.args.vararg = name
 			else:  # normal param
 				name = base.registerNewVar(arg.name, arg)
-				assert name is not None
+				assert name
 				base.astNode.args.args.append(ast.Name(id=name, ctx=ast.Param()))
 		if func.body is None:
 			# TODO: search in other C files

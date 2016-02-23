@@ -150,8 +150,9 @@ class Wrapper:
 			name="getenv"
 		)
 	def handle_stdarg_h(self, state):
+		state.typedefs["va_list"] = CTypedef(name="va_list", type=CVariadicArgsType())
 		# Dummies for now. TODO...
-		state.macros["va_list"] = Macro(rightside="void*")
+		#state.macros["va_list"] = Macro(rightside="void*")
 		state.macros["va_start"] = Macro(args=("list", "last"), rightside="")
 		state.macros["va_end"] = Macro(args=("list",), rightside="")
 		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="type()")
