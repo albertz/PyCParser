@@ -2491,12 +2491,12 @@ class CStatement(_CBaseWithOptBody):
 		self._tokens += [token]
 
 		if self._state == 5 and token == COp(":"):
-			if isinstance(self._leftexpr, CUnknownType):
+			if self._leftexpr.name:
 				CGotoLabel.overtake(self)
 				self.name = self._leftexpr.name
 				self._type_tokens[:] = []
 			else:
-				stateStruct.error("statement parsing: got ':' after " + repr(self._leftexpr) + "; looks like a goto-label but is not")
+				stateStruct.error("statement parsing: got ':' after " + repr(self._leftexpr) + "; looks like a goto-label but has no name")
 			self.finalize(stateStruct)
 			return
 
