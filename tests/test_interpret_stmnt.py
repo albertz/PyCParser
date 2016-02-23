@@ -3441,6 +3441,7 @@ def test_interpret_local_func_ptr_type():
 		return *y;
 	}
 	""")
+	pprint(state.funcs["f"].body.contentlist[0])
 	interpreter = Interpreter()
 	interpreter.register(state)
 	print "Func dump:"

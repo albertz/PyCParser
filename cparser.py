@@ -3815,7 +3815,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 					CStatement.overtake(curCObj)
 					curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
 				elif curCObj.name is None:
-					typeObj = CFuncPointerDecl(parent=curCObj.parent)
+					typeObj = CFuncPointerDecl(parent=curCObj)
 					typeObj._bracketlevel = curCObj._bracketlevel
 					typeObj._type_tokens[:] = curCObj._type_tokens
 					CVarDecl.overtake(curCObj)
