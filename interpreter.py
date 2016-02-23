@@ -954,10 +954,13 @@ class Helpers:
 		self.interpreter._storePtr(func.C_funcPtr, value=func.C_funcPtrStorage)
 		return func.C_funcPtr
 
-	@staticmethod
-	def checkedFuncPtrCall(f, *args):
+	def checkedFuncPtrCall(self, f, *args):
 		if _ctype_ptr_get_value(f) == 0:
 			raise Exception("checkedFuncPtrCall: tried to call NULL ptr")
+		for arg in args:
+			# We might need to store some pointers to local vars here.
+			if isinstance(arg, (ctypes.c_void_p, ctypes._Pointer)):
+				self.interpreter._storePtr(arg)
 		return f(*args)
 
 
@@ -1716,6 +1719,7 @@ def _ctype_collect_objects(obj):
 	def collect(o):
 		if o is None: return
 		if id(o) in d: return
+		if not hasattr(o, "_objects"): return
 		d[id(o)] = o
 		visit_c(o)
 	def visit_generic(o):
@@ -1732,7 +1736,6 @@ def _ctype_collect_objects(obj):
 	def visit_c(b):
 		# Usually, we get a ctypes object with _objects and _b_base_ here.
 		# However, sometimes get ctypes.CThunkObject here which does not have these attribs.
-		if not hasattr(b, "_objects"): return
 		visit_generic(b._objects)
 		collect(b._b_base_)
 	collect(obj)
