@@ -710,11 +710,10 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# Introduce a Python int-cast, because ctypes will fail if it is a float or so.
 		assert len(args) == 1
 		args = [makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), *args)]
-	if isinstance(argType, (CStruct, CUnion)):
+	if isinstance(objType, (CStruct, CUnion)) and argAst:
 		# We get the object itself. We expect that this is supposed to be a copy.
 		# However, there is no such thing as a copy constructor.
 		assert len(args) == 1
-		assert objType == argType
 		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
 	return makeAstNodeCall(typeAst, *args)
 
