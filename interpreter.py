@@ -1938,9 +1938,14 @@ class Interpreter:
 		base.astNode.name = func.name
 		base.pushScope(base.astNode.body)
 		for arg in func.args:
-			name = base.registerNewVar(arg.name, arg)
-			assert name is not None
-			base.astNode.args.args.append(ast.Name(id=name, ctx=ast.Param()))
+			if isinstance(arg.type, CVariadicArgsType):
+				name = base.registerNewUnscopedVarName("varargs", initNone=False)
+				assert name is not None
+				base.astNode.args.vararg = name
+			else:  # normal param
+				name = base.registerNewVar(arg.name, arg)
+				assert name is not None
+				base.astNode.args.args.append(ast.Name(id=name, ctx=ast.Param()))
 		if func.body is None:
 			# TODO: search in other C files
 			# Hack for now: ignore :)

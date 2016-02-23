@@ -9,7 +9,7 @@ import errno, os
 
 libc = ctypes.CDLL(None)
 
-def wrapCFunc(state, funcname, restype, argtypes):
+def wrapCFunc(state, funcname, restype, argtypes, varargs=False):
 	f = getattr(libc, funcname)
 	if restype is CVoidType:
 		f.restype = None
@@ -18,6 +18,26 @@ def wrapCFunc(state, funcname, restype, argtypes):
 		f.restype = restype = _fixCType(restype, wrap=True)
 	assert argtypes is not None
 	f.argtypes = map(_fixCType, argtypes)
+	state.funcs[funcname] = CWrapValue(f, name=funcname, funcname=funcname, returnType=restype)
+
+def wrapCFunc_varargs(state, funcname, wrap_funcname):
+	"""
+	:param str funcname: e.g. "vprintf"
+	:param wrap_funcname: e.g. "printf"
+	Will register a new function, where the last arg is expected to be va_list.
+	va_list is just a tuple of args.
+	Will call the wrap-func with all args and unwraps the va_list args.
+	"""
+	wrap_func = state.funcs[wrap_funcname]
+	assert isinstance(wrap_func, CWrapValue)
+	wrap_arg_len = len(wrap_func.value.argtypes)
+	def f(*args):
+		assert len(args) == wrap_arg_len + 1
+		assert isinstance(args[-1], tuple)
+		return wrap_func.value(*(args[:-1] + args[-1]))
+	f.__name__ = funcname
+	restype = wrap_func.value.restype
+	if restype is None: restype = CVoidType
 	state.funcs[funcname] = CWrapValue(f, name=funcname, funcname=funcname, returnType=restype)
 
 def _fixCArg(a):
@@ -54,7 +74,6 @@ class Wrapper:
 		state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
 	def handle_stdio_h(self, state):
 		state.macros["NULL"] = Macro(rightside="0")
-		wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
 		FileP = CPointerType(CStdIntType("FILE")).getCType(state)
 		wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
 		wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
@@ -62,9 +81,12 @@ class Wrapper:
 		state.vars["stdin"] = CWrapValue(callCFunc("fdopen", 0, "r"), name="stdin")
 		state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"), name="stdout")
 		state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"), name="stderr")
-		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p))
-		wrapCFunc(state, "sprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
-		wrapCFunc(state, "vfprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p, ctypes.c_void_p)) # TODO
+		wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,), varargs=True)
+		wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p), varargs=True)
+		wrapCFunc(state, "sprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p), varargs=True)
+		wrapCFunc_varargs(state, "vprintf", wrap_funcname="printf")
+		wrapCFunc_varargs(state, "vfprintf", wrap_funcname="fprintf")
+		wrapCFunc_varargs(state, "vsprintf", wrap_funcname="sprintf")
 		wrapCFunc(state, "fputs", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, FileP))
 		wrapCFunc(state, "fputc", restype=ctypes.c_int, argtypes=(ctypes.c_int, FileP))
 		wrapCFunc(state, "fgets", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_int, FileP))
