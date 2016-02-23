@@ -3432,9 +3432,13 @@ def test_interpret_sys_types_h():
 def test_interpret_local_func_ptr_type():
 	state = parse("""
 	typedef int PyObject;
+	PyObject* g(PyObject* x) { return x; }
 	int f() {
-	    PyObject *(*iternext)(PyObject *);
-		return 42;
+	    PyObject *(*fp)(PyObject *);
+	    fp = g;
+	    PyObject x = 42;
+	    PyObject* y = fp(&x);
+		return *y;
 	}
 	""")
 	interpreter = Interpreter()
