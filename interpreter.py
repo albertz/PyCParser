@@ -502,6 +502,9 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 		# Note that this is not always useable as a value.
 		# It cannot be used in a copy constructor because there is no such thing.
 		return objAst
+	elif isinstance(objType, CVariadicArgsType):
+		# We handle this special anyway.
+		return objAst
 	else:
 		assert False, "bad type: " + str(objType)
 
@@ -719,6 +722,9 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		assert len(args) == 1
 		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
 	if isinstance(objType, CVariadicArgsType):
+		if argAst:
+			# No copy, we handle it special anyway.
+			return argAst
 		assert isinstance(funcEnv.astNode, ast.FunctionDef)
 		assert funcEnv.astNode.args.vararg, "No variadic args ('...') in function %s." % funcEnv.get_name()
 		# TODO: Normally, we would assign the var via va_start().
