@@ -3582,3 +3582,27 @@ def test_interpret_var_args_vsprintf():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == ord('2')
+
+
+def test_interpret_goto_named_func():
+	state = parse("""
+	int g() { return 42; }
+	int f() {
+		int a;
+		a = g();
+		goto g;
+		a = 13;
+	g:
+		return a;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
