@@ -3480,6 +3480,7 @@ def test_interpret_struct_return():
 
 def test_interpret_struct_init_assign():
 	state = parse("""
+	#include <assert.h>
 	typedef struct _complex {
 		int real;
 		int imag;
@@ -3492,11 +3493,20 @@ def test_interpret_struct_init_assign():
 	int f() {
 		Py_complex z = {1, 2};
 		A o1 = {1, {2, 3}, z};
+		assert(o1.x == 1);
+		assert(o1.a.real == 2);
+		assert(o1.b.imag == 2);
 		A o2; o2 = o1;
+		assert(o2.x == 1);
+		assert(o2.a.real == 2);
+		assert(o2.b.imag == 2);
 		A o3 = o2;
+		assert(o3.x == 1);
+		assert(o3.a.real == 2);
+		assert(o3.b.imag == 2);
 		return o3.x + o3.b.imag + o2.x + o2.a.real + o1.b.real;
 	}
-	""")
+	""", withGlobalIncludeWrappers=True)
 	interpreter = Interpreter()
 	interpreter.register(state)
 	print "Func dump:"
