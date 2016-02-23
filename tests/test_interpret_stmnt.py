@@ -3522,3 +3522,31 @@ def test_interpret_struct_init_assign():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 7
+
+
+def test_interpret_var_args_noop():
+	state = parse("""
+	#include <stdarg.h>
+	typedef int PyObject;
+	PyObject* PyErr_Format(PyObject *exception, const char *format, ...) {
+		va_list vargs;
+		PyObject* string;
+		va_start(vargs, format);
+		va_end(vargs);
+		return 0;
+	}
+	int f() {
+		PyErr_Format(0, "foo%i%i%s", 1, 2, "bar");
+		return 7;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("PyErr_Format", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 7
