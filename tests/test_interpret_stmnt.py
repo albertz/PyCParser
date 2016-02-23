@@ -3476,3 +3476,33 @@ def test_interpret_struct_return():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 11
+
+
+def test_interpret_struct_init_assign():
+	state = parse("""
+	typedef struct _complex {
+		int real;
+		int imag;
+	} Py_complex;
+	typedef struct _A {
+		int x;
+		Py_complex a;
+		Py_complex b;
+	} A;
+	int f() {
+		Py_complex z = {1, 2};
+		A o1 = {1, {2, 3}, z};
+		A o2; o2 = o1;
+		A o3 = o2;
+		return o3.x + o3.b.imag + o2.x + o2.a.real + o1.b.real;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 7
