@@ -183,11 +183,7 @@ class GlobalScope:
 			else:
 				valueAst = getAstNode_newTypeInstance(self.interpreter, decl_type, bodyAst, bodyType)
 				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-				# WARNING: This can be dangerous/unsafe.
-				# It will correctly copy the content. However, we might loose any Python obj refs,
-				# from body_value._objects.
-				# TODO: Fix this somehow? Better use a helper func which goes over the structure.
-				ctypes.pointer(self.vars[name])[0] = value
+				self.interpreter.helpers.assign(self.vars[name], value)
 
 		return self.vars[name]
 
@@ -501,6 +497,10 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 	elif isinstance(objType, CWrapFuncType):
 		# It's already the value. See astAndTypeForStatement(). And CFuncPointerDecl above.
 		return objAst
+	elif isinstance(objType, (CStruct, CUnion)):
+		# Note that this is not always useable as a value.
+		# It cannot be used in a copy constructor because there is no such thing.
+		return objAst
 	else:
 		assert False, "bad type: " + str(objType)
 
@@ -710,6 +710,12 @@ def getAstNode_newTypeInstance(interpreter, objType, argAst=None, argType=None):
 		# Introduce a Python int-cast, because ctypes will fail if it is a float or so.
 		assert len(args) == 1
 		args = [makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), *args)]
+	if isinstance(argType, (CStruct, CUnion)):
+		# We get the object itself. We expect that this is supposed to be a copy.
+		# However, there is no such thing as a copy constructor.
+		assert len(args) == 1
+		assert objType == argType
+		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
 	return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
@@ -883,7 +889,16 @@ class Helpers:
 	
 	@staticmethod
 	def assign(a, bValue):
-		a.value = bValue
+		if isinstance(a, type(bValue)):
+			# WARNING: This can be dangerous/unsafe.
+			# It will correctly copy the content. However, we might loose any Python obj refs,
+			# from body_value._objects.
+			# TODO: Fix this somehow? Better use a helper func which goes over the structure.
+			ctypes.pointer(a)[0] = bValue
+		elif isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
+			a.value = bValue
+		else:
+			assert False, "assign: not handled: %r of type %r" % (a, type(a))
 		return a
 	
 	@staticmethod
@@ -896,7 +911,10 @@ class Helpers:
 
 	@staticmethod
 	def augAssign(a, op, bValue):
-		a.value = OpBinFuncs[op](a.value, bValue)
+		if isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
+			a.value = OpBinFuncs[op](a.value, bValue)
+		else:
+			assert False, "augAssign: not handled: %r of type %r" % (a, type(a))
 		return a
 
 	def augAssignPtr(self, a, op, bValue):
@@ -1758,6 +1776,7 @@ class Interpreter:
 		self.globalsUnionsWrapper = GlobalsTypeWrapper(self.globalScope, "unions")
 		self.wrappedValues = WrappedValues()  # attrib -> obj
 		self.ctypes_wrapped = CTypesWrapper()
+		self.helpers = Helpers(self)
 		self.mallocs = {}  # ptr addr -> ctype obj
 		# Note: The pointerStorage will only weakly ref the ctype objects.
 		# When the real ctype objects go out of scope, we don't want to
@@ -1770,7 +1789,7 @@ class Interpreter:
 		self.globalsDict = {
 			"ctypes": ctypes,
 			"ctypes_wrapped": self.ctypes_wrapped,
-			"helpers": Helpers(self),
+			"helpers": self.helpers,
 			"g": self.globalsWrapper,
 			"structs": self.globalsStructWrapper,
 			"unions": self.globalsUnionsWrapper,
