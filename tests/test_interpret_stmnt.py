@@ -3564,7 +3564,6 @@ def test_interpret_var_args_vsprintf():
 		va_start(vargs, format);
 		vsprintf(format, vargs);
 		va_end(vargs);
-		return 0;
 	}
 	int f() {
 		g("foo%i%i%s", 1, 2, "bar");
@@ -3575,7 +3574,7 @@ def test_interpret_var_args_vsprintf():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
-	interpreter.dumpFunc("PyErr_Format", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
