@@ -3550,3 +3550,34 @@ def test_interpret_var_args_noop():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 7
+
+
+def test_interpret_var_args_vsprintf():
+	state = parse("""
+	#include <stdarg.h>
+	#include <stdio.h>
+	typedef int PyObject;
+	char buffer[100];
+	void g(const char *format, ...) {
+		va_list vargs;
+		PyObject* string;
+		va_start(vargs, format);
+		vsprintf(format, vargs);
+		va_end(vargs);
+		return 0;
+	}
+	int f() {
+		g("foo%i%i%s", 1, 2, "bar");
+		return (int) buffer[4];
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("PyErr_Format", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == ord('4')
