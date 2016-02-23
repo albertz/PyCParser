@@ -263,8 +263,9 @@ class FuncEnv:
 		self.astNode = ast.FunctionDef(
 			args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
 			body=[], decorator_list=[])
+	def get_name(self): return self.astNode.name
 	def __repr__(self):
-		try: return "<" + self.__class__.__name__ + " of " + self.astNode.name + ">"
+		try: return "<" + self.__class__.__name__ + " of " + self.get_name() + ">"
 		except Exception: return "<" + self.__class__.__name__ + " in invalid state>"
 	def _registerNewVar(self, varName, varDecl):
 		if varDecl is not None:
@@ -717,6 +718,14 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		# However, there is no such thing as a copy constructor.
 		assert len(args) == 1
 		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
+	if isinstance(objType, CVariadicArgsType):
+		assert isinstance(funcEnv.astNode, ast.FunctionDef)
+		assert funcEnv.astNode.args.vararg, "No variadic args ('...') in function %s." % funcEnv.get_name()
+		# TODO: Normally, we would assign the var via va_start().
+		# However, we just always initialize with the varargs tuple,
+		# and we ignore va_start().
+		# See globalincludewrappers.
+		return ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load())
 	return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:

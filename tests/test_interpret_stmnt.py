@@ -3556,17 +3556,19 @@ def test_interpret_var_args_vsprintf():
 	state = parse("""
 	#include <stdarg.h>
 	#include <stdio.h>
+	#include <assert.h>
+	#include <string.h>
 	typedef int PyObject;
 	char buffer[100];
 	void g(const char *format, ...) {
 		va_list vargs;
-		PyObject* string;
 		va_start(vargs, format);
 		vsprintf(buffer, format, vargs);
 		va_end(vargs);
 	}
 	int f() {
 		g("foo%i%i%s", 1, 2, "bar");
+		assert(strcmp(buffer, "foo12bar") == 0);
 		return (int) buffer[4];
 	}
 	""", withGlobalIncludeWrappers=True)
@@ -3579,4 +3581,4 @@ def test_interpret_var_args_vsprintf():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == ord('4')
+	assert r.value == ord('2')
