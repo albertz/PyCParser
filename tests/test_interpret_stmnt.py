@@ -3695,3 +3695,32 @@ def test_interpret_enum_stmnt_bitor():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_macro_with_cast():
+	state = parse("""
+	struct _typeobj;
+	typedef struct _obj { struct _typeobj* ob_type; } PyObject;
+	typedef struct _typeobj { PyObject base; } PyTypeObject;
+	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
+	PyTypeObject PyInstance_Type;
+	#define PyInstance_Check(op) ((op)->ob_type == &PyInstance_Type)
+	#define PyExceptionInstance_Class(x)                   \\
+		((PyInstance_Check((x))                            \\
+		  ? (PyObject*)((PyInstanceObject*)(x))->in_class  \\
+		  : (PyObject*)((x)->ob_type)))
+	int f() {
+		PyObject *a, *b;
+		a = PyExceptionInstance_Class(b);
+		return 3;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
