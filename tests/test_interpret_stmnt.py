@@ -3703,12 +3703,11 @@ def test_interpret_attrib_access_after_cast():
 	typedef struct _obj { struct _typeobj* ob_type; } PyObject;
 	typedef struct _typeobj { PyObject base; } PyTypeObject;
 	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
-	PyTypeObject PyInstance_Type;
 	int f() {
 		PyObject *x, *b;
-		b = ((((x)->ob_type == &PyInstance_Type)
+		b = 1
 		  ? (PyObject*)((PyInstanceObject*)(x))->in_class
-		  : (PyObject*)((x)->ob_type)));
+		  : (PyObject*)((x)->ob_type);
 		return 3;
 	}
 	""")
