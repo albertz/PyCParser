@@ -3634,3 +3634,22 @@ def test_interpret_goto_named_func():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_enum_return():
+	state = parse("""
+	typedef enum {PyGILState_LOCKED, PyGILState_UNLOCKED} PyGILState_STATE;
+	PyGILState_STATE PyGILState_Ensure(void) { return PyGILState_UNLOCKED; }
+	int f() {
+		return PyGILState_Ensure();
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1
