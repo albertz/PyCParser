@@ -365,6 +365,11 @@ def getAstNodeForVarType(interpreter, t):
 		return getAstNodeForCTypesBasicType(State.CBuiltinTypes[t.builtinType])
 	elif isinstance(t, CStdIntType):
 		return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
+	elif isinstance(t, CEnum):
+		# Just use the related int type.
+		stdtype = t.getMinCIntType()
+		assert stdtype is not None
+		return getAstNodeForCTypesBasicType(State.StdIntTypes[stdtype])
 	elif isinstance(t, CPointerType):
 		if t.pointerOf == CBuiltinType(("void",)):
 			return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
@@ -486,6 +491,9 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
 	elif isValueType(objType):
 		astValue = getAstNodeAttrib(objAst, "value")
 		return astValue
+	elif isinstance(objType, CEnum):
+		# We expect that this is just the int type.
+		return getAstNodeAttrib(objAst, "value")
 	elif isinstance(objType, CArrayType):
 		# cast array to ptr
 		return makeCastToVoidP_value(objAst)
@@ -1098,6 +1106,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 		if t is None: t = "int64_t" # it's an overflow; just take a big type
 		t = CStdIntType(t)
 		return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
+	elif isinstance(stmnt, CEnumConst):
+		t = stmnt.parent
+		assert isinstance(t, CEnum)
+		return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.value)), t
 	elif isinstance(stmnt, CStr):
 		s = str(stmnt.content)
 		l = len(s) + 1

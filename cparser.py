@@ -1987,14 +1987,17 @@ class CEnum(_CBaseWithOptBody):
 			if c.value < a: a = c.value
 			if c.value > b: b = c.value
 		return a,b
+	def getMinCIntType(self):
+		a,b = self.getNumRange()
+		t = minCIntTypeForNums(a, b)
+		return t
 	def getEnumConst(self, value):
 		for c in self.body.contentlist:
 			if not isinstance(c, CEnumConst): continue
 			if c.value == value: return c
 		return None
 	def getCType(self, stateStruct):
-		a,b = self.getNumRange()
-		t = minCIntTypeForNums(a, b)
+		t = self.getMinCIntType()
 		if t is None:
 			raise Exception(str(self) + " has a too high number range " + str((a,b)))
 		t = stateStruct.StdIntTypes[t]

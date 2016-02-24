@@ -3648,6 +3648,7 @@ def test_interpret_enum_return():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("PyGILState_Ensure", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r
