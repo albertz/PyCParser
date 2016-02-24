@@ -3674,3 +3674,24 @@ def test_interpret_enum_cast():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 2
+
+
+def test_interpret_enum_stmnt_bitor():
+	state = parse("""
+	enum why_code {A, B, C};
+	int f() {
+		enum why_code why = A;
+		if (why & (A | B))
+			return 42;
+		return -1;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
