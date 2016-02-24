@@ -357,7 +357,7 @@ class CPointerType(CType):
 				ptrType = ctypes.POINTER(t)
 			return ptrType
 		except Exception as e:
-			stateStruct.error(str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
+			stateStruct.error("getCType " + str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
 		return getCType(ctypes.c_void_p, stateStruct)
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
