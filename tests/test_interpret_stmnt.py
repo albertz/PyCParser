@@ -3697,21 +3697,18 @@ def test_interpret_enum_stmnt_bitor():
 	assert r.value == 42
 
 
-def test_interpret_macro_with_cast():
+def test_interpret_attrib_access_after_cast():
 	state = parse("""
 	struct _typeobj;
 	typedef struct _obj { struct _typeobj* ob_type; } PyObject;
 	typedef struct _typeobj { PyObject base; } PyTypeObject;
 	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
 	PyTypeObject PyInstance_Type;
-	#define PyInstance_Check(op) ((op)->ob_type == &PyInstance_Type)
-	#define PyExceptionInstance_Class(x)                   \\
-		((PyInstance_Check((x))                            \\
-		  ? (PyObject*)((PyInstanceObject*)(x))->in_class  \\
-		  : (PyObject*)((x)->ob_type)))
 	int f() {
-		PyObject *a, *b;
-		a = PyExceptionInstance_Class(b);
+		PyObject *x, *b;
+		b = ((((x)->ob_type == &PyInstance_Type)
+		  ? (PyObject*)((PyInstanceObject*)(x))->in_class
+		  : (PyObject*)((x)->ob_type)));
 		return 3;
 	}
 	""")
