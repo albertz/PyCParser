@@ -1830,7 +1830,7 @@ class Interpreter:
 		self.debug_print_getVar = False
 	
 	def _cStateWrapperError(self, s):
-		print "Error:", s
+		print "Error (ignored):", s
 		
 	def register(self, stateStruct):
 		self.stateStructs += [stateStruct]
