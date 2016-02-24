@@ -507,7 +507,24 @@ class State(object):
 		self._preprocessIncludeLevel = []
 		self._errors = []
 		self._global_include_wrapper = None
-	
+
+	@classmethod
+	def getDictNameForType(cls, objType):
+		if issubclass(objType, Macro): return "macros"
+		if issubclass(objType, CTypedef): return "typedef"  # not really consistent
+		if issubclass(objType, CStruct): return "structs"
+		if issubclass(objType, CUnion): return "unions"
+		if issubclass(objType, CEnum): return "enums"
+		if issubclass(objType, CFunc): return "funcs"
+		if issubclass(objType, CVarDecl): return "vars"
+		if issubclass(objType, CEnumConst): return "enumconsts"
+		assert False, "unknown type %r" % objType
+
+	def getResolvedDecl(self, obj):
+		attrib = self.getDictNameForType(type(obj))
+		d = getattr(self, attrib)
+		return d[obj.name]
+
 	def autoSetupSystemMacros(self, system_specific=False):
 		import sys
 		self.macros["__attribute__"] = Macro(args=("x",), rightside="")
@@ -3964,6 +3981,18 @@ def demo_parse_file(filename):
 		pprint(state._errors)
 
 	return state, token_list
+
+
+def isExternDecl(obj):
+	if isinstance(obj, CVarDecl):
+		return "extern" in obj.attribs
+	elif isinstance(obj, (CStruct, CUnion, CEnum, CFunc)):
+		return obj.body is None
+	elif isinstance(obj, CTypedef):
+		return False
+	else:
+		assert False, "unknown type: %r %r" % (obj, type(obj))
+
 
 if __name__ == '__main__':
 	import sys
