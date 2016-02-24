@@ -3678,7 +3678,7 @@ def test_interpret_enum_cast():
 
 def test_interpret_enum_stmnt_bitor():
 	state = parse("""
-	enum why_code {A, B, C};
+	enum why_code {A=1, B=2, C=4};
 	int f() {
 		enum why_code why = A;
 		if (why & (A | B))

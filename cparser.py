@@ -2001,19 +2001,20 @@ class CEnum(_CBaseWithOptBody):
 		if t is None:
 			raise Exception(str(self) + " has a too high number range " + str((a,b)))
 		t = stateStruct.StdIntTypes[t]
-		class EnumType(t):
-			_typeStruct = self
-			def __repr__(self):
-				v = self._typeStruct.getEnumConst(self.value)
-				if v is None: v = self.value
-				return "<EnumType " + str(v) + ">"
-			def __cmp__(self, other):
-				return cmp(self.value, other)
-		for c in self.body.contentlist:
-			if not c.name: continue
-			if hasattr(EnumType, c.name): continue
-			setattr(EnumType, c.name, c.value)
-		return EnumType
+		return t
+		# class EnumType(t):
+		# 	_typeStruct = self
+		# 	def __repr__(self):
+		# 		v = self._typeStruct.getEnumConst(self.value)
+		# 		if v is None: v = self.value
+		# 		return "<EnumType " + str(v) + ">"
+		# 	def __cmp__(self, other):
+		# 		return cmp(self.value, other)
+		# for c in self.body.contentlist:
+		# 	if not c.name: continue
+		# 	if hasattr(EnumType, c.name): continue
+		# 	setattr(EnumType, c.name, c.value)
+		# return EnumType
 	def asCCode(self, indent=""):
 		s = indent + "enum " + self.name
 		if self.body is None: return s
@@ -2264,6 +2265,10 @@ def getValueType(stateStruct, obj):
 		t = minCIntTypeForNums(obj.content, minBits=32, maxBits=64, useUnsignedTypes=True)
 		assert t, "no int type for %r" % obj
 		return CStdIntType(t)
+	if isinstance(obj, CEnumConst):
+		enumType = obj.parent
+		assert isinstance(enumType, CEnum)
+		return enumType
 	assert False, "no type for %r" % obj
 
 def getCommonValueType(stateStruct, t1, t2):
