@@ -3654,3 +3654,23 @@ def test_interpret_enum_return():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 1
+
+
+def test_interpret_enum_cast():
+	state = parse("""
+	enum why_code {A, B, C};
+	int f() {
+		enum why_code why;
+		why = (enum why_code) 2;
+		return why;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 2
