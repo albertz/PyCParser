@@ -3704,10 +3704,32 @@ def test_interpret_attrib_access_after_cast():
 	typedef struct _typeobj { PyObject base; } PyTypeObject;
 	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
 	int f() {
-		PyObject *x, *b;
+		PyInstanceObject a;
+		PyObject *x = &a, *b;
 		b = 1
 		  ? (PyObject*)((PyInstanceObject*)(x))->in_class
 		  : (PyObject*)((x)->ob_type);
+		return 3;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
+
+
+def test_interpret_struct_ptr_to_itself_indirect():
+	state = parse("""
+	struct B;
+	struct A { struct B* x; };
+	struct B { struct A  x; };
+	int f() {
+		struct A a;
 		return 3;
 	}
 	""")
