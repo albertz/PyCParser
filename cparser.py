@@ -356,7 +356,7 @@ class CPointerType(CType):
 			else:
 				ptrType = ctypes.POINTER(t)
 			return ptrType
-		except Exception as e:
+		except CTypeConstructionException as e:
 			stateStruct.error("getCType " + str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
 		return getCType(ctypes.c_void_p, stateStruct)
 	def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
@@ -400,6 +400,9 @@ class CArrayType(CType):
 
 
 def getCType(t, stateStruct):
+	"""
+	:type stateStruct: State
+	"""
 	assert not isinstance(t, CUnknownType)
 	try:
 		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer)):
@@ -507,6 +510,7 @@ class State(object):
 		self._preprocessIncludeLevel = []
 		self._errors = []
 		self._global_include_wrapper = None
+		self._construct_struct_type_stack = []  # via _getCTypeStruct
 
 	@classmethod
 	def getDictNameForType(cls, objType):
@@ -1943,29 +1947,66 @@ def wrapCTypeClass(t):
 	_wrapCTypeClassCache[id(t)] = WrappedType
 	return WrappedType
 
+class CTypeConstructionException(Exception): pass
+class RecursiveStructConstruction(CTypeConstructionException): pass
+
 def _getCTypeStruct(baseClass, obj, stateStruct):
+
+	def _construct(obj):
+		fields = []
+		for c in obj.body.contentlist:
+			if not isinstance(c, CVarDecl): continue
+			try:
+				obj._construct_struct_attrib = c.type
+				t = getCType(c.type, stateStruct)
+			finally:
+				obj._construct_struct_attrib = None
+			if c.arrayargs:
+				if len(c.arrayargs) != 1: raise Exception(str(c) + " has too many array args")
+				n = c.arrayargs[0].value
+				t = t * n
+			elif stateStruct.IndirectSimpleCTypes:
+				# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
+				t = wrapCTypeClassIfNeeded(t)
+			if hasattr(c, "bitsize"):
+				fields += [(str(c.name), t, c.bitsize)]
+			else:
+				fields += [(str(c.name), t)]
+		if obj._ctype_is_constructing:
+			obj._ctype._fields_ = fields
+			obj._ctype_is_constructing = False
+
+	def construct(obj):
+		try:
+			stateStruct._construct_struct_type_stack += [obj]
+			_construct(obj)
+		finally:
+			stateStruct._construct_struct_type_stack.pop()
+
+	if getattr(obj, "_ctype_is_constructing", None):
+		# If the parent referred to us as a pointer, it's fine,
+		# we can return our incomplete type.
+		if isPointerType(
+				stateStruct._construct_struct_type_stack[-1]._construct_struct_attrib,
+				alsoFuncPtr=True, alsoArray=False):
+			return obj._ctype
+		# Otherwise, try to construct it now.
+		if obj._ctype_construct_need_now:
+			raise RecursiveStructConstruction("Recursive construction of type %s" % obj)
+		obj._ctype_construct_need_now = True
+		construct(obj)
+		return obj._ctype
+
 	if hasattr(obj, "_ctype"): return obj._ctype
-	assert hasattr(obj, "body"), str(obj) + " must have the body attrib"
-	assert obj.body is not None, str(obj) + ".body must not be None. maybe it was only forward-declarated?"
+	if not hasattr(obj, "body"): raise CTypeConstructionException("%s must have the body attrib" % obj)
+	if obj.body is None: raise CTypeConstructionException("%s.body must not be None. maybe it was only forward-declarated?" % obj)
+
 	class ctype(baseClass): pass
 	ctype.__name__ = str(obj.name or "<anonymous-struct>")
 	obj._ctype = ctype
-	fields = []
-	for c in obj.body.contentlist:
-		if not isinstance(c, CVarDecl): continue
-		t = getCType(c.type, stateStruct)
-		if c.arrayargs:
-			if len(c.arrayargs) != 1: raise Exception(str(c) + " has too many array args")
-			n = c.arrayargs[0].value
-			t = t * n
-		elif stateStruct.IndirectSimpleCTypes:
-			# See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
-			t = wrapCTypeClassIfNeeded(t)
-		if hasattr(c, "bitsize"):
-			fields += [(str(c.name), t, c.bitsize)]
-		else:
-			fields += [(str(c.name), t)]	
-	ctype._fields_ = fields
+	obj._ctype_is_constructing = True
+	obj._ctype_construct_need_now = False
+	construct(obj)
 	return ctype
 	
 class CStruct(_CBaseWithOptBody):
@@ -3981,6 +4022,84 @@ def demo_parse_file(filename):
 		pprint(state._errors)
 
 	return state, token_list
+
+
+class CWrapValue(CType):
+	def __init__(self, value, decl=None, name=None, **kwattr):
+		if isinstance(value, int):
+			value = ctypes.c_int(value)
+		self.value = value
+		self.decl = decl
+		self.name = name
+		for k,v in kwattr.iteritems():
+			setattr(self, k, v)
+	def __repr__(self):
+		s = "<" + self.__class__.__name__ + " "
+		if self.name: s += "%r " % self.name
+		if self.decl is not None: s += repr(self.decl) + " "
+		s += repr(self.value)
+		s += ">"
+		return s
+	def getType(self):
+		if self.decl is not None: return self.decl.type
+		#elif self.value is not None and hasattr(self.value, "__class__"):
+			#for k, v in State.CBuiltinTypes  # TODO...
+		#	return self.value.__class__
+			#if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
+		return self
+	def getCType(self, stateStruct):
+		return self.value.__class__
+	def getConstValue(self, stateStruct):
+		value = self.value
+		if isinstance(value, _ctypes._Pointer):
+			value = ctypes.cast(value, wrapCTypeClass(ctypes.c_void_p))
+		if isinstance(value, ctypes._SimpleCData):
+			value = value.value
+		return value
+
+class CWrapFuncType(CType, CFuncPointerBase):
+	def __init__(self, func, funcEnv):
+		"""
+		:type func: CFunc
+		"""
+		self.func = func
+		self.funcEnv = funcEnv
+	def getCType(self, stateStruct):
+		return self.func.getCType(stateStruct)
+
+
+def isPointerType(t, checkWrapValue=False, alsoFuncPtr=False, alsoArray=True):
+	while isinstance(t, CTypedef):
+		t = t.type
+	if isinstance(t, CPointerType): return True
+	if alsoArray:
+		if isinstance(t, CArrayType): return True
+	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"): return True
+	if checkWrapValue and isinstance(t, CWrapValue):
+		return isPointerType(t.getCType(None), checkWrapValue=True, alsoFuncPtr=alsoFuncPtr)
+	if alsoFuncPtr:
+		if isinstance(t, CWrapFuncType): return True
+		if isinstance(t, CFuncPointerDecl): return True
+	from inspect import isclass
+	if isclass(t):
+		if issubclass(t, _ctypes._Pointer): return True
+		if issubclass(t, ctypes.c_void_p): return True
+	return False
+
+def isVoidPtrType(t):
+	if isinstance(t, CPointerType):
+		return t.pointerOf == CBuiltinType(("void",))
+	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"):
+		return True
+	return False
+
+def isValueType(t):
+	if isinstance(t, (CBuiltinType,CStdIntType)): return True
+	from inspect import isclass
+	if isclass(t):
+		for c in State.StdIntTypes.values():
+			if issubclass(t, c): return True
+	return False
 
 
 def isExternDecl(obj):

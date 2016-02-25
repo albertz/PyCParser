@@ -17,50 +17,6 @@ from sortedcontainers.sortedset import SortedSet
 from collections import OrderedDict
 
 
-class CWrapValue(CType):
-	def __init__(self, value, decl=None, name=None, **kwattr):
-		if isinstance(value, int):
-			value = ctypes.c_int(value)
-		self.value = value
-		self.decl = decl
-		self.name = name
-		for k,v in kwattr.iteritems():
-			setattr(self, k, v)
-	def __repr__(self):
-		s = "<" + self.__class__.__name__ + " "
-		if self.name: s += "%r " % self.name
-		if self.decl is not None: s += repr(self.decl) + " "
-		s += repr(self.value)
-		s += ">"
-		return s
-	def getType(self):
-		if self.decl is not None: return self.decl.type
-		#elif self.value is not None and hasattr(self.value, "__class__"):
-			#for k, v in State.CBuiltinTypes  # TODO...
-		#	return self.value.__class__
-			#if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
-		return self
-	def getCType(self, stateStruct):
-		return self.value.__class__
-	def getConstValue(self, stateStruct):
-		value = self.value
-		if isinstance(value, _ctypes._Pointer):
-			value = ctypes.cast(value, wrapCTypeClass(ctypes.c_void_p))
-		if isinstance(value, ctypes._SimpleCData):
-			value = value.value
-		return value
-
-class CWrapFuncType(CType, CFuncPointerBase):
-	def __init__(self, func, funcEnv):
-		"""
-		:type func: CFunc
-		"""
-		self.func = func
-		self.funcEnv = funcEnv
-	def getCType(self, stateStruct):
-		return self.func.getCType(stateStruct)
-
-
 def iterIdentifierNames():
 	S = "abcdefghijklmnopqrstuvwxyz0123456789"
 	n = 0
@@ -427,37 +383,6 @@ def makeAstNodeCall(func, *args):
 		func = getAstNodeAttrib("helpers", name)
 	return ast.Call(func=func, args=list(args), keywords=[], starargs=None, kwargs=None)
 
-def isPointerType(t, checkWrapValue=False, alsoFuncPtr=False):
-	while isinstance(t, CTypedef):
-		t = t.type
-	if isinstance(t, CPointerType): return True
-	if isinstance(t, CArrayType): return True
-	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"): return True
-	if checkWrapValue and isinstance(t, CWrapValue):
-		return isPointerType(t.getCType(None), checkWrapValue=True, alsoFuncPtr=alsoFuncPtr)
-	if alsoFuncPtr:
-		if isinstance(t, CWrapFuncType): return True
-		if isinstance(t, CFuncPointerDecl): return True
-	from inspect import isclass
-	if isclass(t):
-		if issubclass(t, _ctypes._Pointer): return True
-		if issubclass(t, ctypes.c_void_p): return True
-	return False
-
-def isVoidPtrType(t):
-	if isinstance(t, CPointerType):
-		return t.pointerOf == CBuiltinType(("void",))
-	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"):
-		return True
-	return False
-
-def isValueType(t):
-	if isinstance(t, (CBuiltinType,CStdIntType)): return True
-	from inspect import isclass
-	if isclass(t):
-		for c in State.StdIntTypes.values():
-			if issubclass(t, c): return True
-	return False
 
 def makeCastToVoidP(v):
 	astVoidPT = getAstNodeAttrib("ctypes_wrapped", "c_void_p")
@@ -1086,7 +1011,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			t = t.type
 		assert isinstance(t, (CStruct,CUnion))
 		attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, a.attr)
-		assert attrDecl is not None, "attrib " + str(a.attr) + " not found"
+		assert attrDecl is not None, "attrib %r not found in %r" % (a.attr, t)
 		return a, attrDecl.type
 	elif isinstance(stmnt, CPtrAccessRef):
 		# build equivalent AttribAccess statement
