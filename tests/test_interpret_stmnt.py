@@ -3730,6 +3730,7 @@ def test_interpret_struct_ptr_to_itself_indirect():
 	struct B { struct A  x; };
 	int f() {
 		struct A a;
+		struct B b;
 		return 3;
 	}
 	""")
@@ -3742,3 +3743,48 @@ def test_interpret_struct_ptr_to_itself_indirect():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
+
+
+def test_interpret_struct_ptr_to_itself_indirect2():
+	state = parse("""
+	struct C;
+	struct B { struct C* x; };
+	struct A { struct B  x; };
+	struct C { struct A  x; };
+	int f() {
+		struct A a;
+		struct B b;
+		struct C c;
+		return 3;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
+
+
+def test_interpret_struct_with_itself_indirect_error():
+	state = parse("""
+	struct B; typedef struct B B;
+	struct A { B x; };
+	struct B { struct A x; };
+	int f() {
+		struct A a;
+		return 3;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	try:
+		interpreter.dumpFunc("f", output=sys.stdout)
+	except RecursiveStructConstruction as e:
+		print repr(e)
+		pass  # ok, we expect that
+	else:
+		assert False, "Not expected, no error!"
