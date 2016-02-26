@@ -3830,3 +3830,37 @@ def test_interpret_struct_with_itself_indirect_error():
 		pass  # ok, we expect that
 	else:
 		assert False, "Not expected, no error!"
+
+
+def test_interpret_py_atexit():
+	state = parse("""
+	#define NEXITFUNCS 32
+	static void (*exitfuncs[NEXITFUNCS])(void);
+	static int nexitfuncs = 0;
+	int Py_AtExit(void (*func)(void)) {
+		if (nexitfuncs >= NEXITFUNCS)
+			return -1;
+		exitfuncs[nexitfuncs++] = func;
+		return 0;
+	}
+	static void call_ll_exitfuncs(void) {
+		while (nexitfuncs > 0)
+			(*exitfuncs[--nexitfuncs])();
+	}
+	static int iwashere = 0;
+	static void g() { iwashere = 42; }
+	int f() {
+		Py_AtExit(g);
+		call_ll_exitfuncs();
+		return iwashere;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 42
