@@ -3746,6 +3746,25 @@ def test_interpret_attrib_access_after_cast_simple():
 	assert r.value == 3
 
 
+def test_interpret_cast_precedence_over_op():
+	state = parse("""
+	typedef unsigned char uchar;
+	int f() {
+		uchar a = 240, b = 240;
+		return (int) a + b;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 480
+
+
 def test_interpret_struct_ptr_to_itself_indirect():
 	state = parse("""
 	struct B;
