@@ -3870,6 +3870,25 @@ def test_interpret_py_atexit():
 	assert r.value == 42
 
 
+def test_interpret_local_typedef_var():
+	state = parse("""
+	int f() {
+		typedef int Int;
+		Int x = 43;
+		return x;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 43
+
+
 def test_interpret_func_ptr_local_typedef_va_arg():
 	state = parse("""
 	#include <stdarg.h>
