@@ -3729,7 +3729,7 @@ def test_interpret_attrib_access_after_cast_simple():
 	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
 	int f() {
 		PyInstanceObject _a;
-		PyInstanceObject *a = &a;
+		PyInstanceObject *a = &_a;
 		PyObject *b;
 		b = (PyObject*) (a)->in_class;
 		return 3;

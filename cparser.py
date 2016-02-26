@@ -2824,10 +2824,7 @@ class CStatement(_CBaseWithOptBody):
 				subStatement._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
 				if subStatement._state == 50: return  # another cast follows
 				funcCall.finalize(stateStruct)
-				if self._state == 50:
-					self._state = 5
-				else:
-					self._state = 7
+				# Do not directly go to state 5/7. Maybe a "->" follows.
 			return
 
 		if self._state in (5,7): # after expr or expr + op + expr
