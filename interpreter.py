@@ -991,6 +991,11 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
 			s_arg_ctype = getCType(s_arg_type, funcEnv.globalScope.stateStruct)
 			if s_arg_ctype != f_arg_ctype:
 				s_arg_ast = getAstNode_newTypeInstance(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
+			elif isinstance(s_arg_type, CWrapFuncType):
+				# Need to store pointer.
+				s_arg_ast = makeAstNodeCall(
+					getAstNodeAttrib("helpers", "makeFuncPtr"),
+					getAstNodeForVarType(funcEnv.interpreter, f_arg_type), s_arg_ast)
 		r_args += [s_arg_ast]
 	return r_args
 

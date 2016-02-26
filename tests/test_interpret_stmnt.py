@@ -3847,7 +3847,7 @@ def test_interpret_py_atexit():
 		while (nexitfuncs > 0)
 			(*exitfuncs[--nexitfuncs])();
 	}
-	static int iwashere = 0;
+	static int iwashere = -1;
 	static void g() { iwashere = 42; }
 	int f() {
 		Py_AtExit(g);
@@ -3861,6 +3861,8 @@ def test_interpret_py_atexit():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("Py_AtExit", output=sys.stdout)
+	interpreter.dumpFunc("call_ll_exitfuncs", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r

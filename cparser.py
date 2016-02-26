@@ -3061,9 +3061,10 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 				stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected identifier")
 		elif state == 2: # after identifier in func ptr
 			if token == COpeningBracket("["):
-				curCObj._bracketlevel = list(token.brackets)
-				cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
-				curCObj._bracketlevel = bracketLevel
+				arrayBaseObj = curCObj.parent
+				arrayBaseObj._bracketlevel = list(token.brackets)
+				cpre3_parse_arrayargs(stateStruct, arrayBaseObj, input_iter)
+				arrayBaseObj._bracketlevel = bracketLevel
 			else:
 				state = 3
 		elif state == 4: # after identifier in func
