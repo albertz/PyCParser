@@ -1645,7 +1645,7 @@ def findIdentifierInBody(body, name):
 		return findIdentifierInBody(body.parent, name)
 	return None
 
-def make_type_from_typetokens(stateStruct, type_tokens):
+def make_type_from_typetokens(stateStruct, curCObj, type_tokens):
 	if not type_tokens:
 		return None
 	if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
@@ -1653,11 +1653,13 @@ def make_type_from_typetokens(stateStruct, type_tokens):
 	elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
 		t = CBuiltinType(tuple(type_tokens))
 	elif len(type_tokens) > 1 and type_tokens[-1] == "*":
-		t = CPointerType(make_type_from_typetokens(stateStruct, type_tokens[:-1]))
-	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.StdIntTypes:
-		t = CStdIntType(type_tokens[0])
-	elif len(type_tokens) == 1 and type_tokens[0] in stateStruct.typedefs:
-		t = stateStruct.typedefs[type_tokens[0]]
+		t = CPointerType(make_type_from_typetokens(stateStruct, curCObj, type_tokens[:-1]))
+	elif len(type_tokens) == 1:
+		assert isinstance(type_tokens[0], str)
+		t = findObjInNamespace(stateStruct, curCObj, type_tokens[0])
+		if not isType(t):
+			stateStruct.error("type token is not a type: %s" % t)
+			t = None
 	elif type_tokens == [".", ".", "."]:
 		t = CVariadicArgsType()
 	else:
@@ -1819,7 +1821,7 @@ class CTypedef(_CBaseWithOptBody):
 			stateStruct.error("internal error: " + str(self) + " finalized twice")
 			return
 		
-		self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+		self.type = make_type_from_typetokens(stateStruct, self, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct)
 		
 		if self.type is None:
@@ -1842,7 +1844,7 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
 			return
 
 		if not self.type:
-			self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+			self.type = make_type_from_typetokens(stateStruct, self, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 		
 		if self.type is None:
@@ -1897,7 +1899,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 		addToContent = obj.name is not None
 
 	if obj.type is None:
-		obj.type = make_type_from_typetokens(stateStruct, obj._type_tokens)
+		obj.type = make_type_from_typetokens(stateStruct, obj, obj._type_tokens)
 	_CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
 	
 	if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
@@ -2112,7 +2114,7 @@ class CFuncArgDecl(_CBaseWithOptBody):
 			return
 
 		if not self.type:
-			self.type = make_type_from_typetokens(stateStruct, self._type_tokens)
+			self.type = make_type_from_typetokens(stateStruct, self, self._type_tokens)
 		_CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 		
 		if self.type != CBuiltinType(("void",)):
@@ -3215,7 +3217,7 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
 	valueStmnt._cpre3_parse_brackets(stateStruct, COpeningBracket("[", brackets=curCObj._bracketlevel), input_iter)
 	assert isinstance(valueStmnt._leftexpr, CArrayStatement)
 	if isinstance(curCObj, (CVarDecl, CFuncArgDecl, CFuncPointerDecl)):
-		arrayType = make_type_from_typetokens(stateStruct, curCObj._type_tokens)
+		arrayType = make_type_from_typetokens(stateStruct, curCObj, curCObj._type_tokens)
 		arrayLen = valueStmnt._leftexpr
 		curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
 	else:
