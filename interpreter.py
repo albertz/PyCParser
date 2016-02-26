@@ -316,7 +316,8 @@ def getAstNodeForCTypesBasicType(t):
 		return getAstNodeAttrib("ctypes_wrapped", t_name)
 	return getAstNodeAttrib("ctypes", t_name)
 
-def getAstNodeForVarType(interpreter, t):
+def getAstNodeForVarType(funcEnv, t):
+	interpreter = funcEnv.interpreter
 	if isinstance(t, CBuiltinType):
 		return getAstNodeForCTypesBasicType(State.CBuiltinTypes[t.builtinType])
 	elif isinstance(t, CStdIntType):
@@ -330,8 +331,9 @@ def getAstNodeForVarType(interpreter, t):
 		if t.pointerOf == CBuiltinType(("void",)):
 			return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
 		a = getAstNodeAttrib("ctypes", "POINTER")
-		return makeAstNodeCall(a, getAstNodeForVarType(interpreter, t.pointerOf))
+		return makeAstNodeCall(a, getAstNodeForVarType(funcEnv, t.pointerOf))
 	elif isinstance(t, CTypedef):
+		# TODO check for local typedef
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
 		if t.name is None:
@@ -347,7 +349,7 @@ def getAstNodeForVarType(interpreter, t):
 		assert t.name is not None
 		return getAstNodeAttrib("unions", t.name)
 	elif isinstance(t, CArrayType):
-		arrayOf = getAstNodeForVarType(interpreter, t.arrayOf)
+		arrayOf = getAstNodeForVarType(funcEnv, t.arrayOf)
 		v = getConstValue(interpreter.globalScope.stateStruct, t.arrayLen)
 		assert isinstance(v, (int,long))
 		arrayLen = ast.Num(n=v)
@@ -357,14 +359,14 @@ def getAstNodeForVarType(interpreter, t):
 			getAstNodeAttrib("ctypes", "CFUNCTYPE"),
 			makeAstNodeCall(
 				getAstNodeAttrib("helpers", "fixReturnType"),
-				getAstNodeForVarType(interpreter, t.type)
+				getAstNodeForVarType(funcEnv, t.type)
 			),
-			*[getAstNodeForVarType(interpreter, a.type) for a in t.args]
+			*[getAstNodeForVarType(funcEnv, a.type) for a in t.args]
 		)
 	elif isinstance(t, CWrapValue):
-		return getAstNodeForVarType(interpreter, t.getCType(None))
+		return getAstNodeForVarType(funcEnv, t.getCType(None))
 	elif isinstance(t, CWrapFuncType):
-		return getAstNodeForVarType(interpreter, t.func)
+		return getAstNodeForVarType(funcEnv, t.func)
 	else:
 		try: return getAstNodeForCTypesBasicType(t)
 		except DidNotFindCTypesBasicType: pass
@@ -451,7 +453,7 @@ def _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type):
 
 	if isinstance(s_arg_type, (tuple, list)):  # CCurlyArrayArgs
 		arrayLen = len(s_arg_type)
-		typeAst = getAstNodeForVarType(interpreter, f_arg_type)
+		typeAst = getAstNodeForVarType(funcEnv, f_arg_type)
 		assert isinstance(s_arg_ast, ast.Tuple)
 		assert len(s_arg_ast.elts) == len(s_arg_type)
 		# There is a bit of inconsistency between basic types init
@@ -531,7 +533,7 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 
 	arrayLen = None
 	if isinstance(objType, CArrayType):
-		arrayOf = getAstNodeForVarType(interpreter, objType.arrayOf)
+		arrayOf = getAstNodeForVarType(funcEnv, objType.arrayOf)
 		if objType.arrayLen:
 			arrayLen = getConstValue(interpreter.globalScope.stateStruct, objType.arrayLen)
 			assert arrayLen is not None
@@ -551,7 +553,7 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 
 		typeAst = ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=arrayLen))
 	else:
-		typeAst = getAstNodeForVarType(interpreter, origObjType)
+		typeAst = getAstNodeForVarType(funcEnv, origObjType)
 
 	if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
 		assert isinstance(argAst, ast.Tuple)
@@ -959,7 +961,7 @@ def astForCast(funcEnv, new_type, arg_ast):
 	:return: ast (of type new_type)
 	"""
 	aType = new_type
-	aTypeAst = getAstNodeForVarType(funcEnv.globalScope.interpreter, aType)
+	aTypeAst = getAstNodeForVarType(funcEnv, aType)
 	bValueAst = arg_ast
 
 	if isPointerType(aType):
@@ -995,7 +997,7 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
 				# Need to store pointer.
 				s_arg_ast = makeAstNodeCall(
 					getAstNodeAttrib("helpers", "makeFuncPtr"),
-					getAstNodeForVarType(funcEnv.interpreter, f_arg_type), s_arg_ast)
+					getAstNodeForVarType(funcEnv, f_arg_type), s_arg_ast)
 		r_args += [s_arg_ast]
 	return r_args
 
@@ -1625,6 +1627,8 @@ def cStatementToPyAst(funcEnv, c):
 	elif isinstance(c, CGotoLabel):
 		funcEnv.needGotoHandling = True
 		body.append(goto.GotoLabel(c.name))
+	elif isinstance(c, CTypedef):
+		raise NotImplementedError  # TODO local typedef
 	else:
 		assert False, "cannot handle " + str(c)
 
