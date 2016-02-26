@@ -430,13 +430,13 @@ def isSameType(stateStruct, type1, type2):
 	return ctype1 == ctype2
 
 def isType(t):
-	if isinstance(t, CType): return True
+	if isinstance(t, CType) and not isinstance(t, CWrapValue): return True
 	if isinstance(t, CStatement):
 		return t.isCType()
 	try:
 		if issubclass(t, _ctypes._SimpleCData): return True
 	except Exception: pass # e.g. typeerror or so
-	if isinstance(t, (CType,CStruct,CUnion,CEnum,CTypedef)): return True
+	if isinstance(t, (CStruct,CUnion,CEnum,CTypedef)): return True
 	return False
 
 def getSizeOf(t, stateStruct):
@@ -2297,7 +2297,6 @@ def getValueType(stateStruct, obj):
 			return t.pointerOf
 		assert False, "unknown attrib base type %r of obj %r" % (t, obj)
 	if isinstance(obj, CFuncCall):
-		from interpreter import CWrapValue
 		if isinstance(obj.base, CWrapValue):
 			return obj.base.returnType
 		# Check for cast-like calls.
@@ -3727,7 +3726,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 				assert curCObj.name is None
 				CStatement.overtake(curCObj)
 				curCObj._cpre3_handle_token(stateStruct, token)
-			elif not curCObj._type_tokens and not curCObj.isDerived() and token.content in stateStruct.typedefs:
+			elif not curCObj._type_tokens and not curCObj.isDerived() and isType(findObjInNamespace(stateStruct, parentCObj, token.content)):
 				curCObj._type_tokens += [token.content]
 			else:
 				if curCObj._finalized:
