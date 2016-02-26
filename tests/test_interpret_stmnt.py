@@ -3868,3 +3868,41 @@ def test_interpret_py_atexit():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 42
+
+
+def test_interpret_func_ptr_local_typedef_va_arg():
+	state = parse("""
+	#include <stdarg.h>
+	typedef int PyObject;
+	PyObject* p(void* a) { return (PyObject*) a; }
+	PyObject* h(va_list *p_va) {
+		typedef PyObject *(*converter)(void *);
+		converter func = va_arg(*p_va, converter);
+		void *arg = va_arg(*p_va, void *);
+		return (*func)(arg);
+	}
+	int g(int x, ...) {
+		va_list vargs;
+		va_start(vargs, x);
+		PyObject* r_p;
+		r_p = h(&vargs);
+		int r = *r_p;
+		va_end(vargs);
+		return r + x;
+	}
+	int f() {
+		int x = 43;
+		return g(13, p, &global_var) + 1;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	interpreter.dumpFunc("h", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 1 + 13 + 43
