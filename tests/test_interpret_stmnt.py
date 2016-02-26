@@ -3855,6 +3855,8 @@ def test_interpret_py_atexit():
 		return iwashere;
 	}
 	""")
+	print state.vars["exitfuncs"]
+	print state.vars["exitfuncs"].type
 	interpreter = Interpreter()
 	interpreter.register(state)
 	print "Func dump:"
