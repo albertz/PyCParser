@@ -3697,7 +3697,7 @@ def test_interpret_enum_stmnt_bitor():
 	assert r.value == 42
 
 
-def test_interpret_attrib_access_after_cast():
+def test_interpret_attrib_access_after_cast_in_iif():
 	state = parse("""
 	struct _typeobj;
 	typedef struct _obj { struct _typeobj* ob_type; } PyObject;
@@ -3709,6 +3709,29 @@ def test_interpret_attrib_access_after_cast():
 		b = 1
 		  ? (PyObject*)((PyInstanceObject*)(x))->in_class
 		  : (PyObject*)((x)->ob_type);
+		return 3;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
+
+
+def test_interpret_attrib_access_after_cast_simple():
+	state = parse("""
+	typedef struct _obj { int v; } PyObject;
+	typedef struct _instobj { PyObject base; PyObject* in_class; } PyInstanceObject;
+	int f() {
+		PyInstanceObject _a;
+		PyInstanceObject *a = &a;
+		PyObject *b;
+		b = (PyObject*) (a)->in_class;
 		return 3;
 	}
 	""")
