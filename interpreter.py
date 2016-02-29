@@ -214,6 +214,7 @@ class FuncEnv:
 		self.interpreter = globalScope.interpreter
 		self.vars = {} # name -> varDecl
 		self.varNames = {} # id(varDecl) -> name
+		self.localTypes = {} # type -> var-name
 		self.scopeStack = [] # FuncCodeblockScope
 		self.needGotoHandling = False
 		self.astNode = ast.FunctionDef(
@@ -255,6 +256,15 @@ class FuncEnv:
 			# Add at the very front because this var might not be assigned otherwise when there is a goto.
 			self.scopeStack[0].body.insert(0, a)
 		return varName
+	def registerLocalTypedef(self, typedef):
+		assert isinstance(typedef, CTypedef)
+		if typedef in self.localTypes: return
+		varName = self.registerNewUnscopedVarName(typedef.name or "anon_type", initNone=False)
+		self.localTypes[typedef] = varName
+		a = ast.Assign()
+		a.targets = [ast.Name(id=varName, ctx=ast.Store())]
+		a.value = getAstNodeForVarType(self, typedef.type)
+		self.scopeStack[-1].body.append(a)
 	def getAstNodeForVarDecl(self, varDecl):
 		assert varDecl is not None
 		if id(varDecl) in self.varNames:
@@ -333,7 +343,8 @@ def getAstNodeForVarType(funcEnv, t):
 		a = getAstNodeAttrib("ctypes", "POINTER")
 		return makeAstNodeCall(a, getAstNodeForVarType(funcEnv, t.pointerOf))
 	elif isinstance(t, CTypedef):
-		# TODO check for local typedef
+		if t in funcEnv.localTypes:
+			return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
 		return getAstNodeAttrib("g", t.name)
 	elif isinstance(t, CStruct):
 		if t.name is None:
@@ -1628,7 +1639,7 @@ def cStatementToPyAst(funcEnv, c):
 		funcEnv.needGotoHandling = True
 		body.append(goto.GotoLabel(c.name))
 	elif isinstance(c, CTypedef):
-		raise NotImplementedError  # TODO local typedef
+		funcEnv.registerLocalTypedef(c)
 	else:
 		assert False, "cannot handle " + str(c)
 
