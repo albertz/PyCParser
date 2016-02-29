@@ -3,7 +3,7 @@
 # code under BSD 2-Clause License
 
 from cparser import *
-from interpreter import CWrapValue, _ctype_ptr_get_value, _fixCType
+from interpreter import CWrapValue, _ctype_ptr_get_value, _fixCType, Helpers
 import ctypes, _ctypes
 import errno, os
 
@@ -33,8 +33,8 @@ def wrapCFunc_varargs(state, funcname, wrap_funcname):
 	wrap_arg_len = len(wrap_func.value.argtypes)
 	def f(*args):
 		assert len(args) == wrap_arg_len + 1
-		assert isinstance(args[-1], tuple)
-		return wrap_func.value(*(args[:-1] + args[-1]))
+		assert isinstance(args[-1], Helpers.VarArgs)
+		return wrap_func.value(*(args[:-1] + args[-1].args))
 	f.__name__ = funcname
 	restype = wrap_func.value.restype
 	if restype is None: restype = CVoidType
@@ -151,11 +151,19 @@ class Wrapper:
 		)
 	def handle_stdarg_h(self, state):
 		state.typedefs["va_list"] = CTypedef(name="va_list", type=CVariadicArgsType())
-		# Dummies for now. TODO...
-		#state.macros["va_list"] = Macro(rightside="void*")
-		state.macros["va_start"] = Macro(args=("list", "last"), rightside="")
-		state.macros["va_end"] = Macro(args=("list",), rightside="")
-		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="type()")
+		def va_start(v, dummy_last):
+			assert isinstance(v, Helpers.VarArgs)
+			v.idx = 0
+		def va_end(v):
+			assert isinstance(v, Helpers.VarArgs)
+			#assert v.idx == len(v.args), "VarArgs: va_end: not handled all args"  # is this an error?
+		def va_arg(v):
+			assert isinstance(v, Helpers.VarArgs)
+			return v.get_next()
+		state.funcs["va_start"] = CWrapValue(va_start, returnType=CVoidType, name="va_start")
+		state.funcs["va_end"] = CWrapValue(va_end, returnType=CVoidType, name="va_end")
+		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((type) (__va_arg(list)))")
+		state.funcs["__va_arg"] = CWrapValue(va_arg, returnType=None, name="__va_arg")
 	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):

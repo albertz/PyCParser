@@ -609,6 +609,11 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		assert isinstance(objType, CFuncPointerDecl)  # what other case could there be?
 		return makeAstNodeCall(getAstNodeAttrib("helpers", "makeFuncPtr"), typeAst, argAst)
 
+	if isinstance(objType, CPointerType) and usePyRefForType(objType.pointerOf):
+		# We expect a PyRef.
+		return makeAstNodeCall(getAstNodeAttrib("helpers", "PyRef"),
+							   *([getAstNodeAttrib(argAst, "ref")] if argAst else []))
+
 	if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
 		# We can have it simpler. This is even important in some cases
 		# were the pointer instance is temporary and the object
@@ -669,15 +674,14 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
 	if isinstance(objType, CVariadicArgsType):
 		if argAst:
-			# No copy, we handle it special anyway.
-			return argAst
+			return makeAstNodeCall(Helpers.VarArgs, getAstNodeAttrib(argAst, "args"))
 		assert isinstance(funcEnv.astNode, ast.FunctionDef)
 		assert funcEnv.astNode.args.vararg, "No variadic args ('...') in function %s." % funcEnv.get_name()
 		# TODO: Normally, we would assign the var via va_start().
 		# However, we just always initialize with the varargs tuple,
 		# and we ignore va_start().
 		# See globalincludewrappers.
-		return ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load())
+		return makeAstNodeCall(Helpers.VarArgs, ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load()))
 	return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
@@ -925,6 +929,27 @@ class Helpers:
 			if isinstance(arg, (ctypes.c_void_p, ctypes._Pointer)):
 				self.interpreter._storePtr(arg)
 		return f(*args)
+
+	class VarArgs:
+		"""
+		Explicit wrapping of variadic args. (tuple of args)
+		"""
+		def __init__(self, args):
+			self.args = args
+			self.idx = 0
+		def get_next(self):
+			idx = self.idx
+			self.idx += 1
+			return self.args[idx]
+		def __repr__(self):
+			return "<VarArgs %r [%i]>" % (self.args, self.idx)
+
+	class PyRef:
+		"""
+		Python-level reference. Like a pointer but all the logic handled in Python.
+		"""
+		def __init__(self, ref):
+			self.ref = ref
 
 
 def astForHelperFunc(helperFuncName, *astArgs):
@@ -1280,6 +1305,10 @@ def makeFuncPtrValue(argAst, argType):
 	astValue = getAstNodeAttrib(v, "value")
 	return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
 
+def usePyRefForType(varType):
+	t = resolveTypedef(varType)
+	return isinstance(t, CVariadicArgsType)
+
 def astAndTypeForCStatement(funcEnv, stmnt):
 	assert isinstance(stmnt, CStatement)
 	if stmnt._leftexpr is None: # prefixed only
@@ -1292,6 +1321,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 			while isinstance(rightType, CTypedef):
 				rightType = rightType.type
 			if isinstance(rightType, CPointerType):
+				if usePyRefForType(rightType.pointerOf):
+					return getAstNodeAttrib(rightAstNode, "ref"), rightType.pointerOf
 				return getAstNodeAttrib(rightAstNode, "contents"), rightType.pointerOf
 			elif isinstance(rightType, CArrayType):
 				return getAstNodeArrayIndex(rightAstNode, 0), rightType.arrayOf
@@ -1304,9 +1335,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
 				# Leave function as-is.
 				# A pointer to a function is handled just like the function itself.
 				return rightAstNode, rightType
-			if isinstance(resolveTypedef(rightType), CVariadicArgsType):
-				# Leave variadic args as-is.
-				return rightAstNode, rightType
+			if usePyRefForType(rightType):
+				return makeAstNodeCall(getAstNodeAttrib("helpers", "PyRef"), rightAstNode), CPointerType(rightType)
 			# We need to catch offsetof-like calls here because ctypes doesn't allow
 			# NULL pointer access. offsetof is like `&(struct S*)(0)->attrib`.
 			offset = _resolveOffsetOf(funcEnv.globalScope.stateStruct, stmnt)
