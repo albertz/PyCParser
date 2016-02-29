@@ -3911,7 +3911,7 @@ def test_interpret_func_ptr_local_typedef_va_arg():
 	}
 	int f() {
 		int x = 43;
-		return g(13, p, &global_var) + 1;
+		return g(13, p, &x) + 1;
 	}
 	""", withGlobalIncludeWrappers=True)
 	interpreter = Interpreter()

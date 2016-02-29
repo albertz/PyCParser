@@ -1105,7 +1105,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				aType = stmnt.base
 			args = [astAndTypeForStatement(funcEnv, a) for a in stmnt.args]
 			if len(args) == 0:
-				return getAstNode_newTypeInstance(funcEnv, aType)
+				return getAstNode_newTypeInstance(funcEnv, aType), aType
 			if len(args) == 1:
 				bAst, bType = args[0]
 			else:
