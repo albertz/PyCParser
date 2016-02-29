@@ -1836,6 +1836,12 @@ class CTypedef(_CBaseWithOptBody):
 	def asCCode(self, indent=""):
 		return indent + "typedef\n" + asCCode(self.type, indent, fullDecl=True) + " " + self.name
 
+def resolveTypedef(t):
+	while isinstance(t, CTypedef):
+		t = t.type
+	return t
+
+
 class CFuncPointerBase(object): pass
 class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
 	def finalize(self, stateStruct, addToContent=None):
