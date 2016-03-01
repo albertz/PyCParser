@@ -157,12 +157,15 @@ class Wrapper:
 		def va_end(v):
 			assert isinstance(v, Helpers.VarArgs)
 			#assert v.idx == len(v.args), "VarArgs: va_end: not handled all args"  # is this an error?
-		def va_arg(v):
+		def va_arg(v, inplace_typed):
 			assert isinstance(v, Helpers.VarArgs)
-			return v.get_next()
+			x = v.get_next()
+			helpers = v.intp.helpers
+			helpers.assignGeneric(inplace_typed, x)
+			return helpers.getValueGeneric(inplace_typed)
 		state.funcs["va_start"] = CWrapValue(va_start, returnType=CVoidType, name="va_start")
 		state.funcs["va_end"] = CWrapValue(va_end, returnType=CVoidType, name="va_end")
-		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((type) (__va_arg(list)))")
+		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((__va_arg(list, type())))")
 		state.funcs["__va_arg"] = CWrapValue(va_arg, returnType=None, name="__va_arg")
 	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass

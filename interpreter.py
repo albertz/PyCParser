@@ -674,14 +674,17 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		return makeAstNodeCall(Helpers.assign, makeAstNodeCall(typeAst), *args)
 	if isinstance(objType, CVariadicArgsType):
 		if argAst:
-			return makeAstNodeCall(Helpers.VarArgs, getAstNodeAttrib(argAst, "args"))
+			return makeAstNodeCall(Helpers.VarArgs, argAst)
 		assert isinstance(funcEnv.astNode, ast.FunctionDef)
 		assert funcEnv.astNode.args.vararg, "No variadic args ('...') in function %s." % funcEnv.get_name()
 		# TODO: Normally, we would assign the var via va_start().
 		# However, we just always initialize with the varargs tuple,
 		# and we ignore va_start().
 		# See globalincludewrappers.
-		return makeAstNodeCall(Helpers.VarArgs, ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load()))
+		return makeAstNodeCall(
+			Helpers.VarArgs,
+			ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load()),
+			ast.Name(id="intp", ctx=ast.Load()))
 	return makeAstNodeCall(typeAst, *args)
 
 class FuncCodeblockScope:
@@ -862,6 +865,7 @@ class Helpers:
 			# TODO: Fix this somehow? Better use a helper func which goes over the structure.
 			ctypes.pointer(a)[0] = bValue
 		elif isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
+			assert hasattr(a, "value")
 			a.value = bValue
 		else:
 			assert False, "assign: not handled: %r of type %r" % (a, type(a))
@@ -874,6 +878,29 @@ class Helpers:
 		# TODO: Fix this somehow?
 		_ctype_ptr_set_value(a, bValue)
 		return a
+
+	def getValueGeneric(self, b):
+		if isinstance(b, ctypes._Pointer):
+			b = ctypes.cast(b, ctypes.c_void_p)
+		if isinstance(b, (ctypes.c_void_p, ctypes._SimpleCData)):
+			b = b.value
+		return b
+
+	def assignGeneric(self, a, bValue):
+		from inspect import isfunction
+		if isinstance(a, ctypes._CFuncPtr):
+			if isfunction(bValue):
+				bValue = self.makeFuncPtr(type(a), bValue)
+			assert isinstance(bValue, ctypes._CFuncPtr)
+			return self.assign(a, bValue)
+		elif isPointerType(type(a), alsoArray=False):
+			bValue = self.getValueGeneric(bValue)
+			assert isinstance(bValue, (int, long))
+			return self.assignPtr(a, bValue)
+		else:
+			bValue = self.getValueGeneric(bValue)
+			assert isinstance(bValue, (int, long, float))
+			return self.assign(a, bValue)
 
 	@staticmethod
 	def augAssign(a, op, bValue):
@@ -934,8 +961,14 @@ class Helpers:
 		"""
 		Explicit wrapping of variadic args. (tuple of args)
 		"""
-		def __init__(self, args):
+		def __init__(self, args, intp=None):
+			if isinstance(args, Helpers.VarArgs):
+				intp = args.intp
+				args = args.args
+			assert isinstance(args, tuple)
+			assert isinstance(intp, Interpreter)
 			self.args = args
+			self.intp = intp
 			self.idx = 0
 		def get_next(self):
 			idx = self.idx

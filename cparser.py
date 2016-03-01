@@ -4082,10 +4082,11 @@ def isPointerType(t, checkWrapValue=False, alsoFuncPtr=False, alsoArray=True):
 	if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"): return True
 	if checkWrapValue and isinstance(t, CWrapValue):
 		return isPointerType(t.getCType(None), checkWrapValue=True, alsoFuncPtr=alsoFuncPtr)
+	from inspect import isclass
 	if alsoFuncPtr:
 		if isinstance(t, CWrapFuncType): return True
 		if isinstance(t, CFuncPointerDecl): return True
-	from inspect import isclass
+		if isclass(t) and issubclass(t, ctypes._CFuncPtr): return True
 	if isclass(t):
 		if issubclass(t, _ctypes._Pointer): return True
 		if issubclass(t, ctypes.c_void_p): return True
