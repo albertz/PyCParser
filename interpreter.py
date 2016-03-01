@@ -628,6 +628,12 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		astCast = getAstNodeAttrib("ctypes", "cast")
 		return makeAstNodeCall(astCast, argAst, typeAst)
 
+	if isinstance(objType, CFuncPointerDecl) and isinstance(argType, CFuncPointerDecl):
+		# We did not allow a pointer-to-func-ptr cast above.
+		# But we allow func-ptr-to-func-ptr.
+		astCast = getAstNodeAttrib("ctypes", "cast")
+		return makeAstNodeCall(astCast, argAst, typeAst)
+
 	args = []
 	if argAst is not None:
 		if isinstance(argAst, (ast.Str, ast.Num)):
@@ -708,6 +714,7 @@ class FuncCodeblockScope:
 				bodyAst, t = astAndTypeForStatement(self.funcEnv, varDecl.body)
 				v = getConstValue(self.funcEnv.globalScope.stateStruct, varDecl.body)
 				if v is not None and not v:
+					# If we want to init with 0, we can skip this because we are always zero initialized.
 					bodyAst = t = None
 				a.value = getAstNode_newTypeInstance(self.funcEnv, varDecl.type, bodyAst, t)
 			else:	
@@ -880,9 +887,9 @@ class Helpers:
 		return a
 
 	def getValueGeneric(self, b):
-		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.c_void_p)):
+		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.Array, ctypes.c_void_p)):
 			self.interpreter._storePtr(b)
-		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr)):
+		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.Array)):
 			b = ctypes.cast(b, ctypes.c_void_p)
 		if isinstance(b, (ctypes.c_void_p, ctypes._SimpleCData)):
 			b = b.value
@@ -1156,7 +1163,11 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
 			else:  # e.g. custom lambda / Python func
 				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			return a, stmnt.base.returnType
+			returnType = stmnt.base.returnType
+			if returnType is None:
+				returnType = stmnt.base.getReturnType(funcEnv, stmnt.args)
+				assert returnType
+			return a, returnType
 		elif isType(stmnt.base):
 			# C static cast
 			if isinstance(stmnt.base, CStatement):
@@ -1183,6 +1194,10 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				Helpers.checkedFuncPtrCall,
 				pAst,
 				*autoCastArgs(funcEnv, pType.args, stmnt.args))
+			# See Helpers.fixReturnType. In some cases, we convert the return type to c_void_p.
+			if isPointerType(pType.type, alsoArray=False) and not isVoidPtrType(pType.type):
+				fixedReturnType = ctypes.c_void_p
+				a = getAstNode_newTypeInstance(funcEnv, pType.type, a, fixedReturnType)
 			return a, pType.type
 	elif isinstance(stmnt, CArrayIndexRef):
 		aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)

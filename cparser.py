@@ -4030,6 +4030,12 @@ def demo_parse_file(filename):
 
 
 class CWrapValue(CType):
+	"""
+	This wraps types, values and custom Python functions.
+	For Python functions, we expect that we have the attribs:
+		returnType - type or None
+		optional getReturnType - if returnType is None, must be given. lambda (funcEnv, stmnt_args) -> type.
+	"""
 	def __init__(self, value, decl=None, name=None, **kwattr):
 		if isinstance(value, int):
 			value = ctypes.c_int(value)

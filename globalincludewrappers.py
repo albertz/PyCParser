@@ -157,16 +157,21 @@ class Wrapper:
 		def va_end(v):
 			assert isinstance(v, Helpers.VarArgs)
 			#assert v.idx == len(v.args), "VarArgs: va_end: not handled all args"  # is this an error?
-		def va_arg(v, inplace_typed):
+		def __va_arg(v, inplace_typed):
 			assert isinstance(v, Helpers.VarArgs)
 			x = v.get_next()
 			helpers = v.intp.helpers
 			helpers.assignGeneric(inplace_typed, x)
-			return helpers.getValueGeneric(inplace_typed)
-		state.funcs["va_start"] = CWrapValue(va_start, returnType=CVoidType, name="va_start")
-		state.funcs["va_end"] = CWrapValue(va_end, returnType=CVoidType, name="va_end")
+			return inplace_typed
+		def __va_arg_getReturnType(funcEnv, stmnt_args):
+			from interpreter import astAndTypeForStatement
+			assert len(stmnt_args) == 2  # see __va_arg
+			return astAndTypeForStatement(funcEnv, stmnt_args[1])[1]  # type of second param
+		state.funcs["va_start"] = CWrapValue(va_start, name="va_start", returnType=CVoidType)
+		state.funcs["va_end"] = CWrapValue(va_end, name="va_end", returnType=CVoidType)
 		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((__va_arg(list, type())))")
-		state.funcs["__va_arg"] = CWrapValue(va_arg, returnType=None, name="__va_arg")
+		state.funcs["__va_arg"] = CWrapValue(__va_arg, name="__va_arg",
+											 returnType=None, getReturnType=__va_arg_getReturnType)
 	def handle_stddef_h(self, state): pass
 	def handle_math_h(self, state): pass
 	def handle_string_h(self, state):
