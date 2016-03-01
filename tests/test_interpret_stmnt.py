@@ -3962,3 +3962,31 @@ def test_interpret_va_arg_custom():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 13 + len("foo") + ord('A') + 11
+
+
+def test_interpret_assign_func_ptr():
+	state = parse("""
+	typedef int PyObject;
+	PyObject* p(void* a) { return (PyObject*) a; }
+	int f() {
+		int r = 0;
+		typedef PyObject *(*converter)(void *);
+		int x = 1;
+		converter func = p;
+		r += *func(&x);
+		converter func2 = func;
+		r += *func2(&x);
+		func = func2;
+		r += *func(&x);
+		return r;
+	}
+	""")
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
