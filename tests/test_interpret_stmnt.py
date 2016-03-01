@@ -3925,3 +3925,40 @@ def test_interpret_func_ptr_local_typedef_va_arg():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 1 + 13 + 43
+
+
+def test_interpret_va_arg_custom():
+	state = parse("""
+	#include <stdarg.h>
+	#include <string.h>
+	int g(const char* format, ...) {
+		int res = 0;
+		va_list vargs;
+		va_start(vargs, format);
+		char c;
+		for(; c = *format; ++format) {
+			switch(c) {
+			case 'c': res += va_arg(vargs, char); break;
+			case 'i': res += va_arg(vargs, int); break;
+			case 'l': res += va_arg(vargs, long); break;
+			case 's': res += strlen(va_arg(vargs, char*)); break;
+			default: return -1;
+			}
+		}
+		va_end(vargs);
+		return res;
+	}
+	int f() {
+		return g("iscl", 13, "foo", 'A', 11);
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13 + len("foo") + ord('A') + 11
