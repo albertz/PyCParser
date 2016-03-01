@@ -880,7 +880,9 @@ class Helpers:
 		return a
 
 	def getValueGeneric(self, b):
-		if isinstance(b, ctypes._Pointer):
+		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.c_void_p)):
+			self.interpreter._storePtr(b)
+		if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr)):
 			b = ctypes.cast(b, ctypes.c_void_p)
 		if isinstance(b, (ctypes.c_void_p, ctypes._SimpleCData)):
 			b = b.value

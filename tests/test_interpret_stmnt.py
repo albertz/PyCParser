@@ -3898,19 +3898,16 @@ def test_interpret_func_ptr_local_typedef_va_arg():
 		typedef PyObject *(*converter)(void *);
 		converter func = va_arg(*p_va, converter);
 		void *arg = va_arg(*p_va, void *);
-		if(0)
 		return (*func)(arg);
-		return 0;
 	}
 	int g(int x, ...) {
 		va_list vargs;
 		va_start(vargs, x);
 		PyObject* r_p;
 		r_p = h(&vargs);
-		//int r = *r_p;
+		int r = *r_p;
 		va_end(vargs);
-		//return r + x;
-		return x;
+		return r + x;
 	}
 	int f() {
 		int x = 43;
