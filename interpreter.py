@@ -945,8 +945,7 @@ class Helpers:
 			# other than void-ptr.
 			t = wrapCTypeClass(ctypes.c_void_p)
 		stateStruct = self.interpreter.globalScope.stateStruct
-		t = _fixCType(stateStruct, t)
-		return getCType(t, stateStruct)
+		return getCTypeWrapped(t, stateStruct)
 
 	def makeFuncPtr(self, funcCType, func):
 		assert inspect.isfunction(func)
