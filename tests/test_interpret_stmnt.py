@@ -4052,6 +4052,7 @@ def test_interpret_sig_handler():
 	interpreter.register(state)
 	print "Func dump:"
 	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("PyOS_getsig", output=sys.stdout)
 	print "Run f:"
 	r = interpreter.runFunc("f")
 	print "result:", r

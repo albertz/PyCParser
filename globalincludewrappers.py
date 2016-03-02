@@ -40,9 +40,9 @@ def wrapCFunc_varargs(state, funcname, wrap_funcname):
 		assert isinstance(args[-1], Helpers.VarArgs)
 		return wrap_func.value(*(args[:-1] + args[-1].args))
 	f.__name__ = funcname
-	restype = wrap_func.value.restype
-	if restype is None: restype = CVoidType
-	state.funcs[funcname] = CWrapValue(f, name=funcname, funcname=funcname, returnType=restype)
+	state.funcs[funcname] = CWrapValue(
+		f, name=funcname, funcname=funcname,
+		returnType=wrap_func.returnType, argTypes=wrap_func.argTypes)
 
 def _fixCArg(a):
 	if isinstance(a, unicode):
