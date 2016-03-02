@@ -3990,3 +3990,30 @@ def test_interpret_assign_func_ptr():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
+
+
+def test_interpret_sig_handler():
+	state = parse("""
+	#include <signal.h>
+	typedef void (*PyOS_sighandler_t)(int);
+	PyOS_sighandler_t PyOS_getsig(int sig) {
+		PyOS_sighandler_t handler;
+		handler = signal(sig, SIG_IGN);
+		if (handler != SIG_ERR)
+			signal(sig, handler);
+		return handler;
+	}
+	int f() {
+		PyOS_getsig(SIGINT);
+		return 3;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
