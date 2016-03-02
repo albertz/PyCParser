@@ -971,7 +971,7 @@ class Helpers:
 		"""
 		Explicit wrapping of variadic args. (tuple of args)
 		"""
-		def __init__(self, args, intp=None, local_varargs=None):
+		def __init__(self, args, intp=None):
 			if isinstance(args, Helpers.VarArgs):
 				intp = args.intp
 				args = args.args
