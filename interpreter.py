@@ -1169,10 +1169,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
 			else:  # e.g. custom lambda / Python func
 				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
-			returnType = stmnt.base.returnType
-			if returnType is None:
-				returnType = stmnt.base.getReturnType(funcEnv, stmnt.args)
-				assert returnType
+			returnType = stmnt.base.getReturnType(funcEnv.globalScope.stateStruct, stmnt.args)
 			return a, returnType
 		elif isType(stmnt.base):
 			# C static cast

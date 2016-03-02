@@ -163,10 +163,9 @@ class Wrapper:
 			helpers = v.intp.helpers
 			helpers.assignGeneric(inplace_typed, x)
 			return inplace_typed
-		def __va_arg_getReturnType(funcEnv, stmnt_args):
-			from interpreter import astAndTypeForStatement
+		def __va_arg_getReturnType(stateStruct, stmnt_args):
 			assert len(stmnt_args) == 2  # see __va_arg
-			return astAndTypeForStatement(funcEnv, stmnt_args[1])[1]  # type of second param
+			return getValueType(stateStruct, stmnt_args[1])
 		state.funcs["va_start"] = CWrapValue(va_start, name="va_start", returnType=CVoidType)
 		state.funcs["va_end"] = CWrapValue(va_end, name="va_end", returnType=CVoidType)
 		state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((__va_arg(list, type())))")

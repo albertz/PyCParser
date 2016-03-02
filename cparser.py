@@ -2306,7 +2306,7 @@ def getValueType(stateStruct, obj):
 		assert False, "unknown attrib base type %r of obj %r" % (t, obj)
 	if isinstance(obj, CFuncCall):
 		if isinstance(obj.base, CWrapValue):
-			return obj.base.returnType
+			return obj.base.getReturnType(stateStruct, obj.args)
 		# Check for cast-like calls.
 		if isinstance(obj.base, (CTypedef, CType)):
 			return obj.base
@@ -2945,6 +2945,7 @@ class CStatement(_CBaseWithOptBody):
 	def getValueType(self, stateStruct):
 		if self._leftexpr is None: # prefixed only
 			v = getValueType(stateStruct, self._rightexpr)
+			assert v
 			if self._op.content == "&":
 				return CPointerType(v)
 			elif self._op.content == "!":  # not-op
@@ -2961,9 +2962,11 @@ class CStatement(_CBaseWithOptBody):
 			else:
 				assert False, "invalid prefix op %r" % self._op
 		v1 = getValueType(stateStruct, self._leftexpr)
+		assert v1
 		if self._op is None or self._rightexpr is None:
 			return v1
 		v2 = getValueType(stateStruct, self._rightexpr)
+		assert v2
 		if self._op == COp("?:"):
 			assert self._middleexpr is not None
 			v15 = getValueType(stateStruct, self._middleexpr)
@@ -4032,9 +4035,6 @@ def demo_parse_file(filename):
 class CWrapValue(CType):
 	"""
 	This wraps types, values and custom Python functions.
-	For Python functions, we expect that we have the attribs:
-		returnType - type or None
-		optional getReturnType - if returnType is None, must be given. lambda (funcEnv, stmnt_args) -> type.
 	"""
 	def __init__(self, value, decl=None, name=None, **kwattr):
 		if isinstance(value, int):
@@ -4067,6 +4067,12 @@ class CWrapValue(CType):
 		if isinstance(value, ctypes._SimpleCData):
 			value = value.value
 		return value
+	def getReturnType(self, stateStruct, stmnt_args):
+		"""
+		This is called if this is used as a function call to determine its return type.
+		"""
+		assert self.returnType is not None
+		return self.returnType
 
 class CWrapFuncType(CType, CFuncPointerBase):
 	def __init__(self, func, funcEnv):
