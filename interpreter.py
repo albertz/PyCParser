@@ -1800,12 +1800,6 @@ def _ctype_collect_objects(obj):
 	collect(obj)
 	return d.values()
 
-def _fixCType(stateStruct, t):
-	if t is ctypes.c_void_p: t = CBuiltinType(("void", "*"))
-	if t is ctypes.c_char_p: t = CPointerType(CBuiltinType(("char",)))
-	if t is ctypes.c_char: t = CBuiltinType(("char",))
-	return t
-
 
 class CTypesWrapper(object):
 	def __setattr__(self, name, value):

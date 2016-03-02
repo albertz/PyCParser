@@ -3,11 +3,17 @@
 # code under BSD 2-Clause License
 
 from cparser import *
-from interpreter import CWrapValue, _ctype_ptr_get_value, _fixCType, Helpers
+from interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
 import ctypes, _ctypes
 import errno, os
 
 libc = ctypes.CDLL(None)
+
+def _fixCType(stateStruct, t):
+	if t is ctypes.c_void_p: t = CBuiltinType(("void", "*"))
+	if t is ctypes.c_char_p: t = CPointerType(CBuiltinType(("char",)))
+	if t is ctypes.c_char: t = CBuiltinType(("char",))
+	return t
 
 def wrapCFunc(state, funcname, restype, argtypes, varargs=False):
 	f = getattr(libc, funcname)
