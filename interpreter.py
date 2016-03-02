@@ -682,14 +682,13 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 		if argAst:
 			return makeAstNodeCall(Helpers.VarArgs, argAst)
 		assert isinstance(funcEnv.astNode, ast.FunctionDef)
-		assert funcEnv.astNode.args.vararg, "No variadic args ('...') in function %s." % funcEnv.get_name()
 		# TODO: Normally, we would assign the var via va_start().
-		# However, we just always initialize with the varargs tuple,
-		# and we ignore va_start().
+		# However, we just always initialize with the varargs tuple also already here
+		# because we have the ref to the real varargs here.
 		# See globalincludewrappers.
 		return makeAstNodeCall(
 			Helpers.VarArgs,
-			ast.Name(id=funcEnv.astNode.args.vararg, ctx=ast.Load()),
+			ast.Name(id=funcEnv.astNode.args.vararg or "None", ctx=ast.Load()),
 			ast.Name(id="intp", ctx=ast.Load()))
 	return makeAstNodeCall(typeAst, *args)
 
@@ -865,7 +864,9 @@ class Helpers:
 	
 	@staticmethod
 	def assign(a, bValue):
-		if isinstance(a, type(bValue)):
+		if isinstance(a, Helpers.VarArgs):
+			a.assign(bValue)
+		elif isinstance(a, type(bValue)):
 			# WARNING: This can be dangerous/unsafe.
 			# It will correctly copy the content. However, we might loose any Python obj refs,
 			# from body_value._objects.
@@ -970,15 +971,20 @@ class Helpers:
 		"""
 		Explicit wrapping of variadic args. (tuple of args)
 		"""
-		def __init__(self, args, intp=None):
+		def __init__(self, args, intp=None, local_varargs=None):
 			if isinstance(args, Helpers.VarArgs):
 				intp = args.intp
 				args = args.args
-			assert isinstance(args, tuple)
+			if args is not None:
+				assert isinstance(args, tuple)
 			assert isinstance(intp, Interpreter)
 			self.args = args
 			self.intp = intp
 			self.idx = 0
+		def assign(self, other):
+			assert isinstance(other, self.__class__)
+			self.index = 0
+			self.args = other.args
 		def get_next(self):
 			idx = self.idx
 			self.idx += 1
