@@ -3967,7 +3967,7 @@ def test_interpret_va_arg_custom():
 def test_interpret_va_arg_copy():
 	state = parse("""
 	#include <stdarg.h>
-	static void va_build_value(const char *format, va_list va) {
+	static int va_build_value(const char *format, va_list va) {
 		va_list lva;
 	#ifdef VA_LIST_IS_ARRAY
 		memcpy(lva, va, sizeof(va_list));
@@ -3978,16 +3978,17 @@ def test_interpret_va_arg_copy():
 		lva = va;
 	#endif
 	#endif
+		return va_arg(lva, int) + va_arg(lva, int);
 	}
 	int g(const char* format, ...) {
 		va_list vargs;
 		va_start(vargs, format);
-		va_build_value(format, vargs);
+		int r = va_build_value(format, vargs);
 		va_end(vargs);
-		return 13;
+		return r;
 	}
 	int f() {
-		return g("iscl", 13, "foo", 'A', 11);
+		return g("iscl", 13, 11);
 	}
 	""", withGlobalIncludeWrappers=True)
 	interpreter = Interpreter()
@@ -4000,7 +4001,7 @@ def test_interpret_va_arg_copy():
 	r = interpreter.runFunc("f")
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
-	assert r.value == 13
+	assert r.value == 13 + 11
 
 
 def test_interpret_assign_func_ptr():
