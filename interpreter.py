@@ -1166,7 +1166,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			a = ast.Call(keywords=[], starargs=None, kwargs=None)
 			a.func = getAstNodeAttrib(getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt.base), "value")
 			if isinstance(stmnt.base.value, ctypes._CFuncPtr):
-				a.args = autoCastArgs(funcEnv, stmnt.base.value.argtypes, stmnt.args)
+				a.args = autoCastArgs(funcEnv, stmnt.base.argTypes, stmnt.args)
 			else:  # e.g. custom lambda / Python func
 				a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
 			returnType = stmnt.base.getReturnType(funcEnv.globalScope.stateStruct, stmnt.args)

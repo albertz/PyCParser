@@ -1872,7 +1872,7 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
 			restype = getCType(self.type, stateStruct)
 		if wrap: restype = wrapCTypeClassIfNeeded(restype)
 		argtypes = map(lambda a: getCType(a, stateStruct), self.args)
-		#if wrap: argtypes = map(wrapCTypeClassIfNeeded, argtypes)
+		if wrap: argtypes = map(wrapCTypeClassIfNeeded, argtypes)
 		return ctypes.CFUNCTYPE(restype, *argtypes)
 	def asCCode(self, indent=""):
 		return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
