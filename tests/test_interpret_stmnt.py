@@ -3964,6 +3964,45 @@ def test_interpret_va_arg_custom():
 	assert r.value == 13 + len("foo") + ord('A') + 11
 
 
+def test_interpret_va_arg_copy():
+	state = parse("""
+	#include <stdarg.h>
+	static void va_build_value(const char *format, va_list va) {
+		va_list lva;
+	#ifdef VA_LIST_IS_ARRAY
+		memcpy(lva, va, sizeof(va_list));
+	#else
+	#ifdef __va_copy
+		__va_copy(lva, va);
+	#else
+		lva = va;
+	#endif
+	#endif
+	}
+	int g(const char* format, ...) {
+		va_list vargs;
+		va_start(vargs, format);
+		va_build_value(format, vargs);
+		va_end(vargs);
+		return 13;
+	}
+	int f() {
+		return g("iscl", 13, "foo", 'A', 11);
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("g", output=sys.stdout)
+	interpreter.dumpFunc("va_build_value", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 13
+
+
 def test_interpret_assign_func_ptr():
 	state = parse("""
 	typedef int PyObject;
