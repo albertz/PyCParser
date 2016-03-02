@@ -936,8 +936,7 @@ class Helpers:
 		assert op in ("+","-")
 		return self.augAssignPtr(self.copy(a), op + "=", bValue)
 
-	@staticmethod
-	def fixReturnType(t):
+	def fixReturnType(self, t):
 		# Note: This behavior must match CFuncPointerDecl.getCType()
 		# so that we stay compatible.
 		if t is None: return None
@@ -945,7 +944,9 @@ class Helpers:
 			# A Python func wrapped in CFuncType cannot handle any pointer type
 			# other than void-ptr.
 			t = wrapCTypeClass(ctypes.c_void_p)
-		return _fixCType(t, wrap=True)
+		stateStruct = self.interpreter.globalScope.stateStruct
+		t = _fixCType(stateStruct, t)
+		return getCType(t, stateStruct)
 
 	def makeFuncPtr(self, funcCType, func):
 		assert inspect.isfunction(func)
@@ -1153,13 +1154,13 @@ def astAndTypeForStatement(funcEnv, stmnt):
 			if isinstance(a, CStatement) and not a.isCType():
 				v, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
 				sizeValueAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "sizeof"), v)
-				sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_size_t"), sizeValueAst)
+				sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), sizeValueAst)
 				return sizeAst, CStdIntType("size_t")
 			# We expect that it is a type.
 			t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
 			assert t is not None
 			s = ctypes.sizeof(t)
-			sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "c_size_t"), ast.Num(s))
+			sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), ast.Num(s))
 			return sizeAst, CStdIntType("size_t")
 		elif isinstance(stmnt.base, CWrapValue):
 			# expect that we just wrapped a callable function/object
@@ -1800,10 +1801,10 @@ def _ctype_collect_objects(obj):
 	collect(obj)
 	return d.values()
 
-def _fixCType(t, wrap=False):
-	if t is ctypes.c_char_p: t = ctypes.POINTER(ctypes.c_byte)
-	if t is ctypes.c_char: t = ctypes.c_byte
-	if wrap: return wrapCTypeClassIfNeeded(t)
+def _fixCType(stateStruct, t):
+	if t is ctypes.c_void_p: t = CBuiltinType(("void", "*"))
+	if t is ctypes.c_char_p: t = CPointerType(CBuiltinType(("char",)))
+	if t is ctypes.c_char: t = CBuiltinType(("char",))
 	return t
 
 

@@ -405,7 +405,7 @@ def getCType(t, stateStruct):
 	"""
 	assert not isinstance(t, CUnknownType)
 	try:
-		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer)):
+		if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer,ctypes._CFuncPtr)):
 			if stateStruct.IndirectSimpleCTypes:
 				return wrapCTypeClassIfNeeded(t)
 			return t
@@ -423,6 +423,14 @@ def getCType(t, stateStruct):
 	if isinstance(t, CType):
 		return t.getCType(stateStruct)
 	raise Exception(str(t) + " cannot be converted to a C type")
+
+def getCTypeWrapped(t, stateStruct):
+	"""
+	:type stateStruct: State
+	"""
+	t = getCType(t, stateStruct)
+	assert issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer,ctypes._CFuncPtr))
+	return wrapCTypeClassIfNeeded(t)
 
 def isSameType(stateStruct, type1, type2):
 	ctype1 = getCType(type1, stateStruct)

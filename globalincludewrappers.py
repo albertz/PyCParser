@@ -11,14 +11,18 @@ libc = ctypes.CDLL(None)
 
 def wrapCFunc(state, funcname, restype, argtypes, varargs=False):
 	f = getattr(libc, funcname)
+	restype = _fixCType(state, restype)
 	if restype is CVoidType:
 		f.restype = None
 	else:
 		assert restype is not None
-		f.restype = restype = _fixCType(restype, wrap=True)
+		f.restype = getCTypeWrapped(restype, state)
 	assert argtypes is not None
-	f.argtypes = map(_fixCType, argtypes)
-	state.funcs[funcname] = CWrapValue(f, name=funcname, funcname=funcname, returnType=restype)
+	argtypes = [_fixCType(state, arg) for arg in argtypes]
+	f.argtypes = [getCTypeWrapped(arg, state) for arg in argtypes]
+	state.funcs[funcname] = CWrapValue(
+		f, name=funcname, funcname=funcname,
+		returnType=restype, argTypes=argtypes)
 
 def wrapCFunc_varargs(state, funcname, wrap_funcname):
 	"""
@@ -218,11 +222,15 @@ class Wrapper:
 		state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
 		state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
 	def handle_signal_h(self, state):
-		wrapCFunc(state, "signal", restype=ctypes.c_void_p, argtypes=(ctypes.c_int, ctypes.c_void_p))  # it's actually a func ptr...
+		# typedef void (*sig_t) (int)
+		state.typedefs["sig_t"] = CTypedef(
+			name="sig_t", type=CFuncPointerDecl(type=CVoidType(), args=[CBuiltinType(("int",))]))
+		wrapCFunc(state, "signal", restype=ctypes.c_void_p,
+				  argtypes=(ctypes.c_int, state.typedefs["sig_t"]))
 		state.macros["SIGINT"] = Macro(rightside="2")
-		state.macros["SIG_DFL"] = Macro(rightside="(void (*)(int))0")
-		state.macros["SIG_IGN"] = Macro(rightside="(void (*)(int))1")
-		state.macros["SIG_ERR"] = Macro(rightside="((void (*)(int))-1)")
+		state.macros["SIG_DFL"] = Macro(rightside="((sig_t)0)")
+		state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
+		state.macros["SIG_ERR"] = Macro(rightside="((sig_t)-1)")
 	def handle_locale_h(self, state):
 		struct_lconv = state.structs["lconv"] = CStruct(name="stat") # TODO
 		struct_lconv.body = CBody(parent=struct_lconv)
