@@ -4072,3 +4072,29 @@ def test_interpret_locale_include():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
+
+
+def test_interpret_fcntl_open_close():
+	state = parse("""
+	#include <fcntl.h>
+	typedef long Py_ssize_t;
+	static void dev_urandom_noraise() {
+		int fd;
+		fd = open("/dev/urandom", O_RDONLY);
+		close(fd);
+	}
+	int f() {
+		dev_urandom_noraise();
+		return 3;
+	}
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Func dump:"
+	interpreter.dumpFunc("f", output=sys.stdout)
+	interpreter.dumpFunc("dev_urandom_noraise", output=sys.stdout)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
