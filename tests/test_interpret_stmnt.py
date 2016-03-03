@@ -4058,3 +4058,17 @@ def test_interpret_sig_handler():
 	print "result:", r
 	assert isinstance(r, ctypes.c_int)
 	assert r.value == 3
+
+
+def test_interpret_locale_include():
+	state = parse("""
+	#include <locale.h>
+	int f() { return 3; }
+	""", withGlobalIncludeWrappers=True)
+	interpreter = Interpreter()
+	interpreter.register(state)
+	print "Run f:"
+	r = interpreter.runFunc("f")
+	print "result:", r
+	assert isinstance(r, ctypes.c_int)
+	assert r.value == 3
