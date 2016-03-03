@@ -429,7 +429,8 @@ def getCTypeWrapped(t, stateStruct):
 	:type stateStruct: State
 	"""
 	t = getCType(t, stateStruct)
-	assert issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer,ctypes._CFuncPtr))
+	assert issubclass(t, (_ctypes._SimpleCData, ctypes._Pointer, ctypes._CFuncPtr,
+						  ctypes.Structure, ctypes.Union))
 	return wrapCTypeClassIfNeeded(t)
 
 def isSameType(stateStruct, type1, type2):

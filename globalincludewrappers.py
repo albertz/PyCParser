@@ -258,11 +258,11 @@ class Wrapper:
 		state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
 		state.macros["SIG_ERR"] = Macro(rightside="((sig_t)-1)")
 	def handle_locale_h(self, state):
-		struct_lconv = state.structs["lconv"] = CStruct(name="stat") # TODO
+		struct_lconv = state.structs["lconv"] = CStruct(name="lconv") # TODO
 		struct_lconv.body = CBody(parent=struct_lconv)
 		CVarDecl(parent=struct_lconv, name="grouping", type=ctypes.c_char_p).finalize(state)
 		CVarDecl(parent=struct_lconv, name="thousands_sep", type=ctypes.c_char_p).finalize(state)
-		wrapCFunc(state, "localeconv", restype=struct_lconv.getCType(state), argtypes=())
+		wrapCFunc(state, "localeconv", restype=struct_lconv, argtypes=())
 	def handle_sys_types_h(self, state):
 		pass  # dummy
 
