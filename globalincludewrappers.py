@@ -223,7 +223,7 @@ class Wrapper:
 		state.macros["O_RDONLY"] = Macro(rightside="0x0000")
 		wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
 		wrapCFunc(state, "read", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))  # normally <unistd.h>
-		wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))  # normally <unistd.h>
+		wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_int,))  # normally <unistd.h>
 		# TODO: these are on OSX. cross-platform? probably not...
 		state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
 		state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
