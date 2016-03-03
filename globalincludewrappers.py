@@ -231,8 +231,28 @@ class Wrapper:
 		# typedef void (*sig_t) (int)
 		state.typedefs["sig_t"] = CTypedef(
 			name="sig_t", type=CFuncPointerDecl(type=CVoidType(), args=[CBuiltinType(("int",))]))
-		wrapCFunc(state, "signal", restype=ctypes.c_void_p,
-				  argtypes=(ctypes.c_int, state.typedefs["sig_t"]))
+		# There is no safe way to support the native C function.
+		# The signal handler can be called at any point and it could be that
+		# the GIL is hold. Then the signal handler code deadlocks because it also wants the GIL.
+		#wrapCFunc(state, "signal", restype=state.typedefs["sig_t"],
+		#		  argtypes=(ctypes.c_int, state.typedefs["sig_t"]))
+		def signal(sig, f):
+			sig = sig.value
+			import signal
+			if isinstance(f, CWrapValue):
+				f = f.value
+			def sig_handler(sig, stack_frame):
+				return f(sig)
+			if isinstance(f, ctypes._CFuncPtr):
+				if _ctype_ptr_get_value(f) == 0:  # place-holder for SIG_DFL
+					sig_handler = signal.SIG_DFL
+				elif _ctype_ptr_get_value(f) == 1:  # place-holder for SIG_IGN
+					sig_handler = signal.SIG_IGN
+			old_action = signal.signal(sig, sig_handler)
+			# TODO: need to use helpers.makeFuncPtr for old_action.
+			# And maybe handle SIG_DFL/SIG_IGN cases?
+			return 0  # place-holder for SIG_DFL
+		state.funcs["signal"] = CWrapValue(signal, name="signal", returnType=state.typedefs["sig_t"])
 		state.macros["SIGINT"] = Macro(rightside="2")
 		state.macros["SIG_DFL"] = Macro(rightside="((sig_t)0)")
 		state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
