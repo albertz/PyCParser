@@ -269,7 +269,7 @@ class Wrapper:
 	def find_handler_func(self, filename):
 		funcname = "handle_" + filename.replace("/", "_").replace(".", "_")
 		return getattr(self, funcname, None)
-		
+
 	def readGlobalInclude(self, state, oldFunc, filename):
 		f = self.find_handler_func(filename)
 		if f is not None:
@@ -279,8 +279,14 @@ class Wrapper:
 				yield None # to make it a generator
 			return reader(), None
 		return oldFunc(filename) # fallback
-	
+
 	def install(self):
 		state = self.state
 		oldFunc = state.readGlobalInclude
 		state.readGlobalInclude = lambda fn: self.readGlobalInclude(state, oldFunc, fn)
+
+	def add_all_to_state(self, state):
+		for funcname in dir(self):
+			if not funcname.startswith("handle_"): continue
+			f = getattr(self, funcname)
+			f(state)

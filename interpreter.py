@@ -1862,6 +1862,12 @@ class Interpreter:
 		if stateStruct._global_include_wrapper:
 			stateStruct._global_include_wrapper.interpreter = self
 
+	def setupStatic(self):
+		stateStruct = State()
+		stateStruct.autoSetupGlobalIncludeWrappers()
+		stateStruct._global_include_wrapper.add_all_to_state(stateStruct)
+		self.register(stateStruct)
+
 	def getCType(self, obj):
 		wrappedStateStruct = self._cStateWrapper
 		for T,DictName in [(CStruct,"structs"), (CUnion,"unions"), (CEnum,"enums")]:
