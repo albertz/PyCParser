@@ -70,7 +70,7 @@ def callCFunc(funcname, *args):
 class Wrapper:
 	def __init__(self, state):
 		"""
-		:type state: cparser.StateStruct
+		:type state: cparser.State
 		"""
 		self.state = state
 		# The Wrapper is supposed to work for parsing also without an interpreter.
@@ -274,7 +274,9 @@ class Wrapper:
 		f = self.find_handler_func(filename)
 		if f is not None:
 			def reader():
+				if filename in state._global_include_list: return  # already included
 				f(state)
+				state._global_include_list.append(filename)
 				return
 				yield None # to make it a generator
 			return reader(), None

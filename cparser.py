@@ -519,6 +519,7 @@ class State(object):
 		self._preprocessIncludeLevel = []
 		self._errors = []
 		self._global_include_wrapper = None
+		self._global_include_list = []
 		self._construct_struct_type_stack = []  # via _getCTypeStruct
 
 	@classmethod
