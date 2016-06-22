@@ -239,7 +239,6 @@ class Unparser:
         self.leave()
 
     def _FunctionDef(self, t):
-        self.write("\n")
         for deco in t.decorator_list:
             self.fill("@")
             self.dispatch(deco)
@@ -249,6 +248,7 @@ class Unparser:
         self.enter()
         self.dispatch(t.body)
         self.leave()
+        self.write("\n")
 
     def _For(self, t):
         self.fill("for ")
