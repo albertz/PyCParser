@@ -2075,7 +2075,7 @@ class CEnum(_CBaseWithOptBody):
 	def getCType(self, stateStruct):
 		t = self.getMinCIntType()
 		if t is None:
-			raise Exception(str(self) + " has a too high number range " + str((a,b)))
+			raise Exception(str(self) + " has a too high number range")
 		t = stateStruct.StdIntTypes[t]
 		return t
 		# class EnumType(t):
