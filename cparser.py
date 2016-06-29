@@ -537,7 +537,7 @@ class State(object):
 	def getResolvedDecl(self, obj):
 		attrib = self.getDictNameForType(type(obj))
 		d = getattr(self, attrib)
-		return d.get(obj.name, None)
+		return d.get(obj.name, obj)
 
 	def autoSetupSystemMacros(self, system_specific=False):
 		import sys
@@ -4136,8 +4136,6 @@ def isExternDecl(obj):
 	elif isinstance(obj, (CStruct, CUnion, CEnum, CFunc)):
 		return obj.body is None
 	elif isinstance(obj, CTypedef):
-		return False
-	elif obj is None:
 		return False
 	else:
 		assert False, "unknown type: %r %r" % (obj, type(obj))
