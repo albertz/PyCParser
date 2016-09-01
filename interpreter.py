@@ -79,16 +79,9 @@ class GlobalScope:
 		# This can happen if `o` is the extern declaration and `decl`
 		# is the actual variable. Anyway, this is fine.
 		return o.name
-	
-	def getVar(self, name):
-		if name in self.vars: return self.vars[name]
-		decl = self.findIdentifier(name)
-		if self.interpreter.debug_print_getVar: print("+ getVar %s" % decl)
-		assert isinstance(decl, CVarDecl)
 
-		# Note: To avoid infinite loops, we must first create the object.
-		# This is to avoid infinite loops, in case that the initializer
-		# access the var itself.
+	def _getDeclTypeBodyAstAndType(self, decl):
+		assert isinstance(decl, CVarDecl)
 
 		if decl.body is not None:
 			anonFuncEnv = FuncEnv(self)
@@ -124,22 +117,49 @@ class GlobalScope:
 			if not decl_type.arrayLen:
 				decl_type.arrayLen = CNumber(arrayLen)
 
+		return decl_type, bodyAst, bodyType
+
+	def _getEmptyValueAst(self, decl_type):
+		return getAstNode_newTypeInstance(FuncEnv(self), decl_type)
+
+	def _getVarBodyValueAst(self, decl, decl_type, bodyAst, bodyType):
+		assert isinstance(decl, CVarDecl)
+		if decl.body is None:
+			return None
+
+		if not isinstance(decl_type, CArrayType) and isPointerType(decl_type) \
+				and not isPointerType(bodyType):
+			v = decl.body.getConstValue(self.stateStruct)
+			assert v is not None and v == 0, "Global: Initializing pointer type " + str(
+				decl_type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
+			return None
+		else:
+			valueAst = getAstNode_newTypeInstance(FuncEnv(self), decl_type, bodyAst, bodyType)
+			return valueAst
+
+	def getVar(self, name):
+		if name in self.vars: return self.vars[name]
+		decl = self.findIdentifier(name)
+		if self.interpreter.debug_print_getVar: print("+ getVar %s" % decl)
+		assert isinstance(decl, CVarDecl)
+
+		# Note: To avoid infinite loops, we must first create the object.
+		# This is to avoid infinite loops, in case that the initializer
+		# access the var itself.
+
+		decl_type, bodyAst, bodyType = self._getDeclTypeBodyAstAndType(decl)
+
 		def getEmpty():
-			emptyValueAst = getAstNode_newTypeInstance(FuncEnv(self), decl_type)
+			emptyValueAst = self._getEmptyValueAst(decl_type)
 			v_empty = evalValueAst(self, emptyValueAst, "<PyCParser_globalvar_%s_init_empty>" % name)
 			self.interpreter._storePtr(ctypes.pointer(v_empty))
 			return v_empty
 		self.vars[name] = getEmpty()
 
-		if decl.body is not None:
-			if not isinstance(decl_type, CArrayType) and isPointerType(decl_type) \
-					and not isPointerType(bodyType):
-				v = decl.body.getConstValue(self.stateStruct)
-				assert v is not None and v == 0, "Global: Initializing pointer type " + str(decl_type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
-			else:
-				valueAst = getAstNode_newTypeInstance(FuncEnv(self), decl_type, bodyAst, bodyType)
-				value = evalValueAst(self, valueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-				self.interpreter.helpers.assign(self.vars[name], value)
+		bodyValueAst = self._getVarBodyValueAst(decl, decl_type, bodyAst, bodyType)
+		if bodyValueAst is not None:
+			value = evalValueAst(self, bodyValueAst, "<PyCParser_globalvar_" + name + "_init_value>")
+			self.interpreter.helpers.assign(self.vars[name], value)
 
 		return self.vars[name]
 
