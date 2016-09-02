@@ -2021,6 +2021,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 
 	class ctype(baseClass): pass
 	ctype.__name__ = str(obj.name or "<anonymous-struct>")
+	ctype._py = obj
 	obj._ctype = ctype
 	obj._ctype_is_constructing = True
 	obj._ctype_construct_need_now = False
