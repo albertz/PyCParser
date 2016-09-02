@@ -127,9 +127,11 @@ class GlobalScope:
 		if decl.body is None:
 			return None
 
+		v = decl.body.getConstValue(self.stateStruct)
+		if v is not None and v == 0:
+			return None  # no need to initialize it
 		if not isinstance(decl_type, CArrayType) and isPointerType(decl_type) \
 				and not isPointerType(bodyType):
-			v = decl.body.getConstValue(self.stateStruct)
 			assert v is not None and v == 0, "Global: Initializing pointer type " + str(
 				decl_type) + " only supported with 0 value but we got " + str(v) + " from " + str(decl.body)
 			return None
@@ -1046,17 +1048,9 @@ def getAstNodeArrayIndex(base, index, ctx=ast.Load()):
 	return a
 
 def getAstForWrapValue(interpreter, wrapValue):
-	assert isinstance(wrapValue, CWrapValue)
-	orig_name = wrapValue.name or "anonymous_value"
-	for name in iterIdWithPostfixes(orig_name):
-		if not isValidVarName(name): continue
-		obj = getattr(interpreter.wrappedValues, name, None)
-		if obj is None:  # new
-			setattr(interpreter.wrappedValues, name, wrapValue)
-			obj = wrapValue
-		if obj is wrapValue:
-			v = getAstNodeAttrib("values", name)
-			return v
+	name = interpreter.wrappedValues.get_value(wrapValue)
+	v = getAstNodeAttrib("values", name)
+	return v
 
 def astForCast(funcEnv, new_type, arg_ast):
 	"""
@@ -1756,8 +1750,27 @@ def cCodeToPyAstList(funcEnv, cBody):
 	else:
 		cStatementToPyAst(funcEnv, cBody)
 
+
 class WrappedValues:
-	pass
+
+	def __init__(self):
+		self.callbacks_register_new = []
+		self.list = set()
+
+	def get_value(self, wrapValue):
+		assert isinstance(wrapValue, CWrapValue)
+		orig_name = wrapValue.name or "anonymous_value"
+		for name in iterIdWithPostfixes(orig_name):
+			if not isValidVarName(name): continue
+			obj = getattr(self, name, None)
+			if obj is None:  # new
+				self.list.add(name)
+				setattr(self, name, wrapValue)
+				for cb in self.callbacks_register_new:
+					cb(name, wrapValue)
+				obj = wrapValue
+			if obj is wrapValue:
+				return name
 
 
 def _unparse(pyAst):
