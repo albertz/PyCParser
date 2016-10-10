@@ -17,3 +17,15 @@ else:
 
 if sys.version_info.major >= 3:
 	unicode = str
+
+
+def setup_Structure_debug_helper():
+	import ctypes
+
+	class DebugStruct(ctypes.Structure):
+		def __init__(self, *args):
+			assert hasattr(self, "_fields_")
+			assert len(args) <= len(self._fields_)
+			super(DebugStruct, self).__init__(*args)
+
+	ctypes.Structure = DebugStruct
