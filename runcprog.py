@@ -57,11 +57,8 @@ better_exchook.install()
 from cparser import State, parse
 from interpreter import Interpreter
 
-def not_a_dashdash(x):
-    return x != "--"
-
 def main():
-    c_code_files = list(takewhile(not_a_dashdash, argv[1:]))
+    c_code_files = list(takewhile(lambda x: x != "--", argv[1:]))
     if len(c_code_files) == 0:
         raise Exception("You must provide at least one C source file")
 
@@ -86,7 +83,7 @@ def main():
         # that if there's no "--" or nothing after it, this will be an empty
         # sequence but chain() below will have no problem with that
         arguments_to_c_prog_iter = islice(
-            dropwhile(not_a_dashdash, argv[1:]), 1, None)
+            dropwhile(lambda x: x != "--", argv[1:]), 1, None)
 
         # by chaining the program name (first c file) and possible remaining
         # arguments we ensure there is at least one
