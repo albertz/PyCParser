@@ -49,7 +49,6 @@ If you want to include some c preprocessor defines or macros, just make a
 # POSSIBILITY OF SUCH DAMAGE.
 
 from sys import argv
-from itertools import takewhile, dropwhile
 
 import better_exchook
 better_exchook.install()
@@ -58,9 +57,13 @@ from cparser import State, parse
 from interpreter import Interpreter
 
 def main():
-    # excluding this programs name (argv[0]), all arguments up to and
+    # excluding this programs name (argv[0]) and all arguments up to and
     # and excluding the first "--" are c files to include
-    c_code_files = list(takewhile(lambda x: x != "--", argv[1:]))
+    try:
+        c_code_files = argv[1:argv.index("--")]
+    except ValueError: # there might be no "--"
+        c_code_files = argv[1:]
+
     if len(c_code_files) == 0:
         raise Exception("You must provide at least one C source file")
 
@@ -81,13 +84,11 @@ def main():
         # should have the standard two, (int argc0, char **argv0)
         assert(len(main_func.C_argTypes) == 2)
 
-        arguments_after_dashes = dropwhile(lambda x: x != "--", argv[1:])
-
-        # slice out the "--"
-        arguments_to_c_prog = list(arguments_after_dashes)[1:]
-
-        # prepend first c file as program name
-        arguments_to_c_prog = [c_code_files[0]] + arguments_to_c_prog
+        # first c file is program name and first argument
+        arguments_to_c_prog = [c_code_files[0]]
+        try: # append everything after the "--" as c program arguments
+            arguments_to_c_prog += argv[argv.index("--")+1:]
+        except: ValueError
 
         # return_as_ctype=False as we're expecting a simple int or None for void
         return_code = interpreter.runFunc(
