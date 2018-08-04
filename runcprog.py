@@ -49,7 +49,7 @@ If you want to include some c preprocessor defines or macros, just make a
 # POSSIBILITY OF SUCH DAMAGE.
 
 from sys import argv
-from itertools import takewhile, dropwhile, chain, islice
+from itertools import takewhile, dropwhile
 
 import better_exchook
 better_exchook.install()
@@ -58,6 +58,8 @@ from cparser import State, parse
 from interpreter import Interpreter
 
 def main():
+    # excluding this programs name (argv[0]), all arguments up to and
+    # and excluding the first "--" are c files to include
     c_code_files = list(takewhile(lambda x: x != "--", argv[1:]))
     if len(c_code_files) == 0:
         raise Exception("You must provide at least one C source file")
@@ -79,18 +81,13 @@ def main():
         # should have the standard two, (int argc0, char **argv0)
         assert(len(main_func.C_argTypes) == 2)
 
-        # remove first "--" from arguments sequence and get everything after
-        # that if there's no "--" or nothing after it, this will be an empty
-        # sequence but chain() below will have no problem with that
-        arguments_to_c_prog_iter = islice(
-            dropwhile(lambda x: x != "--", argv[1:]), 1, None)
+        arguments_after_dashes = dropwhile(lambda x: x != "--", argv[1:])
 
-        # by chaining the program name (first c file) and possible remaining
-        # arguments we ensure there is at least one
-        arguments_to_c_prog = list(chain(
-            [c_code_files[0]], # first c file is first argument as programe name
-            arguments_to_c_prog_iter
-        ) ) # chain, list
+        # slice out the "--"
+        arguments_to_c_prog = list(arguments_after_dashes)[1:]
+
+        # prepend first c file as program name
+        arguments_to_c_prog = [c_code_files[0]] + arguments_to_c_prog
 
         # return_as_ctype=False as we're expecting a simple int or None for void
         return_code = interpreter.runFunc(
