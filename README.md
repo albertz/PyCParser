@@ -24,12 +24,11 @@ Parsers / `ctypes` interface generators:
 
 Interpreters:
 
-*There aren't any in Python. So I list all I know about.*
-
-* [CINT](http://root.cern.ch/drupal/content/cint). Probably the most famous one.
-* [Ch](http://www.softintegration.com/). Is not really free.
-* [ups debugger](http://ups.sourceforge.net/main.html).
-* [PicoC](http://code.google.com/p/picoc/). "A very small C interpreter."
+* [CInterpreter](https://github.com/SKantar/CInterpreter). Python.
+* [CINT](http://root.cern.ch/drupal/content/cint). Not in Python. Probably the most famous one.
+* [Ch](http://www.softintegration.com/). Not in Python. Is not really free.
+* [ups debugger](http://ups.sourceforge.net/main.html). Not in Python.
+* [PicoC](http://code.google.com/p/picoc/). Not in Python. "A very small C interpreter."
 
 Why this project?
 -----------------
