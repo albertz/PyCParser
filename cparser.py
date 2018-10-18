@@ -504,6 +504,7 @@ class State(object):
 
     def __init__(self):
         self.parent = None
+        self.encoding = "utf-8" # Encoding used to open files
         self.macros = {} # name -> Macro
         self.typedefs = {} # name -> type
         self.structs = {} # name -> CStruct
@@ -614,7 +615,7 @@ class State(object):
 
         try:
             import codecs
-            f = codecs.open(fullfilename, "r", "utf-8")
+            f = codecs.open(fullfilename, "r", self.encoding)
         except Exception as e:
             self.error("cannot open local include-file '" + filename + "': " + str(e))
             return "", None
