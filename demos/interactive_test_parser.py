@@ -1,7 +1,12 @@
-#!/usr/bin/python
-# Test interpreter
-# by Albert Zeyer, 2011
-# code under GPL
+#!/usr/bin/env python3
+
+"""
+Test interpreter
+by Albert Zeyer, 2011
+code under GPL
+"""
+
+from __future__ import print_function
 
 import sys, os, os.path
 if __name__ == '__main__':
@@ -9,8 +14,7 @@ if __name__ == '__main__':
 else:
     MyDir = "."
 
-sys.path.append(MyDir + "/../..") # so that 'import cparser' works as expected
-sys.path.append(MyDir + "/..") # so that 'import better_exchook' works
+sys.path.append(MyDir + "/..")
 
 import better_exchook
 better_exchook.install()
@@ -18,6 +22,7 @@ better_exchook.install()
 import cparser
 
 input = sys.stdin
+
 
 def input_reader_handler(state):
     oldErrNum = len(state._errors)
@@ -28,12 +33,13 @@ def input_reader_handler(state):
         if len(c) == 0: break
         if c == "\n":
             for m in state._errors[oldErrNum:]:
-                print "Error:", m
+                print("Error:", m)
             oldErrNum = len(state._errors)
             for m in state.contentlist[oldContentListNum:]:
-                print "Parsed:", m
+                print("Parsed:", m)
             oldContentListNum = len(state.contentlist)
         yield c
+
 
 def prepareState():
     state = cparser.State()
@@ -47,7 +53,9 @@ def prepareState():
     state.readLocalInclude = readInclude
     return state
 
+
 state = prepareState()
+
 
 if __name__ == '__main__':
     cparser.parse("<input>", state)
