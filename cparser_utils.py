@@ -3,6 +3,7 @@ import sys
 
 if sys.version_info.major == 2:
     def rebound_instance_method(f, newobj):
+        # noinspection PyArgumentList
         return types.MethodType(f.im_func, newobj, newobj.__class__)
 else:
     def rebound_instance_method(f, newobj):
@@ -17,6 +18,8 @@ else:
 
 if sys.version_info.major >= 3:
     unicode = str
+    long = int
+    unichr = chr
 
 
 def setup_Structure_debug_helper():

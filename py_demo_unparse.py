@@ -1,12 +1,20 @@
-"Usage: unparse.py <path to source file>"
+#!/usr/bin/env python3
+"""
+Usage: unparse.py <path to source file>"
+"""
+
+from __future__ import print_function
+
 import sys
 import ast
-import cStringIO
 import os
+import six
+from cparser_utils import unicode
 
 # Large float and imaginary literals get turned into infinities in the AST.
 # We unparse those infinities to INFSTR.
 INFSTR = "1e" + repr(sys.float_info.max_10_exp + 1)
+
 
 def interleave(inter, f, seq):
     """Call f on each item in seq, calling inter() in between.
@@ -21,10 +29,13 @@ def interleave(inter, f, seq):
             inter()
             f(x)
 
+
 class Unparser:
-    """Methods in this class recursively traverse an AST and
+    """
+    Methods in this class recursively traverse an AST and
     output source code for the abstract syntax; original formatting
-    is disregarded. """
+    is disregarded.
+    """
 
     def __init__(self, tree, indent=0, file=sys.stdout):
         """Unparser(tree, file=sys.stdout) -> None.
@@ -568,12 +579,12 @@ class Unparser:
         if t.asname:
             self.write(" as "+t.asname)
 
+
 def roundtrip(filename, output=sys.stdout):
     with open(filename, "r") as pyfile:
         source = pyfile.read()
     tree = compile(source, filename, "exec", ast.PyCF_ONLY_AST)
     Unparser(tree, output)
-
 
 
 def testdir(a):
@@ -585,14 +596,15 @@ def testdir(a):
         for n in names:
             fullname = os.path.join(a, n)
             if os.path.isfile(fullname):
-                output = cStringIO.StringIO()
-                print 'Testing %s' % fullname
+                output = six.StringIO()
+                print('Testing %s' % fullname)
                 try:
                     roundtrip(fullname, output)
                 except Exception as e:
-                    print '  Failed to compile, exception is %s' % repr(e)
+                    print('  Failed to compile, exception is %r' % (e,))
             elif os.path.isdir(fullname):
                 testdir(fullname)
+
 
 def main(args):
     if args[0] == '--testdir':
@@ -601,6 +613,7 @@ def main(args):
     else:
         for a in args:
             roundtrip(a)
+
 
 if __name__=='__main__':
     main(sys.argv[1:])

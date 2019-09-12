@@ -1,9 +1,15 @@
-# PyCParser main file
-# by Albert Zeyer, 2011
-# code under BSD 2-Clause License
+#!/usr/bin/env python3
 
+"""
+PyCParser main file
+by Albert Zeyer, 2011
+code under BSD 2-Clause License
+"""
+
+from __future__ import print_function
 import ctypes, _ctypes
 from inspect import isclass
+from cparser_utils import unicode, long, unichr
 
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
@@ -17,74 +23,68 @@ ClosingBrackets = "})]"
 # NOTE: most of the C++ stuff is not really supported yet
 OpPrecedences = {
     "::": 1,
-        "++": 2, # as postfix; 3 as prefix
-        "--": 2, # as postfix; 3 as prefix
-        ".": 2,
-        "->": 2,
-        "typeid": 2,
-        "const_cast": 2,
-        "dynamic_cast": 2,
-        "reinterpret_cast": 2,
-        "static_cast": 2,
-        "!": 3,
-        "~": 3,
-        "sizeof": 3,
-        "new": 3,
-        "delete": 3,
-        ".*": 4,
-        "->*": 4,
-        "*": 5, # as bin op; 3 as prefix
-        "/": 5,
-        "%": 5,
-        "+": 6, # as bin op; 3 as prefix
-        "-": 6, # as bin op; 3 as prefix
-        "<<": 7,
-        ">>": 7,
-        "<": 8,
-        "<=": 8,
-        ">": 8,
-        ">=": 8,
-        "==": 9,
-        "!=": 9,
-        "&": 10, # as bin op; 3 as prefix
-        "^": 11,
-        "|": 12,
-        "&&": 13,
-        "||": 14,
-        "?": 15, # a ? b : c
-        "?:": 15, # this is the internal op representation when we have got all three sub nodes
-        "=": 16,
-        "+=": 16,
-        "-=": 16,
-        "*=": 16,
-        "/=": 16,
-        "%=": 16,
-        "<<=": 16,
-        ">>=": 16,
-        "&=": 16,
-        "^=": 16,
-        "|=": 16,
-        "throw": 17,
-        ",": 18
+    "++": 2,  # as postfix; 3 as prefix
+    "--": 2,  # as postfix; 3 as prefix
+    ".": 2,
+    "->": 2,
+    "typeid": 2,
+    "const_cast": 2,
+    "dynamic_cast": 2,
+    "reinterpret_cast": 2,
+    "static_cast": 2,
+    "!": 3,
+    "~": 3,
+    "sizeof": 3,
+    "new": 3,
+    "delete": 3,
+    ".*": 4,
+    "->*": 4,
+    "*": 5, # as bin op; 3 as prefix
+    "/": 5,
+    "%": 5,
+    "+": 6, # as bin op; 3 as prefix
+    "-": 6, # as bin op; 3 as prefix
+    "<<": 7,
+    ">>": 7,
+    "<": 8,
+    "<=": 8,
+    ">": 8,
+    ">=": 8,
+    "==": 9,
+    "!=": 9,
+    "&": 10, # as bin op; 3 as prefix
+    "^": 11,
+    "|": 12,
+    "&&": 13,
+    "||": 14,
+    "?": 15, # a ? b : c
+    "?:": 15, # this is the internal op representation when we have got all three sub nodes
+    "=": 16,
+    "+=": 16,
+    "-=": 16,
+    "*=": 16,
+    "/=": 16,
+    "%=": 16,
+    "<<=": 16,
+    ">>=": 16,
+    "&=": 16,
+    "^=": 16,
+    "|=": 16,
+    "throw": 17,
+    ",": 18
 }
 
-OpsRightToLeft = set([
-    "=",
-        "+=", "-=",
-        "*=", "/=", "%=",
-        "<<=", ">>=",
-        "&=", "^=", "|="
-])
+OpsRightToLeft = {"=", "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", "&=", "^=", "|="}
 
 OpPrefixFuncs = {
     "+": (lambda x: +x),
-        "-": (lambda x: -x),
-        "&": (lambda x: ctypes.pointer(x)),
-        "*": (lambda x: x.content),
-        "++": (lambda x: ++x),
-        "--": (lambda x: --x),
-        "!": (lambda x: not x),
-        "~": (lambda x: ~x),
+    "-": (lambda x: -x),
+    "&": (lambda x: ctypes.pointer(x)),
+    "*": (lambda x: x.content),
+    "++": (lambda x: ++x),
+    "--": (lambda x: --x),
+    "!": (lambda x: not x),
+    "~": (lambda x: ~x),
 }
 
 OpPostfixFuncs = {
@@ -93,37 +93,37 @@ OpPostfixFuncs = {
 
 OpBinFuncs = {
     "+": (lambda a,b: a + b),
-        "-": (lambda a,b: a - b),
-        "*": (lambda a,b: a * b),
-        "/": (lambda a,b: a / b),
-        "%": (lambda a,b: a % b),
-        "<<": (lambda a,b: a << b),
-        ">>": (lambda a,b: a >> b),
-        "<": (lambda a,b: a < b),
-        "<=": (lambda a,b: a <= b),
-        ">": (lambda a,b: a > b),
-        ">=": (lambda a,b: a >= b),
-        "==": (lambda a,b: a == b),
-        "!=": (lambda a,b: a != b),
-        "&": (lambda a,b: a & b),
-        "^": (lambda a,b: a ^ b),
-        "|": (lambda a,b: a | b),
-        "&&": (lambda a,b: a and b),
-        "||": (lambda a,b: a or b),
-        ",": (lambda a,b: b),
-        # NOTE: These assignment ops don't really behave like maybe expected
-        # but they return the somewhat expected.
-        "=": (lambda a,b: b),
-        "+=": (lambda a,b: a + b),
-        "-=": (lambda a,b: a - b),
-        "*=": (lambda a,b: a * b),
-        "/=": (lambda a,b: a / b),
-        "%=": (lambda a,b: a % b),
-        "<<=": (lambda a,b: a << b),
-        ">>=": (lambda a,b: a >> b),
-        "&=": (lambda a,b: a & b),
-        "^=": (lambda a,b: a ^ b),
-        "|=": (lambda a,b: a | b),
+    "-": (lambda a,b: a - b),
+    "*": (lambda a,b: a * b),
+    "/": (lambda a,b: a / b),
+    "%": (lambda a,b: a % b),
+    "<<": (lambda a,b: a << b),
+    ">>": (lambda a,b: a >> b),
+    "<": (lambda a,b: a < b),
+    "<=": (lambda a,b: a <= b),
+    ">": (lambda a,b: a > b),
+    ">=": (lambda a,b: a >= b),
+    "==": (lambda a,b: a == b),
+    "!=": (lambda a,b: a != b),
+    "&": (lambda a,b: a & b),
+    "^": (lambda a,b: a ^ b),
+    "|": (lambda a,b: a | b),
+    "&&": (lambda a,b: a and b),
+    "||": (lambda a,b: a or b),
+    ",": (lambda a,b: b),
+    # NOTE: These assignment ops don't really behave like maybe expected
+    # but they return the somewhat expected.
+    "=": (lambda a,b: b),
+    "+=": (lambda a,b: a + b),
+    "-=": (lambda a,b: a - b),
+    "*=": (lambda a,b: a * b),
+    "/=": (lambda a,b: a / b),
+    "%=": (lambda a,b: a % b),
+    "<<=": (lambda a,b: a << b),
+    ">>=": (lambda a,b: a >> b),
+    "&=": (lambda a,b: a & b),
+    "^=": (lambda a,b: a ^ b),
+    "|=": (lambda a,b: a | b),
 }
 
 # WARNING: this isn't really complete
@@ -143,7 +143,7 @@ def simple_escape_char(c):
     else:
         # Just to be sure so that users don't run into trouble.
         assert False, "simple_escape_char: cannot handle " + repr(c) + " yet"
-        return c
+
 
 def escape_cstr(s):
     return s.replace('"', '\\"')
@@ -319,6 +319,7 @@ class Macro(object):
 
         return valueStmnt.getConstValue(stateStruct)
 
+
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType(object):
     def __init__(self, **kwargs):
@@ -336,18 +337,27 @@ class CType(object):
     def asCCode(self, indent=""):
         raise NotImplementedError(str(self) + " asCCode not implemented")
 
+
 class CUnknownType(CType):
     def asCCode(self, indent=""): return indent + "/* unknown */ int"
+
+
 class CVoidType(CType):
     def __repr__(self): return "void"
     def getCType(self, stateStruct): return None
     def asCCode(self, indent=""): return indent + "void"
+
+
 class CVariadicArgsType(CType):
     def getCType(self, stateStruct): return None
     def asCCode(self, indent=""): return indent + "..."
 
+
 class CPointerType(CType):
-    def __init__(self, ptr): self.pointerOf = ptr
+    def __init__(self, ptr):
+        super(CPointerType, self).__init__()
+        self.pointerOf = ptr
+
     def getCType(self, stateStruct):
         try:
             t = getCType(self.pointerOf, stateStruct)
@@ -361,8 +371,10 @@ class CPointerType(CType):
         return getCType(ctypes.c_void_p, stateStruct)
     def asCCode(self, indent=""): return indent + asCCode(self.pointerOf) + "*"
 
+
 class CBuiltinType(CType):
     def __init__(self, builtinType):
+        super(CBuiltinType, self).__init__()
         assert isinstance(builtinType, tuple)
         self.builtinType = builtinType
     def getCType(self, stateStruct):
@@ -370,15 +382,20 @@ class CBuiltinType(CType):
         return getCType(t, stateStruct)
     def asCCode(self, indent=""): return indent + " ".join(self.builtinType)
 
+
 class CStdIntType(CType):
-    def __init__(self, name): self.name = name
+    def __init__(self, name):
+        super(CStdIntType, self).__init__()
+        self.name = name
     def getCType(self, stateStruct):
         t = stateStruct.StdIntTypes[self.name]
         return getCType(t, stateStruct)
     def asCCode(self, indent=""): return indent + self.name
 
+
 class CArrayType(CType):
     def __init__(self, arrayOf, arrayLen):
+        super(CArrayType, self).__init__()
         self.arrayOf = arrayOf
         self.arrayLen = arrayLen
     def getCType(self, stateStruct):
@@ -424,6 +441,7 @@ def getCType(t, stateStruct):
         return t.getCType(stateStruct)
     raise Exception(str(t) + " cannot be converted to a C type")
 
+
 def getCTypeWrapped(t, stateStruct):
     """
     :type stateStruct: State
@@ -433,10 +451,12 @@ def getCTypeWrapped(t, stateStruct):
                           ctypes.Structure, ctypes.Union))
     return wrapCTypeClassIfNeeded(t)
 
+
 def isSameType(stateStruct, type1, type2):
     ctype1 = getCType(type1, stateStruct)
     ctype2 = getCType(type2, stateStruct)
     return ctype1 == ctype2
+
 
 def isType(t):
     if isinstance(t, CType) and not isinstance(t, CWrapValue): return True
@@ -448,9 +468,11 @@ def isType(t):
     if isinstance(t, (CStruct,CUnion,CEnum,CTypedef)): return True
     return False
 
+
 def getSizeOf(t, stateStruct):
     t = getCType(t, stateStruct)
     return ctypes.sizeof(t)
+
 
 class State(object):
     # See _getCTypeStruct for details.
@@ -670,6 +692,7 @@ def is_valid_defname(defname):
             return False
     return True
 
+
 def cpreprocess_evaluate_ifdef(state, arg):
     arg = arg.strip()
     if not is_valid_defname(arg):
@@ -677,6 +700,7 @@ def cpreprocess_evaluate_ifdef(state, arg):
         return False
     if arg in ("__FILE__", "__LINE__"): return True
     return arg in state.macros
+
 
 def cpreprocess_evaluate_single(state, arg):
     if arg == "": return None
@@ -700,6 +724,7 @@ def cpreprocess_evaluate_single(state, arg):
         state.error("preprocessor eval single error on '" + arg + "': " + str(e))
         return 0
     return cpreprocess_evaluate_cond(state, resolved)
+
 
 def cpreprocess_evaluate_cond(stateStruct, condstr):
     state = 0
@@ -1326,9 +1351,12 @@ class _CBase(object):
     def __hash__(self): return hash(self.__class__) + 31 * hash(self.content)
     def asCCode(self, indent=""): return indent + self.content
 
+
 class CStr(_CBase):
     def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
     def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
+
+
 class CChar(_CBase):
     def __init__(self, content=None, rawstr=None, **kwargs):
         if isinstance(content, (unicode,str)): content = ord(content)
@@ -1342,15 +1370,28 @@ class CChar(_CBase):
         else:
             assert isinstance(self.content, int)
             return indent + "'" + escape_cstr(chr(self.content)) + "'"
+
+
 class CNumber(_CBase):
     typeSpec = None  # prefix like "f", "i" or so, or None
     def asCCode(self, indent=""): return indent + self.rawstr
+
+
 class CIdentifier(_CBase): pass
+
+
 class COp(_CBase): pass
+
+
 class CSemicolon(_CBase):
     def asCCode(self, indent=""): return indent + ";"
+
+
 class COpeningBracket(_CBase): pass
+
+
 class CClosingBracket(_CBase): pass
+
 
 def cpre2_parse_number(stateStruct, s):
     if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
@@ -1373,6 +1414,7 @@ def cpre2_parse_number(stateStruct, s):
     except Exception as e:
         stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
         return 0
+
 
 def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
     """
@@ -2016,9 +2058,12 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
         construct(obj)
         return obj._ctype
 
-    if hasattr(obj, "_ctype"): return obj._ctype
-    if not hasattr(obj, "body"): raise CTypeConstructionException("%s must have the body attrib" % obj)
-    if obj.body is None: raise CTypeConstructionException("%s.body must not be None. maybe it was only forward-declarated?" % obj)
+    if hasattr(obj, "_ctype"):
+        return obj._ctype
+    if not hasattr(obj, "body"):
+        raise CTypeConstructionException("%s must have the body attrib" % obj)
+    if obj.body is None:
+        raise CTypeConstructionException("%s.body must not be None. maybe it was only forward-declarated?" % obj)
 
     class ctype(baseClass): pass
     ctype.__name__ = str(obj.name or "<anonymous-struct>")
@@ -2029,6 +2074,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
     construct(obj)
     return ctype
 
+
 class CStruct(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
     def getCType(self, stateStruct):
@@ -2037,6 +2083,7 @@ class CStruct(_CBaseWithOptBody):
         s = indent + "struct " + self.name
         if self.body is None: return s
         return s + "\n" + asCCode(self.body, indent)
+
 
 class CUnion(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="unions", **kwargs)
@@ -2047,6 +2094,7 @@ class CUnion(_CBaseWithOptBody):
         if self.body is None: return s
         return s + "\n" + asCCode(self.body, indent)
 
+
 def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True):
     if b is None: b = a
     bits = minBits
@@ -2055,6 +2103,7 @@ def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True)
         elif a >= -(1<<(bits-1)) and b < (1<<(bits-1)): return "int" + str(bits) + "_t"
         bits *= 2
     return None
+
 
 class CEnum(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="enums", **kwargs)
@@ -2098,6 +2147,7 @@ class CEnum(_CBaseWithOptBody):
         if self.body is None: return s
         return s + "\n" + asCCode(self.body, indent)
 
+
 class CEnumConst(_CBaseWithOptBody):
     def finalize(self, stateStruct, addToContent=None):
         if self._finalized:
@@ -2124,6 +2174,7 @@ class CEnumConst(_CBaseWithOptBody):
     def asCCode(self, indent=""):
         return indent + self.name + " = " + str(self.value)
 
+
 class CFuncArgDecl(_CBaseWithOptBody):
     AutoAddToContent = False
     def finalize(self, stateStruct, addToContent=False):
@@ -2144,10 +2195,12 @@ class CFuncArgDecl(_CBaseWithOptBody):
         if self.name: s += " " + self.name
         return s
 
+
 def _isBracketLevelOk(parentLevel, curLevel):
     if parentLevel is None: parentLevel = []
     if len(parentLevel) > len(curLevel): return False
     return curLevel[:len(parentLevel)] == parentLevel
+
 
 def _body_parent_chain(stateStruct, parentCObj):
     yieldedStateStruct = False
@@ -2160,10 +2213,12 @@ def _body_parent_chain(stateStruct, parentCObj):
 
     if not yieldedStateStruct: yield stateStruct
 
+
 def _obj_parent_chain(stateStruct, parentCObj):
     while parentCObj is not None:
         yield parentCObj
         parentCObj = parentCObj.parent
+
 
 def getObjInBody(body, name):
     """
@@ -2199,11 +2254,13 @@ def findObjInNamespace(stateStruct, curCObj, name):
                 return cobj
     return None
 
+
 def findCObjTypeInNamespace(stateStruct, curCObj, DictName, name):
     for body in _body_parent_chain(stateStruct, curCObj):
         d = getattr(body, DictName)
         if name in d: return d[name]
     return None
+
 
 class _CStatementCall(_CBaseWithOptBody):
     AutoAddToContent = False
@@ -2217,18 +2274,26 @@ class _CStatementCall(_CBaseWithOptBody):
             s += " args: " + str(self.args)
         return s
 
+
 class CFuncCall(_CStatementCall): # base(args) or (base)args; i.e. can also be a simple cast
     def asCCode(self, indent=""):
         return indent + asCCode(self.base) + "(" + ", ".join(map(asCCode, self.args)) + ")"
+
+
 class CArrayIndexRef(_CStatementCall): # base[args]
     def asCCode(self, indent=""):
         return indent + asCCode(self.base) + "[" + ", ".join(map(asCCode, self.args)) + "]"
+
+
 class CAttribAccessRef(_CStatementCall): # base.name
     def asCCode(self, indent=""):
         return indent + asCCode(self.base) + "." + self.name
+
+
 class CPtrAccessRef(_CStatementCall): # base->name
     def asCCode(self, indent=""):
         return indent + asCCode(self.base) + "->" + self.name
+
 
 def _create_cast_call(stateStruct, parent, base, token):
     funcCall = CFuncCall(parent=parent)
@@ -2238,6 +2303,7 @@ def _create_cast_call(stateStruct, parent, base, token):
     arg._cpre3_handle_token(stateStruct, token)
     funcCall.finalize(stateStruct)
     return funcCall
+
 
 def opsDoLeftToRight(stateStruct, op1, op2):
     try: opprec1 = OpPrecedences[op1]
@@ -2256,6 +2322,7 @@ def opsDoLeftToRight(stateStruct, op1, op2):
     if op1 in OpsRightToLeft:
         return False
     return True
+
 
 def getConstValue(stateStruct, obj):
     """
@@ -2278,6 +2345,7 @@ def getConstValue(stateStruct, obj):
             else: cv = ctype()
             return cv.value
     return None
+
 
 def getValueType(stateStruct, obj):
     if hasattr(obj, "getValueType"): return obj.getValueType(stateStruct)
@@ -2347,6 +2415,7 @@ def getValueType(stateStruct, obj):
         assert isinstance(enumType, CEnum)
         return enumType
     assert False, "no type for %r" % obj
+
 
 def getCommonValueType(stateStruct, t1, t2):
     while isinstance(t1, CTypedef):
@@ -2457,6 +2526,7 @@ def getCommonValueType(stateStruct, t1, t2):
     # Not a basic type.
     assert isSameType(stateStruct, t1, t2)
     return t1
+
 
 def getStdIntTypeForCType(stateStruct, c_type):
     """
@@ -4000,6 +4070,7 @@ def parse(filename, state=None):
 
     return state
 
+
 def parse_code(source_code, state=None):
     if state is None:
         state = State()
@@ -4011,8 +4082,9 @@ def parse_code(source_code, state=None):
         cpre3_parse(state, tokens)
     except Exception as e:
         state.error("internal exception: %r" % e)
-        print "parsing errors:"
-        for s in state._errors: print s
+        print("parsing errors:")
+        for s in state._errors:
+            print(s)
         raise
 
     return state
@@ -4038,7 +4110,7 @@ def demo_parse_file(filename):
 
     cpre3_parse(state, tokens)
     if state._errors:
-        print "parse errors:"
+        print("parse errors:")
         pprint(state._errors)
 
     return state, token_list
@@ -4048,14 +4120,15 @@ class CWrapValue(CType):
     """
     This wraps types, values and custom Python functions.
     """
+
     def __init__(self, value, decl=None, name=None, **kwattr):
         if isinstance(value, int):
             value = ctypes.c_int(value)
+        super(CWrapValue, self).__init__(**kwattr)
         self.value = value
         self.decl = decl
         self.name = name
-        for k,v in kwattr.iteritems():
-            setattr(self, k, v)
+
     def __repr__(self):
         s = "<" + self.__class__.__name__ + " "
         if self.name: s += "%r " % self.name
@@ -4063,6 +4136,7 @@ class CWrapValue(CType):
         s += repr(self.value)
         s += ">"
         return s
+
     def getType(self):
         if self.decl is not None: return self.decl.type
         #elif self.value is not None and hasattr(self.value, "__class__"):
@@ -4070,8 +4144,10 @@ class CWrapValue(CType):
         #	return self.value.__class__
         #if isinstance(self.value, (_ctypes._SimpleCData,ctypes.Structure,ctypes.Union)):
         return self
+
     def getCType(self, stateStruct):
         return self.value.__class__
+
     def getConstValue(self, stateStruct):
         value = self.value
         if isinstance(value, _ctypes._Pointer):
@@ -4079,6 +4155,7 @@ class CWrapValue(CType):
         if isinstance(value, ctypes._SimpleCData):
             value = value.value
         return value
+
     def getReturnType(self, stateStruct, stmnt_args):
         """
         This is called if this is used as a function call to determine its return type.
@@ -4086,13 +4163,16 @@ class CWrapValue(CType):
         assert self.returnType is not None
         return self.returnType
 
+
 class CWrapFuncType(CType, CFuncPointerBase):
     def __init__(self, func, funcEnv):
         """
         :type func: CFunc
         """
+        super(CWrapFuncType, self).__init__()
         self.func = func
         self.funcEnv = funcEnv
+
     def getCType(self, stateStruct):
         return self.func.getCType(stateStruct)
 
@@ -4116,12 +4196,14 @@ def isPointerType(t, checkWrapValue=False, alsoFuncPtr=False, alsoArray=True):
         if issubclass(t, ctypes.c_void_p): return True
     return False
 
+
 def isVoidPtrType(t):
     if isinstance(t, CPointerType):
         return t.pointerOf == CBuiltinType(("void",))
     if isinstance(t, CBuiltinType) and t.builtinType == ("void", "*"):
         return True
     return False
+
 
 def isValueType(t):
     if isinstance(t, (CBuiltinType,CStdIntType)): return True

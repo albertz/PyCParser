@@ -1,4 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+
+from __future__ import print_function
 
 import sys, os
 my_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +21,7 @@ def parse(testcode, withSystemMacros=True, withGlobalIncludeWrappers=False):
     if withGlobalIncludeWrappers: state.autoSetupGlobalIncludeWrappers()
     cparser.parse_code(testcode, state)
     if state._errors:
-        print "parsing errors:"
+        print("parsing errors:")
         pprint(state._errors)
         assert False, "there are parsing errors"
     return state

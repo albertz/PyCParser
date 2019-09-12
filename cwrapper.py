@@ -4,16 +4,15 @@
 
 import cparser
 import ctypes
-import sys
-if sys.version_info.major == 2:
-    from cparser_utils import *
-else:
-    from .cparser_utils import *
+from cparser_utils import *
+
 
 class CStateDictWrapper:
-    __doc__ = """generic dict wrapper
-	This is a generic dict wrapper to merge multiple dicts to a single one.
-	It is intended mostly to merge different dicts from different cparser.State."""
+    """
+    generic dict wrapper
+    This is a generic dict wrapper to merge multiple dicts to a single one.
+    It is intended mostly to merge different dicts from different cparser.State.
+    """
 
     def __init__(self, dicts):
         self._dicts = dicts
@@ -43,9 +42,12 @@ class CStateDictWrapper:
     def __repr__(self): return "CStateDictWrapper(" + repr(self._dicts) + ")"
     def __str__(self): return "CStateDictWrapper(" + str(self._dicts) + ")"
 
+
 class CStateWrapper:
-    __doc__ = """cparser.State wrapper
-	Merges multiple cparser.State into a single one."""
+    """
+    cparser.State wrapper
+    Merges multiple cparser.State into a single one.
+    """
 
     WrappedDicts = ("macros","typedefs","structs","unions","enums","funcs","vars","enumconsts")
     LocalAttribs = ("_cwrapper")
@@ -74,21 +76,24 @@ class CStateWrapper:
     def __getstate__(self):
         assert False, "this is not really prepared/intended to be pickled"
 
+
 def _castArg(value):
     if isinstance(value, (str,unicode)):
         return ctypes.cast(ctypes.c_char_p(value), ctypes.POINTER(ctypes.c_byte))
     return value
 
+
 class CWrapper:
-    __doc__ = """Provides easy access to symbols to be used by Python.
-	Wrapped functions are directly callable given the ctypes DLL.
-	Use register() to register a new set of (parsed-header-state,dll).
-	Use get() to get a symbol-ref (cparser type).
-	Use getWrapped() to get a wrapped symbol. In case of a function, this is a
-	callable object. In case of some other const, it is its value. In case
-	of some type (struct, typedef, enum, ...), it is its ctypes type.
-	Use wrapped as an object where its __getattrib__ basically wraps to get().
-	"""
+    """
+    Provides easy access to symbols to be used by Python.
+    Wrapped functions are directly callable given the ctypes DLL.
+    Use register() to register a new set of (parsed-header-state,dll).
+    Use get() to get a symbol-ref (cparser type).
+    Use getWrapped() to get a wrapped symbol. In case of a function, this is a
+    callable object. In case of some other const, it is its value. In case
+    of some type (struct, typedef, enum, ...), it is its ctypes type.
+    Use wrapped as an object where its __getattrib__ basically wraps to get().
+    """
 
     def __init__(selfWrapper):
         selfWrapper._cache = {}

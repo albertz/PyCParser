@@ -1,10 +1,17 @@
-# PyCParser - interpreter
-# by Albert Zeyer, 2011
-# code under BSD 2-Clause License
+#!/usr/bin/env python3
+
+"""
+PyCParser - interpreter
+by Albert Zeyer, 2011
+code under BSD 2-Clause License
+"""
+
+from __future__ import print_function
 
 import cparser
 from cparser import *
 from cwrapper import CStateWrapper
+from cparser_utils import long, unicode
 
 import ctypes
 import _ctypes
@@ -39,10 +46,12 @@ def iterIdWithPostfixes(name):
         yield name + "_" + postfix
 
 import keyword
-PyReservedNames = set(dir(sys.modules["__builtin__"]) + keyword.kwlist + ["ctypes", "helpers"])
+PyReservedNames = set(dir(__builtins__) + keyword.kwlist + ["ctypes", "helpers"])
+
 
 def isValidVarName(name):
     return name not in PyReservedNames
+
 
 class GlobalScope:
     StateScopeDicts = ["vars", "typedefs", "funcs"]
@@ -211,6 +220,7 @@ class GlobalsWrapper:
     def __repr__(self):
         return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
 
+
 class GlobalsTypeWrapper:
     def __init__(self, globalScope, attrib):
         self.globalScope = globalScope
@@ -229,6 +239,7 @@ class GlobalsTypeWrapper:
 
     def __repr__(self):
         return "<" + self.__class__.__name__ + " " + repr(self.__dict__) + ">"
+
 
 class FuncEnv:
     def __init__(self, globalScope):
@@ -792,7 +803,8 @@ OpBinCmp = {
         ">=": ast.GtE,
 }
 
-OpAugAssign = dict(map(lambda (k,v): (k + "=", v), OpBin.iteritems()))
+OpAugAssign = {"%s=" % k: v for (k, v) in OpBin.items()}
+
 
 def _astOpToFunc(op):
     if inspect.isclass(op): op = op()
@@ -815,7 +827,9 @@ def _astOpToFunc(op):
     f = eval(code)
     return f
 
-OpBinFuncsByOp = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.itervalues()))
+
+OpBinFuncsByOp = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.values()))
+
 
 class Helpers:
     def __init__(self, interpreter):
@@ -1774,7 +1788,7 @@ class WrappedValues:
 
 
 def _unparse(pyAst):
-    from cStringIO import StringIO
+    from six import StringIO
     output = StringIO()
     from py_demo_unparse import Unparser
     Unparser(pyAst, file=output)
@@ -1888,7 +1902,7 @@ class Interpreter:
         self.debug_print_getVar = False
 
     def _cStateWrapperError(self, s):
-        print "Error (ignored):", s
+        print("Error (ignored):", s)
 
     def register(self, stateStruct):
         self.stateStructs += [stateStruct]
@@ -1912,11 +1926,11 @@ class Interpreter:
         return obj.getCValue(wrappedStateStruct)
 
     def _abort(self):
-        print "C abort() call."
+        print("C abort() call.")
         raise Exception("C abort()")
 
     def _exit(self, i):
-        print "C exit(%i) call." % i
+        print("C exit(%i) call." % i)
         sys.exit(i)
 
     def _make_string(self, s):
@@ -2042,7 +2056,7 @@ class Interpreter:
             # TODO: search in other C files
             # Hack for now: ignore :)
             if noBodyMode == "warn-empty":
-                print "TODO (missing C source code file):", func.name, "is not loaded yet"
+                print("TODO (missing C source code file):", func.name, "is not loaded yet")
             elif noBodyMode == "code-with-exception":
                 base.astNode.body.append(
                     ast.Raise(type=makeAstNodeCall(
@@ -2081,7 +2095,7 @@ class Interpreter:
         pyAst = funcEnv.astNode
         compiled = self._compile(pyAst)
         d = {}
-        exec compiled in self.globalsDict, d
+        eval(compiled, self.globalsDict, d)
         func = d[funcname]
         func.C_cFunc = cfunc
         func.C_pyAst = pyAst
@@ -2101,7 +2115,7 @@ class Interpreter:
 
     def dumpFunc(self, funcname, output=sys.stdout):
         f = self.getFunc(funcname)
-        print >>output, f.C_unparse()
+        print(f.C_unparse(), file=output)
 
     def _castArgToCType(self, arg, typ):
         if isinstance(typ, CPointerType):
@@ -2112,7 +2126,7 @@ class Interpreter:
                 return self._make_string(arg)
             assert isinstance(arg, (list,tuple))
             o = (ctyp._type_ * (len(arg) + 1))()
-            for i in xrange(len(arg)):
+            for i in range(len(arg)):
                 o[i] = self._castArgToCType(arg[i], typ.pointerOf)
             op = ctypes.pointer(o)
             op = ctypes.cast(op, ctyp)
@@ -2131,7 +2145,7 @@ class Interpreter:
         kwargs = self._runFunc_kwargs_resolve(**kwargs)
         f = self.getFunc(funcname)
         assert len(args) == len(f.C_argTypes)
-        args = map(lambda (arg,typ): self._castArgToCType(arg,typ), zip(args,f.C_argTypes))
+        args = {self._castArgToCType(arg,typ): zip(args,f.C_argTypes) for (arg, typ) in zip(args,f.C_argTypes)}
         res = f(*args)
         if kwargs["return_as_ctype"]:
             res_ctype = f.C_resType.getCType(self.globalScope.stateStruct)
