@@ -1479,6 +1479,11 @@ def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
 
 class _Pre2ParseStream:
     def __init__(self, input):
+        """
+        :param str|typing.Iterable[str] input:
+        """
+        if isinstance(input, str):
+            input = iter(input)
         self.input = input
         self.macro_blacklist = set()
         self.buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
