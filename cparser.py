@@ -7,6 +7,7 @@ code under BSD 2-Clause License
 """
 
 from __future__ import print_function
+import typing
 import ctypes, _ctypes
 from inspect import isclass
 from cparser_utils import unicode, long, unichr
@@ -323,7 +324,7 @@ class Macro(object):
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType(object):
     def __init__(self, **kwargs):
-        for k,v in kwargs.items():
+        for k, v in kwargs.items():
             setattr(self, k, v)
     def __repr__(self):
         return self.__class__.__name__ + " " + str(self.__dict__)
@@ -339,7 +340,8 @@ class CType(object):
 
 
 class CUnknownType(CType):
-    def asCCode(self, indent=""): return indent + "/* unknown */ int"
+    def asCCode(self, indent=""):
+        return indent + "/* unknown */ int"
 
 
 class CVoidType(CType):
@@ -633,6 +635,10 @@ class State(object):
         return fullfilename
 
     def readLocalInclude(self, filename):
+        """
+        :param str filename:
+        :rtype: (typing.Iterable[str],str)
+        """
         fullfilename = self.findIncludeFullFilename(filename, True)
 
         try:
@@ -652,6 +658,10 @@ class State(object):
         return reader, fullfilename
 
     def readGlobalInclude(self, filename):
+        """
+        :param str filename:
+        :rtype: (str,None)
+        """
         if filename == "inttypes.h": return "", None # we define those types as builtin-types
         elif filename == "stdint.h": return "", None
         else:
@@ -659,6 +669,12 @@ class State(object):
             return "", None
 
     def preprocess_file(self, filename, local):
+        """
+        :param str filename:
+        :param bool local:
+        :return: yields chars
+        :rtype: typing.Generator[str]
+        """
         if local:
             reader, fullfilename = self.readLocalInclude(filename)
         else:
@@ -668,10 +684,23 @@ class State(object):
             yield c
 
     def preprocess_source_code(self, source_code, dummy_filename="<input>"):
+        """
+        :param str source_code:
+        :param str dummy_filename:
+        :return: yields chars
+        :rtype: typing.Generator[str]
+        """
         for c in self.preprocess(source_code, dummy_filename, dummy_filename):
             yield c
 
     def preprocess(self, reader, fullfilename, filename):
+        """
+        :param reader:
+        :param str|None fullfilename:
+        :param str filename:
+        :return: yields chars
+        :rtype: typing.Generator[str]
+        """
         self.incIncludeLineChar(fullfilename=fullfilename, inc=filename)
         for c in cpreprocess_parse(self, reader):
             yield c
@@ -1100,6 +1129,7 @@ def cpreprocess_handle_def(stateStruct, arg):
     stateStruct.macros[macroname] = macro
     return macro
 
+
 def cpreprocess_handle_undef(state, arg):
     arg = arg.strip()
     if not is_valid_defname(arg):
@@ -1109,6 +1139,7 @@ def cpreprocess_handle_undef(state, arg):
         # This is not an error. Just ignore.
         return
     state.macros.pop(arg)
+
 
 def handle_cpreprocess_cmd(state, cmd, arg):
     #if not state._preprocessIgnoreCurrent:
@@ -1188,15 +1219,17 @@ def handle_cpreprocess_cmd(state, cmd, arg):
 
     state._preprocessIgnoreCurrent = any(map(lambda x: x != 1, state._preprocessIfLevels))
 
+
 def cpreprocess_parse(stateStruct, input):
     """
-    :type stateStruct: State
-    :param str | iterable[char] input: not-yet preprocessed C code
+    :param State stateStruct:
+    :param str|typing.Iterable[str] input: not-yet preprocessed C code (str or iterable over chars)
     :returns preprocessed C code, iterator of chars
     This removes comments and can skip over parts, which is controlled by
     the C preprocessor commands (`#if 0` parts or so).
     We will not do C preprocessor macro substitutions here.
     The next func which gets this output is cpre2_parse().
+    :rtype: typing.Generator[str]
     """
     cmd = ""
     arg = ""
@@ -1335,6 +1368,7 @@ def cpreprocess_parse(stateStruct, input):
     # yield dummy additional new-line at end
     yield "\n"
 
+
 class _CBase(object):
     def __init__(self, content=None, rawstr=None, **kwargs):
         self.content = content
@@ -1442,6 +1476,7 @@ def _cpre2_parse_args(stateStruct, input, brackets, separator=COp(",")):
     stateStruct.error("cpre2 parse args: runaway")
     return args
 
+
 class _Pre2ParseStream:
     def __init__(self, input):
         self.input = input
@@ -1472,12 +1507,13 @@ class _Pre2ParseStream:
             self.macro_blacklist.remove(self.buffer_stack[-1][0])
             self.buffer_stack = self.buffer_stack[:-1]
 
+
 def cpre2_parse(stateStruct, input, brackets=None):
     """
-    :type stateStruct: State
-    :param str | iterable[char] | _Pre2ParseStream input: chars of preprocessed C code.
-            except of macro substitution. usually via cpreprocess_parse().
-    :param list[str] | None brackets: opening brackets stack
+    :param State stateStruct:
+    :param str|typing.Iterable[str]|_Pre2ParseStream input: chars of preprocessed C code.
+        except of macro substitution. usually via cpreprocess_parse().
+    :param list[str]|None brackets: opening brackets stack
     :returns token iterator. this will also substitute macros
     The input comes more or less from cpreprocess_parse().
     This output will be handled by cpre3_parse().
@@ -1619,6 +1655,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
             else:
                 stateStruct.error("cpre2 parse: internal error. didn't expected state " + str(state))
         input.finalize_char(laststr)
+
 
 def cpre2_tokenstream_asCCode(input):
     needspace = False
@@ -1797,6 +1834,8 @@ class _CBaseWithOptBody(object):
             bool(self.args) or \
             bool(self.arrayargs) or \
             bool(self.body)
+
+    __bool__ = __nonzero__
 
     def finalize(self, stateStruct, addToContent = None):
         if self._finalized:
@@ -2266,6 +2305,7 @@ class _CStatementCall(_CBaseWithOptBody):
     AutoAddToContent = False
     base = None
     def __nonzero__(self): return self.base is not None
+    __bool__ = __nonzero__
     def __str__(self):
         s = self.__class__.__name__ + " " + repr(self.base)
         if self.name:
@@ -2588,13 +2628,16 @@ def isIntType(t):
         return True
     return False
 
+
 class CSizeofSymbol: pass
+
 
 class CCurlyArrayArgs(_CBaseWithOptBody):
     # args is a list of CStatement
     NameIsRelevant = False
     def asCCode(self, indent=""):
         return indent + "{" + ", ".join(map(asCCode, self.args)) + "}"
+
 
 class CStatement(_CBaseWithOptBody):
     NameIsRelevant = False
@@ -2603,6 +2646,7 @@ class CStatement(_CBaseWithOptBody):
     _rightexpr = None
     _op = None
     def __nonzero__(self): return bool(self._leftexpr) or bool(self._rightexpr)
+    __bool__ = __nonzero__
     def __repr__(self):
         s = self.__class__.__name__
         #s += " " + repr(self._tokens) # debug
@@ -3742,8 +3786,15 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
     stateStruct.error("cpre3 parse single: runaway")
     return
 
+
 def cpre3_parse_body(stateStruct, parentCObj, input_iter):
-    if parentCObj.body is None: parentCObj.body = CBody(parent=parentCObj.parent.body)
+    """
+    :param State stateStruct:
+    :param parentCObj:
+    :param input_iter:
+    """
+    if parentCObj.body is None:
+        parentCObj.body = CBody(parent=parentCObj.parent.body)
 
     curCObj = _CBaseWithOptBody(parent=parentCObj)
 
@@ -4053,13 +4104,24 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
     if parentCObj._bracketlevel is not None:
         stateStruct.error("cpre3 parse: read until end without closing brackets " + str(parentCObj._bracketlevel) + " in " + str(parentCObj))
 
+
 def cpre3_parse(stateStruct, input):
+    """
+    :param State stateStruct:
+    :param input:
+    """
     input_iter = iter(input)
     parentObj = _CBaseWithOptBody()
     parentObj.body = stateStruct
     cpre3_parse_body(stateStruct, parentObj, input_iter)
 
+
 def parse(filename, state=None):
+    """
+    :param str filename:
+    :param State|None state:
+    :rtype: State
+    """
     if state is None:
         state = State()
         state.autoSetupSystemMacros()
@@ -4072,6 +4134,11 @@ def parse(filename, state=None):
 
 
 def parse_code(source_code, state=None):
+    """
+    :param str source_code:
+    :param State|None state:
+    :rtype: State
+    """
     if state is None:
         state = State()
         state.autoSetupSystemMacros()

@@ -1,8 +1,36 @@
 
 from __future__ import print_function
 
-from helpers_test import *
+import helpers_test  # side effect: make cparser importable
 from cparser import *
+from helpers_test import *
+
+
+def test_parse_code_basic():
+    state = State()
+    state.autoSetupSystemMacros()
+
+    try:
+        preprocessed = state.preprocess_source_code("int v;")
+        tokens = cpre2_parse(state, preprocessed)
+        cpre3_parse(state, tokens)
+
+    except Exception as e:
+        state.error("internal exception: %r" % e)
+        print("parsing errors:")
+        pprint(state._errors)
+        raise
+
+    if state._errors:
+        print("parsing errors:")
+        pprint(state._errors)
+        assert False, "there are parsing errors"
+
+    pprint(state.vars)
+    assert "v" in state.vars
+    v = state.vars["v"]
+    assert isinstance(v.type, CBuiltinType)
+    assert v.type.builtinType == ("int", )
 
 
 def test_parse_var_decl():
