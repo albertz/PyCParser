@@ -1,8 +1,9 @@
 
 from __future__ import print_function
 
-from helpers_test import *
+import helpers_test  # side effect: make cparser importable
 from cparser import *
+from helpers_test import *
 
 
 def test_parse_void_func():
