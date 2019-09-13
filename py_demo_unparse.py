@@ -496,6 +496,9 @@ class Unparser:
         self.write(t.attr)
 
     def _Call(self, t):
+        """
+        :param ast.Call t:
+        """
         self.dispatch(t.func)
         self.write("(")
         comma = False
@@ -507,16 +510,18 @@ class Unparser:
             if comma: self.write(", ")
             else: comma = True
             self.dispatch(e)
-        if t.starargs:
+        if getattr(t, "starargs", None):
             if comma: self.write(", ")
             else: comma = True
             self.write("*")
             self.dispatch(t.starargs)
-        if t.kwargs:
+        if getattr(t, "kwargs", None):
             if comma: self.write(", ")
             else: comma = True
             self.write("**")
             self.dispatch(t.kwargs)
+        if getattr(t, "keywords", None):
+            raise NotImplementedError
         self.write(")")
 
     def _Subscript(self, t):

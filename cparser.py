@@ -96,7 +96,7 @@ OpBinFuncs = {
     "+": (lambda a,b: a + b),
     "-": (lambda a,b: a - b),
     "*": (lambda a,b: a * b),
-    "/": (lambda a,b: a / b),
+    "/": (lambda a,b: a // b),
     "%": (lambda a,b: a % b),
     "<<": (lambda a,b: a << b),
     ">>": (lambda a,b: a >> b),
@@ -148,6 +148,7 @@ def simple_escape_char(c):
 
 def escape_cstr(s):
     return s.replace('"', '\\"')
+
 
 def parse_macro_def_rightside(stateStruct, argnames, input):
     assert input is not None
@@ -265,6 +266,7 @@ def parse_macro_def_rightside(stateStruct, argnames, input):
         return ret
 
     return f
+
 
 class Macro(object):
     def __init__(self, state=None, macroname=None, args=None, rightside=None):
@@ -1762,6 +1764,7 @@ def make_type_from_typetokens(stateStruct, curCObj, type_tokens):
         t = None
     return t
 
+
 def asCCode(stmnt, indent="", fullDecl=False):
     if not fullDecl:
         if isinstance(stmnt, CFunc): return indent + stmnt.name
@@ -1772,16 +1775,17 @@ def asCCode(stmnt, indent="", fullDecl=False):
         return stmnt.asCCode(indent)
     assert False, "don't know how to handle " + str(stmnt)
 
+
 class _CBaseWithOptBody(object):
     NameIsRelevant = True
     AutoAddToContent = True
     AlwaysNonZero = False
     StrOutAttribList = [
         ("args", bool, None, str),
-            ("arrayargs", bool, None, str),
-            ("body", None, None, lambda x: "<...>"),
-            ("value", None, None, str),
-            ("defPos", None, "@", str),
+        ("arrayargs", bool, None, str),
+        ("body", None, None, lambda x: "<...>"),
+        ("value", None, None, str),
+        ("defPos", None, "@", str),
     ]
 
     def __init__(self, **kwargs):
@@ -1911,6 +1915,7 @@ class _CBaseWithOptBody(object):
 
     def asCCode(self, indent=""):
         raise NotImplementedError(str(self) + " asCCode not implemented")
+
 
 class CTypedef(_CBaseWithOptBody):
     def finalize(self, stateStruct):

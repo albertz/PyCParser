@@ -1869,7 +1869,7 @@ def test_interpret_cond_c_str():
     wrapped_c_byte = interpreter.globalsDict["ctypes_wrapped"].c_byte
     assert isinstance(r, ctypes.POINTER(wrapped_c_byte))  # char is always byte in the interpreter
     r = ctypes.cast(r, ctypes.c_char_p)
-    assert r.value == "bazz"
+    assert r.value.decode("utf8") == "bazz"
 
 
 def test_interpret_cstr():
@@ -2213,12 +2213,12 @@ def test_interpret_get_opt():
 
 def test_interpret_char_p_substract():
     state = parse("""
-	int f() {
-	    const char* a = "hello";
-	    const char* b = a + 3;
-		return (int) (b - a);
-	}
-	""")
+    int f() {
+        const char* a = "hello";
+        const char* b = a + 3;
+        return (int) (b - a);
+    }
+    """)
     print("Parsed:")
     print("f:", state.funcs["f"])
     print("f body:")
@@ -2238,12 +2238,12 @@ def test_interpret_char_p_substract():
 
 def test_interpret_ptr_comma_tuple():
     state = parse("""
-	int f() {
-	    const char* a = "hello";
-	    const char* b;
-		return (b = a), 42;
-	}
-	""")
+    int f() {
+        const char* a = "hello";
+        const char* b;
+        return (b = a), 42;
+    }
+    """)
     print("Parsed:")
     print("f:", state.funcs["f"])
     print("f body:")

@@ -9,15 +9,18 @@ def unparse(pyAst):
     from six import StringIO
     output = StringIO()
     from py_demo_unparse import Unparser
-    Unparser(pyAst, output)
+    Unparser(pyAst, file=output)
     output.write("\n")
     return output.getvalue()
+
 
 def parse(s):
     return ast.parse(s)
 
+
 def get_indent_prefix(s):
     return s[:len(s) - len(s.lstrip())]
+
 
 def get_same_indent_prefix(lines):
     if not lines: return ""
@@ -27,6 +30,7 @@ def get_same_indent_prefix(lines):
         return prefix
     return None
 
+
 def remove_indent_lines(s):
     if not s: return ""
     lines = s.splitlines(True)
@@ -35,12 +39,14 @@ def remove_indent_lines(s):
         return "".join([l.lstrip() for l in lines])
     return "".join([l[len(prefix):] for l in lines])
 
+
 def fix_code(s):
     if not s: return ""
     if not s[0]: return fix_code(s[1:])
     s = remove_indent_lines(s[1:])
     s = s.replace("\t", " " * 4)
     return s
+
 
 def test_parse_unparse():
     s = """
@@ -53,6 +59,7 @@ def test_parse_unparse():
     ss = unparse(a)
     assert_equal(s.strip(), ss.strip())
 
+
 def test_transform_goto():
     s = """
     def foo():
@@ -60,7 +67,7 @@ def test_transform_goto():
         # :label
         if i == 5: return i
         i += 1
-        print "hello"
+        print("hello")
         # goto label
     """
     s = fix_code(s)

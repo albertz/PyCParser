@@ -1,5 +1,9 @@
 
 import ast
+import sys
+import six
+
+PY2 = sys.version_info[0] == 2
 
 
 # We could use this funny little hack:
@@ -12,21 +16,23 @@ class MissingLabelError(Exception):
     """'goto' without matching 'label'."""
     pass
 
+
 def goto(fn):
+    """
+    A function decorator to add the goto command for a function.
+
+    Specify labels like so:
+
+    label .foo
+
+    Goto labels like so:
+
+    goto .foo
+    """
+
     import dis
     import new
 
-    """
-	A function decorator to add the goto command for a function.
-
-	Specify labels like so:
-
-	label .foo
-
-	Goto labels like so:
-
-	goto .foo
-	"""
     labels = {}
     gotos = {}
     globalName = None
@@ -182,7 +188,7 @@ class _Flatten:
                 r += [GotoLabel(goto_final_stmnt.label)]
             elif isinstance(s, ast.For):
                 raise NotImplementedError
-            elif isinstance(s, (ast.TryExcept, ast.TryFinally)):
+            elif isinstance(s, (ast.TryExcept, ast.TryFinally) if PY2 else ast.Try):
                 raise NotImplementedError
             elif isinstance(s, ast.Break):
                 assert breakJump, "found break in unexpected scope"
@@ -193,7 +199,7 @@ class _Flatten:
 
 
 def _ast_for_value(v):
-    if isinstance(v, (str,unicode)): return ast.Str(s=v)
+    if isinstance(v, six.string_types): return ast.Str(s=v)
     elif isinstance(v, int): return ast.Num(n=v)
     else: raise NotImplementedError("type (%r) %r" % (type(v), v))
 

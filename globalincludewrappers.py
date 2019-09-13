@@ -5,7 +5,12 @@
 from cparser import *
 from interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
 import ctypes, _ctypes
-import errno, os
+import errno
+import os
+import sys
+
+PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] >= 3
 
 libc = ctypes.CDLL(None)
 
@@ -50,20 +55,25 @@ def wrapCFunc_varargs(state, funcname, wrap_funcname):
         f, name=funcname, funcname=funcname,
         returnType=wrap_func.returnType, argTypes=wrap_func.argTypes)
 
+
 def _fixCArg(a):
-    if isinstance(a, unicode):
+    if PY2 and isinstance(a, unicode):
         a = a.encode("utf-8")
     if isinstance(a, str):
-        a = ctypes.c_char_p(a)
+        if PY2:
+            a = ctypes.c_char_p(a)
+        else:
+            a = ctypes.c_char_p(a.encode("utf8"))
     if isinstance(a, ctypes.c_char_p) or (isinstance(a, _ctypes._Pointer) and a._type_ is ctypes.c_char):
         return ctypes.cast(a, ctypes.POINTER(ctypes.c_byte))
     if isinstance(a, ctypes.c_char):
         return ctypes.c_byte(ord(a.value))
     return a
 
+
 def callCFunc(funcname, *args):
     f = getattr(libc, funcname)
-    args = map(_fixCArg, args)
+    args = [_fixCArg(arg) for arg in args]
     return f(*args)
 
 

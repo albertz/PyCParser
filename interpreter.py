@@ -24,6 +24,8 @@ from weakref import ref, WeakValueDictionary
 from sortedcontainers.sortedset import SortedSet
 from collections import OrderedDict
 
+PY2 = sys.version_info[0] == 2
+
 
 def iterIdentifierNames():
     S = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -33,9 +35,10 @@ def iterIdentifierNames():
         x = n
         while x > 0 or len(v) == 0:
             v = [x % len(S)] + v
-            x /= len(S)
-        yield "".join(map(lambda x: S[x], v))
+            x //= len(S)
+        yield "".join([S[x] for x in v])
         n += 1
+
 
 def iterIdWithPostfixes(name):
     if name is None:
@@ -417,11 +420,13 @@ def getAstNodeForVarType(funcEnv, t):
         except DidNotFindCTypesBasicType: pass
     assert False, "cannot handle " + str(t)
 
+
 def findHelperFunc(f):
     for k in dir(Helpers):
         v = getattr(Helpers, k)
         if v == f: return k
     return None
+
 
 def makeAstNodeCall(func, *args):
     if not isinstance(func, ast.AST):
@@ -436,10 +441,12 @@ def makeCastToVoidP(v):
     astCast = getAstNodeAttrib("ctypes", "cast")
     return makeAstNodeCall(astCast, v, astVoidPT)
 
+
 def makeCastToVoidP_value(v):
     castToPtr = makeCastToVoidP(v)
     astValue = getAstNodeAttrib(castToPtr, "value")
     return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+
 
 def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
     if isPartOfCOp:  # usually ==, != or so.
@@ -487,6 +494,7 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         return objAst
     else:
         assert False, "bad type: " + str(objType)
+
 
 def _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type):
     interpreter = funcEnv.interpreter
@@ -783,7 +791,7 @@ OpBin = {
     "+": ast.Add,
     "-": ast.Sub,
     "*": ast.Mult,
-    "/": ast.Div,
+    "/": ast.Div if PY2 else ast.FloorDiv,
     "%": ast.Mod,
     "<<": ast.LShift,
     ">>": ast.RShift,
@@ -1175,7 +1183,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
             if isinstance(stmnt.base.value, ctypes._CFuncPtr):
                 a.args = autoCastArgs(funcEnv, stmnt.base.argTypes, stmnt.args)
             else:  # e.g. custom lambda / Python func
-                a.args = map(lambda arg: astAndTypeForStatement(funcEnv, arg)[0], stmnt.args)
+                a.args = [astAndTypeForStatement(funcEnv, arg)[0] for arg in stmnt.args]
             returnType = stmnt.base.getReturnType(funcEnv.globalScope.stateStruct, stmnt.args)
             return a, returnType
         elif isType(stmnt.base):
@@ -1301,7 +1309,7 @@ def getAstNode_ptrSubstract(stateStruct, aAst, aType, bAst, bType):
     aCType = getCType(aType.pointerOf, stateStruct)
     assert aCType is not None
     s = ctypes.sizeof(aCType)
-    divAst = ast.BinOp(left=subAst, op=ast.Div(), right=ast.Num(n=s))
+    divAst = ast.BinOp(left=subAst, op=ast.Div() if PY2 else ast.FloorDiv(), right=ast.Num(n=s))
     resultAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_long"), divAst)
     return resultAst
 
@@ -2079,7 +2087,7 @@ class Interpreter:
         func.C_cFunc = cfunc
         func.C_pyAst = pyAst
         func.C_interpreter = self
-        func.C_argTypes = map(lambda a: a.type, cfunc.args)
+        func.C_argTypes = [a.type for a in cfunc.args]
         func.C_resType = cfunc.type
         func.C_unparse = lambda: _unparse(pyAst)
         return func
@@ -2124,7 +2132,7 @@ class Interpreter:
         kwargs = self._runFunc_kwargs_resolve(**kwargs)
         f = self.getFunc(funcname)
         assert len(args) == len(f.C_argTypes)
-        args = {self._castArgToCType(arg,typ): zip(args,f.C_argTypes) for (arg, typ) in zip(args,f.C_argTypes)}
+        args = [self._castArgToCType(arg,typ) for (arg, typ) in zip(args,f.C_argTypes)]
         res = f(*args)
         if kwargs["return_as_ctype"]:
             res_ctype = f.C_resType.getCType(self.globalScope.stateStruct)
