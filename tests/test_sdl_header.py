@@ -23,9 +23,9 @@ def parse_file():
 
 
     cpre3_parse(state, tokens)
-    print "tokens:"
+    print("tokens:")
     pprint(token_list)
-    print "parse errors:"
+    print("parse errors:")
     pprint(state._errors)
     assert not state._errors
 

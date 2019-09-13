@@ -11,11 +11,11 @@ def test_interpret_c_cast():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -24,11 +24,11 @@ def test_interpret_c_cast_ptr():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
 
 
 def test_interpret_c_cast_ptr_2_a():
@@ -36,22 +36,22 @@ def test_interpret_c_cast_ptr_2_a():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
 
 def test_interpret_c_cast_ptr_2_b():
     state = parse("void f()\n { void* v = (void*) 0; } \n")
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
 
 
 def test_interpret_c_cast_ptr_2():
@@ -62,11 +62,11 @@ def test_interpret_c_cast_ptr_2():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
 
 def test_interpret_c_cast_ptr_3():
     state = parse("""
@@ -78,12 +78,12 @@ def test_interpret_c_cast_ptr_3():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("g", output=sys.stdout)
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -98,12 +98,12 @@ def test_interpret_c_cast_ptr_4():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -118,11 +118,11 @@ def test_interpret_auto_cast():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -136,11 +136,11 @@ def test_interpret_auto_cast_2():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -154,17 +154,17 @@ def test_interpret_var_init_wrap_value():
 		FILE* f = stdout;
 		return 5;
 	} """, state)
-    print "Parse errors:", state._errors
+    print("Parse errors:", state._errors)
     assert not state._errors
 
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -180,17 +180,17 @@ def test_interpret_var_init_wrap_value_2():
 		FILE* f = v ? stdout : stderr;
 		return 5;
 	} """, state)
-    print "Parse errors:", state._errors
+    print("Parse errors:", state._errors)
     assert not state._errors
 
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -205,29 +205,29 @@ def test_interpret_call_void_func():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Parsed funcs:"
+    print("Parsed funcs:")
     pprint(state.funcs["g"])
     pprint(state.funcs["g"].args)
     pprint(state.funcs["g"].body)
     pprint(state.funcs["f"])
     pprint(state.funcs["f"].args)
     pprint(state.funcs["f"].body)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     f = state.funcs["f"]
     assert isinstance(f, CFunc)
     assert isinstance(f.body, CBody)
     assert len(f.body.contentlist) == 2
     call_stmnt = f.body.contentlist[0]
-    print "Call statement:", call_stmnt
+    print("Call statement:", call_stmnt)
     assert isinstance(call_stmnt, CStatement)
     assert isinstance(call_stmnt._leftexpr, CFuncCall)
     assert isinstance(call_stmnt._leftexpr.base, CBuiltinType)
     assert call_stmnt._leftexpr.base.builtinType == ("void", )
 
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -243,11 +243,11 @@ def test_interpret_goto_forward():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -266,11 +266,11 @@ def test_interpret_goto_backward():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -286,11 +286,11 @@ def test_interpret_do_while():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -304,11 +304,11 @@ def test_interpret_inplacce_add():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 43
 
@@ -327,11 +327,11 @@ def test_interpret_do_while_while():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -351,11 +351,11 @@ def test_interpret_goto_label_single_stmnt():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -377,11 +377,11 @@ def test_interpret_goto_in_nested():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -402,11 +402,11 @@ def test_interpret_goto_into_nested():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -428,11 +428,11 @@ def test_interpret_goto_into_nested_for_loop():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -451,11 +451,11 @@ def test_interpret_goto_with_if_else():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -472,13 +472,13 @@ def test_interpret_for_loop_empty():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Parsed func body:"
+    print("Parsed func body:")
     pprint(state.funcs["f"].body)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -498,11 +498,11 @@ def test_interpret_nested_var():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 4
 
@@ -523,24 +523,24 @@ def test_interpret_ptr_array():
 		return obj;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
-    print "PyTupleObject:", state.typedefs["PyTupleObject"]
+    print("PyTupleObject:", state.typedefs["PyTupleObject"])
     assert isinstance(state.typedefs["PyTupleObject"].type, CStruct)
-    print "PyTupleObject body:"
+    print("PyTupleObject body:")
     assert isinstance(state.typedefs["PyTupleObject"].type.body, CBody)
     pprint(state.typedefs["PyTupleObject"].type.body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_void_p)
     assert r.value != 0
 
@@ -556,11 +556,11 @@ def test_interpret_global_obj():
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_void_p)
     assert r.value != 0
 
@@ -574,19 +574,19 @@ def test_interpret_array():
 		return a[1];
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -598,20 +598,20 @@ def test_interpret_func_call_auto_cast():
 		return add(3 + 2);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("add", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -624,28 +624,28 @@ def test_interpret_init_struct():
 		return s.b;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "s"
-    print "var decl s body:"
-    print vardecl.body
-    print "_A:"
-    print state.structs["_A"]
-    print "_A body:"
-    print state.structs["_A"].body
+    print("var decl s body:")
+    print(vardecl.body)
+    print("_A:")
+    print(state.structs["_A"])
+    print("_A body:")
+    print(state.structs["_A"].body)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 2
 
@@ -661,13 +661,13 @@ def test_interpret_init_struct_via_self():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
-    print "s:", state.vars["s"]
-    print "s body:", state.vars["s"].body
+    print("s:", state.vars["s"])
+    print("s body:", state.vars["s"].body)
     s = state.vars["s"]
     s_body = s.body
     assert isinstance(s_body, CStatement)
@@ -683,11 +683,11 @@ def test_interpret_init_struct_via_self():
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -699,24 +699,24 @@ def test_interpret_init_array():
 		return a[2];
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "a"
-    print "var decl a body:"
-    print vardecl.body
+    print("var decl a body:")
+    print(vardecl.body)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -728,24 +728,24 @@ def test_interpret_init_array_sizeof():
 		return sizeof(a);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "a"
-    print "var decl a body:"
-    print vardecl.body
+    print("var decl a body:")
+    print(vardecl.body)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5 * ctypes.sizeof(ctypes.c_int)
 
@@ -757,24 +757,24 @@ def test_interpreter_char_array():
 		return sizeof(name);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "name"
-    print "var decl a body:"
-    print vardecl.body
+    print("var decl a body:")
+    print(vardecl.body)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 4
 
@@ -786,19 +786,19 @@ def test_interpreter_global_char_array():
 		return sizeof(name);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 4
 
@@ -811,24 +811,24 @@ def test_interpreter_offset_of_direct():
 		return a;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "a"
-    print "var decl a body:"
-    print vardecl.body
+    print("var decl a body:")
+    print(vardecl.body)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ctypes.sizeof(ctypes.c_long)
 
@@ -840,24 +840,24 @@ def test_interpreter_num_cast():
 		return a;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     vardecl = state.funcs["f"].body.contentlist[0]
     assert isinstance(vardecl, CVarDecl)
     assert vardecl.name == "a"
-    print "var decl a body:"
-    print vardecl.body
+    print("var decl a body:")
+    print(vardecl.body)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('A')
 
@@ -872,19 +872,19 @@ def test_interpreter_func_ptr():
 		return v;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -900,19 +900,19 @@ def test_interpreter_func_ptr_return_ptr():
 		return *vp;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -930,20 +930,20 @@ def test_interpreter_func_ptr_struct_init():
 		return s.x + s.f();
 	}
 	""", withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("i", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     #s = interpreter.globalScope.vars["s"]
     #print s, s._fields_, s.x, s.f
     assert isinstance(r, ctypes.c_int)
@@ -963,19 +963,19 @@ def test_interpreter_func_ptr_struct_init_unknown():
 		return s.x + s.f();
 	}
 	""", withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     # Because the unknown_func will by default return 0.
     assert r.value == 3
@@ -994,19 +994,19 @@ def test_interpret_op_precedence_ref():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
     interpreter = Interpreter()
     interpreter.register(state)
 
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 43
 
@@ -1019,19 +1019,19 @@ def test_interpret_multiple_vars():
 		return c;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1042,19 +1042,19 @@ def test_interpret_sizeof_ptr():
 		return sizeof(int*);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ctypes.sizeof(ctypes.c_void_p)
 
@@ -1069,19 +1069,19 @@ def test_interpret_multi_stmnt():
 		return i;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -1094,19 +1094,19 @@ def test_interpret_multi_stmnt_body():
 		return i + j;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -1118,19 +1118,19 @@ def test_interpret_prefix_inc_ret():
 		return ++i;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -1142,19 +1142,19 @@ def test_interpret_postfix_inc_ret():
 		return i++;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 0
 
@@ -1167,19 +1167,19 @@ def test_interpret_postfix_inc():
 		return i;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -1192,20 +1192,20 @@ def test_interpret_return_ptr():
 		return *s;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord("h")
 
@@ -1227,20 +1227,20 @@ def test_interpret_malloc():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord("h")
 
@@ -1262,20 +1262,20 @@ def test_interpret_malloc_with_cast():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord("h")
 
@@ -1289,19 +1289,19 @@ def test_interpret_noname_struct_init():
 		return s.x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1324,19 +1324,19 @@ def test_interpret_struct_ambig_name():
 		return s.Number[1].number;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1352,19 +1352,19 @@ def test_interpret_condition():
 		return -17;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     # Note: i = (j && (k == 1)).
     assert r.value == 1
@@ -1378,19 +1378,19 @@ def test_interpret_void_ptr_cast():
 		return g((int *)obj);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1403,19 +1403,19 @@ def test_interpret_void_cast_two_args():
 		return b;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 2
 
@@ -1430,19 +1430,19 @@ def test_interpret_macro_file_line():
 		return 42;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1456,19 +1456,19 @@ def test_interpret_reserved_global_varname():
 		return g;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1482,19 +1482,19 @@ def test_interpret_stmnt_no_space():
 		return 5;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 13
 
@@ -1508,19 +1508,19 @@ def test_interpret_marco_if0():
 		return 5;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 5
 
@@ -1538,19 +1538,19 @@ def test_interpret_varname_like_struct():
 		return node.x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 13
 
@@ -1575,19 +1575,19 @@ def test_interpret_malloc_macro():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1602,19 +1602,19 @@ def test_interpret_malloc_in_ternary():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -1628,19 +1628,19 @@ def test_interpret_double_macro():
 		return x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 10
 
@@ -1654,19 +1654,19 @@ def test_interpret_max_uint16():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int64)
     assert r.value == 2 ** 16 - 1
 
@@ -1680,19 +1680,19 @@ def test_interpret_max_uint16_plus1():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int64)
     assert r.value == 2 ** 16
 
@@ -1706,19 +1706,19 @@ def test_interpret_ternary_second():
 		return g;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_long)
     assert r.value == 256 ** ctypes.sizeof(ctypes.c_short)
 
@@ -1730,19 +1730,19 @@ def test_interpret_double_cast():
 		return x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_long)
     assert r.value == 256 ** ctypes.sizeof(ctypes.c_short) - 1
 
@@ -1754,19 +1754,19 @@ def test_interpret_int_float():
 		return x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 2
 
@@ -1778,19 +1778,19 @@ def test_interpret_float_cast():
 		return x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 2
 
@@ -1802,19 +1802,19 @@ def test_interpret_double():
 		return x;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_double)
     assert r.value == 2.5
 
@@ -1829,19 +1829,19 @@ def test_interpret_strlen_plus1():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_size_t)
     assert r.value == 4
 
@@ -1853,19 +1853,19 @@ def test_interpret_cond_c_str():
 		return 0 ? "blubber" : s;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     wrapped_c_byte = interpreter.globalsDict["ctypes_wrapped"].c_byte
     assert isinstance(r, ctypes.POINTER(wrapped_c_byte))  # char is always byte in the interpreter
     r = ctypes.cast(r, ctypes.c_char_p)
@@ -1880,19 +1880,19 @@ def test_interpret_cstr():
 		return *p;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord("P")
 
@@ -1906,19 +1906,19 @@ def test_interpret_cstr_indirect():
 		return *p;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord("f")
 
@@ -1939,19 +1939,19 @@ def test_interpret_struct_forward_type():
 		return a.b->x + 1;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 43
 
@@ -1992,19 +1992,19 @@ def test_interpret_struct_array():
 		return generations[0].count;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -2017,20 +2017,20 @@ def test_interpret_global_array():
 		return x[1];
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
-    print "x:", state.vars["x"]
+    print("x:", state.vars["x"])
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -2078,21 +2078,21 @@ def test_interpret_gc_malloc():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("PyObject_GC_Malloc", output=sys.stdout)
     interpreter.dumpFunc("PyObject_GC_Del", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -2193,20 +2193,20 @@ def test_interpret_get_opt():
 	}
 	""",
                   withGlobalIncludeWrappers=True)
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("_PyOS_GetOpt", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -2219,19 +2219,19 @@ def test_interpret_char_p_substract():
 		return (int) (b - a);
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -2244,19 +2244,19 @@ def test_interpret_ptr_comma_tuple():
 		return (b = a), 42;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -2267,19 +2267,19 @@ def test_interpret_octal():
 		return (int) '\\014';
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 12
 
@@ -2321,19 +2321,19 @@ def test_interpret_macro_version_hex():
 		return PY_VERSION_HEX;
 	}
 	""")
-    print "Parsed:"
-    print "f:", state.funcs["f"]
-    print "f body:"
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
     assert isinstance(state.funcs["f"].body, CBody)
     pprint(state.funcs["f"].body.contentlist)
 
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r, hex(r.value)
+    print("result:", r, hex(r.value))
     assert isinstance(r, ctypes.c_long)
     assert r.value == 0x20705f0
 
@@ -2353,13 +2353,13 @@ def test_interpret_double_macro_rec():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f_a", output=sys.stdout)
     interpreter.dumpFunc("f_b", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r_a = interpreter.runFunc("f_a")
     r_b = interpreter.runFunc("f_b")
-    print "result:", r_a, r_b
+    print("result:", r_a, r_b)
     assert r_a.value == 2
     assert r_b.value == 3
 
@@ -2371,11 +2371,11 @@ def test_interpret_simple_add_two_b():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2388,11 +2388,11 @@ def test_interpret_double_macro_rec_linear():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2407,11 +2407,11 @@ def test_interpret_undefined_macro():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2424,11 +2424,11 @@ def test_interpret_macro_call_twice():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f", 3)
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2442,11 +2442,11 @@ def test_interpret_macro_concat():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2460,11 +2460,11 @@ def test_interpret_cast_const_void_p():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f", "x")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2478,11 +2478,11 @@ def test_interpret_cast_const_int():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2500,11 +2500,11 @@ def test_interpret_for_if_else():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2518,11 +2518,11 @@ def test_interpret_char_array_cast_len_int():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2535,11 +2535,11 @@ def test_interpret_char_array_cast_len_sizet():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2551,11 +2551,11 @@ def test_interpret_int_float_cast():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 3
 
 
@@ -2573,11 +2573,11 @@ def test_interpret_char_mask_ptr_deref():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 255
 
 
@@ -2592,11 +2592,11 @@ def test_interpret_char_mask_subscript():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == ord('e')
 
 
@@ -2609,11 +2609,11 @@ def test_interpret_op_mod():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2663,11 +2663,11 @@ def test_interpret_py_init_slots_array():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -2697,11 +2697,11 @@ def test_interpret_py_init_slots_array_simple():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -2721,11 +2721,11 @@ def test_interpret_offsetof():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == ctypes.sizeof(ctypes.c_long)
 
 
@@ -2748,11 +2748,11 @@ def test_interpret_offsetof_substruct():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == ctypes.sizeof(ctypes.c_long)
 
 
@@ -2777,11 +2777,11 @@ def test_interpret_offsetof_subsubstruct():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == ctypes.sizeof(ctypes.c_long) * 2
 
 
@@ -2812,11 +2812,11 @@ def test_interpret_ptr_with_offset_in_array():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == ctypes.sizeof(ctypes.c_long)
 
 
@@ -2833,11 +2833,11 @@ def test_interpret_func_ptr_ternary():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2851,11 +2851,11 @@ def test_interpret_ternary_void_p_and_int_p():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -2879,11 +2879,11 @@ def test_interpret_if_if_else_hanging():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 2
 
 
@@ -2916,12 +2916,12 @@ def test_interpret_func_ptr_call_with_check():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("PyObject_Hash", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 11
 
 
@@ -2964,12 +2964,12 @@ def test_interpret_func_ptr_via_created_obj():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("new_type", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -2997,11 +2997,11 @@ def test_interpret_local_obj_bracy_init_func_ptr():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -3026,11 +3026,11 @@ def test_interpret_func_ptr_bracy_init():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -3120,13 +3120,13 @@ def test_interpret_array_access_ptr_heap():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("dict_new", output=sys.stdout)
     interpreter.dumpFunc("lookdict_string", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 42
 
 
@@ -3142,11 +3142,11 @@ def test_interpret_for_loop_continue():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run:"
+    print("Run:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert r.value == 5
 
 
@@ -3161,12 +3161,12 @@ def test_interpret_void_p_p():
 		return ((const char*) p)[1];
 	}
 	""")
-    print "Parsed:"
-    print "slotptr:", state.funcs["slotptr"]
+    print("Parsed:")
+    print("slotptr:", state.funcs["slotptr"])
     assert isinstance(state.funcs["slotptr"].body, CBody)
     f_content = state.funcs["slotptr"].body.contentlist
     assert isinstance(f_content[1], CReturnStatement)
-    print "slotptr return body:"
+    print("slotptr return body:")
     pprint(f_content[1].body)
     assert isinstance(f_content[1].body, CStatement)
     assert isinstance(f_content[1].body._leftexpr, CFuncCall)
@@ -3175,12 +3175,12 @@ def test_interpret_void_p_p():
     assert isType(cast_base)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("slotptr", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('o')
 
@@ -3201,12 +3201,12 @@ def test_interpret_void_p_p_incr():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("slotptr", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('b')
 
@@ -3230,12 +3230,12 @@ def test_interpret_static_func_ptr_to_void_p():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("look", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3254,12 +3254,12 @@ def test_interpret_func_to_void_p():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("look", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3278,12 +3278,12 @@ def test_interpret_func_addr_to_void_p():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("look", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3309,11 +3309,11 @@ def test_interpret_func_call_pass_array():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 13
 
@@ -3331,11 +3331,11 @@ def test_interpret_struct_same_name_as_typedef():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('o')
 
@@ -3352,11 +3352,11 @@ def test_interpret_struct_same_name_as_typedef_2():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('o')
 
@@ -3399,13 +3399,13 @@ def test_interpret_func_ptr_in_static_array():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("add_methods", output=sys.stdout)
     interpreter.dumpFunc("PyDescr_NewMethod", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3420,11 +3420,11 @@ def test_interpret_sys_types_h():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3444,11 +3444,11 @@ def test_interpret_local_func_ptr_type():
     pprint(state.funcs["f"].body.contentlist[0])
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3475,11 +3475,11 @@ def test_interpret_struct_return():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 11
 
@@ -3515,11 +3515,11 @@ def test_interpret_struct_init_assign():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 7
 
@@ -3542,12 +3542,12 @@ def test_interpret_var_args_noop():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("PyErr_Format", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 7
 
@@ -3574,12 +3574,12 @@ def test_interpret_var_args_vsprintf():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == ord('2')
 
@@ -3601,13 +3601,13 @@ def test_interpret_var_args_va_list_param():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
     interpreter.dumpFunc("h", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3626,12 +3626,12 @@ def test_interpret_goto_named_func():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3646,12 +3646,12 @@ def test_interpret_enum_return():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("PyGILState_Ensure", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1
 
@@ -3667,11 +3667,11 @@ def test_interpret_enum_cast():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 2
 
@@ -3688,11 +3688,11 @@ def test_interpret_enum_stmnt_bitor():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3714,11 +3714,11 @@ def test_interpret_attrib_access_after_cast_in_iif():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -3737,11 +3737,11 @@ def test_interpret_attrib_access_after_cast_simple():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -3756,11 +3756,11 @@ def test_interpret_cast_precedence_over_op():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 480
 
@@ -3778,11 +3778,11 @@ def test_interpret_struct_ptr_to_itself_indirect():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -3802,11 +3802,11 @@ def test_interpret_struct_ptr_to_itself_indirect2():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -3826,7 +3826,7 @@ def test_interpret_struct_with_itself_indirect_error():
     try:
         interpreter.dumpFunc("f", output=sys.stdout)
     except RecursiveStructConstruction as e:
-        print repr(e)
+        print(repr(e))
         pass  # ok, we expect that
     else:
         assert False, "Not expected, no error!"
@@ -3855,17 +3855,17 @@ def test_interpret_py_atexit():
 		return iwashere;
 	}
 	""")
-    print state.vars["exitfuncs"]
-    print state.vars["exitfuncs"].type
+    print(state.vars["exitfuncs"])
+    print(state.vars["exitfuncs"].type)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("Py_AtExit", output=sys.stdout)
     interpreter.dumpFunc("call_ll_exitfuncs", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
 
@@ -3880,11 +3880,11 @@ def test_interpret_local_typedef_var():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 43
 
@@ -3916,13 +3916,13 @@ def test_interpret_func_ptr_local_typedef_va_arg():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
     interpreter.dumpFunc("h", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 1 + 13 + 43
 
@@ -3954,12 +3954,12 @@ def test_interpret_va_arg_custom():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 13 + len("foo") + ord('A') + 11
 
@@ -3993,13 +3993,13 @@ def test_interpret_va_arg_copy():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("g", output=sys.stdout)
     interpreter.dumpFunc("va_build_value", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 13 + 11
 
@@ -4023,11 +4023,11 @@ def test_interpret_assign_func_ptr():
 	""")
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -4050,12 +4050,12 @@ def test_interpret_sig_handler():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("PyOS_getsig", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -4067,9 +4067,9 @@ def test_interpret_locale_include():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
 
@@ -4090,11 +4090,11 @@ def test_interpret_fcntl_open_close():
 	""", withGlobalIncludeWrappers=True)
     interpreter = Interpreter()
     interpreter.register(state)
-    print "Func dump:"
+    print("Func dump:")
     interpreter.dumpFunc("f", output=sys.stdout)
     interpreter.dumpFunc("dev_urandom_noraise", output=sys.stdout)
-    print "Run f:"
+    print("Run f:")
     r = interpreter.runFunc("f")
-    print "result:", r
+    print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3

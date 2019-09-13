@@ -28,13 +28,13 @@ def test_interpreter_helloworld():
             if not isinstance(f, cparser.CFunc): continue
             if not f.body: continue
 
-            print
-            print "parsed content of " + str(f) + ":"
+            print()
+            print("parsed content of " + str(f) + ":")
             for c in f.body.contentlist:
-                print c
+                print(c)
 
-        print
-        print "PyAST of main:"
+        print()
+        print("PyAST of main:")
         interp.dumpFunc("main")
 
     #interpreter.runFunc("main", len(sys.argv), sys.argv + [None])
@@ -72,7 +72,7 @@ def test_interpreter_helloworld():
     ]
 
     if expected_out != child_stdout:
-        print "Got output:"
-        print "".join(child_stdout)
+        print("Got output:")
+        print("".join(child_stdout))
         dump()
         assert False

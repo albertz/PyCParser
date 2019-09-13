@@ -4,8 +4,9 @@ from nose.tools import assert_equal, assert_is_instance, assert_in, assert_great
 import ast
 import goto
 
+
 def unparse(pyAst):
-    from cStringIO import StringIO
+    from six import StringIO
     output = StringIO()
     from py_demo_unparse import Unparser
     Unparser(pyAst, output)
@@ -43,27 +44,27 @@ def fix_code(s):
 
 def test_parse_unparse():
     s = """
-	def foo():
-		pass
-	"""
+    def foo():
+        pass
+    """
     s = fix_code(s)
-    print s
+    print(s)
     a = parse(s)
     ss = unparse(a)
     assert_equal(s.strip(), ss.strip())
 
 def test_transform_goto():
     s = """
-	def foo():
-		i = 0
-		# :label
-		if i == 5: return i
-		i += 1
-		print "hello"
-		# goto label
-	"""
+    def foo():
+        i = 0
+        # :label
+        if i == 5: return i
+        i += 1
+        print "hello"
+        # goto label
+    """
     s = fix_code(s)
-    print s
+    print(s)
     m = parse(s)
     assert_is_instance(m, ast.Module)
     assert_equal(len(m.body), 1)
@@ -73,11 +74,11 @@ def test_transform_goto():
     f.body = f.body[:1] + [goto.GotoLabel("label")] + f.body[1:] + [goto.GotoStatement("label")]
     f = goto.transform_goto(f, "goto")
     ss = unparse(f)
-    print ss
+    print(ss)
 
     c = compile(ss, "<src>", "single")
     d = {}
-    exec c in d, d
+    eval(c, d, d)
     func = d["foo"]
     r = func()
     assert_equal(r, 5)
