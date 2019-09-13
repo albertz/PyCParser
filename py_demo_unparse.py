@@ -87,8 +87,18 @@ class Unparser:
 
     # stmt
     def _Expr(self, tree):
+        """
+        :param ast.Expr tree:
+        """
         self.fill()
         self.dispatch(tree.value)
+
+    def _Expression(self, tree):
+        """
+        :param ast.Expression tree:
+        """
+        self.fill()
+        self.dispatch(tree.body)
 
     def _Import(self, t):
         self.fill("import ")
@@ -537,6 +547,9 @@ class Unparser:
 
     # others
     def _arguments(self, t):
+        """
+        :param ast.arguments t:
+        """
         first = True
         # normal arguments
         defaults = [None] * (len(t.args) - len(t.defaults)) + t.defaults
@@ -560,6 +573,14 @@ class Unparser:
             if first:first = False
             else: self.write(", ")
             self.write("**"+t.kwarg)
+
+    def _arg(self, t):
+        """
+        :param ast.arg t:
+        """
+        if t.annotation:
+            raise NotImplementedError("%r with annotation" % t)
+        self.write(t.arg)
 
     def _keyword(self, t):
         self.write(t.arg)

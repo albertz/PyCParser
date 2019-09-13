@@ -20,6 +20,13 @@ if sys.version_info.major >= 3:
     unicode = str
     long = int
     unichr = chr
+else:
+    # noinspection PyUnresolvedReferences
+    unicode = __builtins__["unicode"]
+    # noinspection PyUnresolvedReferences
+    long = __builtins__["long"]
+    # noinspection PyUnresolvedReferences
+    unichr = __builtins__["unichr"]
 
 
 def setup_Structure_debug_helper():

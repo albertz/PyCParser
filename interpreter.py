@@ -12,6 +12,7 @@ import cparser
 from cparser import *
 from cwrapper import CStateWrapper
 from cparser_utils import long, unicode
+from interpreter_utils import ast_bin_op_to_func
 
 import ctypes
 import _ctypes
@@ -725,6 +726,7 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
             ast.Name(id="intp", ctx=ast.Load()))
     return makeAstNodeCall(typeAst, *args)
 
+
 class FuncCodeblockScope:
     def __init__(self, funcEnv, body):
         self.varNames = set()
@@ -769,66 +771,43 @@ class FuncCodeblockScope:
         self.varNames.clear()
         self.body.extend(astCmds)
 
+
 OpUnary = {
     "~": ast.Invert,
-        "!": ast.Not,
-        "+": ast.UAdd,
-        "-": ast.USub,
+    "!": ast.Not,
+    "+": ast.UAdd,
+    "-": ast.USub,
 }
 
 OpBin = {
     "+": ast.Add,
-        "-": ast.Sub,
-        "*": ast.Mult,
-        "/": ast.Div,
-        "%": ast.Mod,
-        "<<": ast.LShift,
-        ">>": ast.RShift,
-        "|": ast.BitOr,
-        "^": ast.BitXor,
-        "&": ast.BitAnd,
+    "-": ast.Sub,
+    "*": ast.Mult,
+    "/": ast.Div,
+    "%": ast.Mod,
+    "<<": ast.LShift,
+    ">>": ast.RShift,
+    "|": ast.BitOr,
+    "^": ast.BitXor,
+    "&": ast.BitAnd,
 }
 
 OpBinBool = {
     "&&": ast.And,
-        "||": ast.Or,
+    "||": ast.Or,
 }
 
 OpBinCmp = {
     "==": ast.Eq,
-        "!=": ast.NotEq,
-        "<": ast.Lt,
-        "<=": ast.LtE,
-        ">": ast.Gt,
-        ">=": ast.GtE,
+    "!=": ast.NotEq,
+    "<": ast.Lt,
+    "<=": ast.LtE,
+    ">": ast.Gt,
+    ">=": ast.GtE,
 }
 
 OpAugAssign = {"%s=" % k: v for (k, v) in OpBin.items()}
-
-
-def _astOpToFunc(op):
-    if inspect.isclass(op): op = op()
-    assert isinstance(op, ast.operator)
-    l = ast.Lambda()
-    a = l.args = ast.arguments()
-    a.args = [
-        ast.Name(id="a", ctx=ast.Param()),
-        ast.Name(id="b", ctx=ast.Param())]
-    a.vararg = None
-    a.kwarg = None
-    a.defaults = []
-    t = l.body = ast.BinOp()
-    t.left = ast.Name(id="a", ctx=ast.Load())
-    t.right = ast.Name(id="b", ctx=ast.Load())
-    t.op = op
-    expr = ast.Expression(body=l)
-    ast.fix_missing_locations(expr)
-    code = compile(expr, "<_astOpToFunc>", "eval")
-    f = eval(code)
-    return f
-
-
-OpBinFuncsByOp = dict(map(lambda op: (op, _astOpToFunc(op)), OpBin.values()))
+OpBinFuncsByOp = {op: ast_bin_op_to_func(op) for op in OpBin.values()}
 
 
 class Helpers:

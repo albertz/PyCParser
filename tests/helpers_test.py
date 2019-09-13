@@ -25,3 +25,30 @@ def parse(testcode, withSystemMacros=True, withGlobalIncludeWrappers=False):
         pprint(state._errors)
         assert False, "there are parsing errors"
     return state
+
+
+def main(mod):
+    """
+    :param dict[str] mod:
+    """
+    import unittest
+    better_exchook.install()
+    if len(sys.argv) <= 1:
+        for k, v in sorted(mod.items()):
+            if k.startswith("test_"):
+                print("-" * 40)
+                print("Executing: %s" % k)
+                try:
+                    v()
+                except unittest.SkipTest as exc:
+                    print("SkipTest:", exc)
+                print("-" * 40)
+        print("Finished all tests.")
+    else:
+        assert len(sys.argv) >= 2
+        for arg in sys.argv[1:]:
+            print("Executing: %s" % arg)
+            if arg in mod:
+                mod[arg]()  # assume function and execute
+            else:
+                eval(arg)  # assume Python code and execute
