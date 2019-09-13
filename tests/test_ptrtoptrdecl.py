@@ -1,11 +1,13 @@
 
+import helpers_test
 from pprint import pprint
-import cparser, helpers_test
+import cparser
+
 
 def test_ptrtoptrdecl():
     testcode = """
-		int16_t (*motion_val[2])[2];
-	"""
+        int16_t (*motion_val[2])[2];
+    """
 
     state = helpers_test.parse(testcode)
 
