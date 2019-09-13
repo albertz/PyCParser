@@ -1,21 +1,22 @@
 
+import helpers_test
 import sys
-import cparser, helpers_test
+import cparser
 import better_exchook
 
 
 def test_interpreter_helloworld():
     testcode = """
-	#include <stdio.h>
-
-	int main(int argc, char** argv) {
-		printf("Hello %s\n", "world");
-		printf("args: %i\n", argc);
-		int i;
-		for(i = 0; i < argc; ++i)
-			printf("%s\n", argv[i]);
-	}
-	"""
+    #include <stdio.h>
+    
+    int main(int argc, char** argv) {
+        printf("Hello %s\n", "world");
+        printf("args: %i\n", argc);
+        int i;
+        for(i = 0; i < argc; ++i)
+            printf("%s\n", argv[i]);
+    }
+    """
 
     state = helpers_test.parse(testcode, withGlobalIncludeWrappers=True)
 
@@ -43,7 +44,8 @@ def test_interpreter_helloworld():
     # os.pipe() returns pipein,pipeout
     pipes = os.pipe(), os.pipe() # for stdin/stdout+stderr
 
-    if os.fork() == 0: # child
+    pid = os.fork()
+    if pid == 0:  # child
         os.close(pipes[0][1])
         os.close(pipes[1][0])
         os.dup2(pipes[0][0], sys.__stdin__.fileno())
@@ -61,18 +63,23 @@ def test_interpreter_helloworld():
     # parent
     os.close(pipes[0][0])
     os.close(pipes[1][1])
+    os.waitpid(pid, 0)
     child_stdout = os.fdopen(pipes[1][0])
     child_stdout = child_stdout.readlines()
 
     expected_out = [
         "Hello world\n",
-            "args: 2\n",
-            "./test\n",
-            "abc\n",
+        "args: 2\n",
+        "./test\n",
+        "abc\n",
     ]
 
     if expected_out != child_stdout:
         print("Got output:")
         print("".join(child_stdout))
         dump()
-        assert False
+        raise Exception("child stdout %r" % (child_stdout,))
+
+
+if __name__ == '__main__':
+    helpers_test.main(globals())

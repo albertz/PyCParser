@@ -16,14 +16,15 @@ def main():
         if fn.startswith("test_") and fn.endswith(".py"):
             print("=" * 40)
             print("Python test file:", fn)
-            mod = importlib.import_module(os.path.splitext(fn)[0])
+            mod_name = os.path.splitext(fn)[0]
+            mod = importlib.import_module(mod_name)
             for name in dir(mod):
                 if not name.startswith("test_"):
                     continue
                 value = getattr(mod, name)
                 if callable(value):
                     print("-" * 40)
-                    print("Test:", name)
+                    print("Test:", mod_name, ".", name)
                     value()
                     print("-" * 40)
             print("=" * 40)
