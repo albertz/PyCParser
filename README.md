@@ -52,10 +52,12 @@ Also see the *tests/test_interpreter.{c,py}* 'Hello world' example.
 Current state
 -------------
 
+* Many simple C programs should be parsed and interpret correctly now.
 * I'm quite sure that function pointer typedefs are handled incorrectly. E.g. `typedef void f();` and `typedef void (*f)();` are just the same right now. See `cpre3_parse_typedef` and do some testing if you want to fix this.
 * Many functions from the standard C library are still missing.
 * There might be some bugs. :)
 * C++ isn't supported yet. :)
+* The code style does not conform to PEP8 and standard Python conventions in many places, as it is quite old. Also, it probably should be restructured, as it has grown too much in single files. I'm slowly fixing this.
 
 
 --- Albert Zeyer, <http://www.az2000.de>
