@@ -4,10 +4,15 @@
 
 from cparser import *
 from interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
-import ctypes, _ctypes
+import ctypes
+import _ctypes
 import errno
 import os
 import sys
+import typing
+
+if typing.TYPE_CHECKING:
+    import interpreter
 
 PY2 = sys.version_info[0] == 2
 PY3 = sys.version_info[0] >= 3
@@ -89,7 +94,7 @@ class Wrapper:
         # The Wrapper is supposed to work for parsing also without an interpreter.
         # However, when you are going to call some of the functions from here,
         # this is needed.
-        self.interpreter = None
+        self.interpreter = None  # type: typing.Optional[interpreter.Interpreter]
 
     def handle_limits_h(self, state):
         state.macros["UCHAR_MAX"] = Macro(rightside="255")

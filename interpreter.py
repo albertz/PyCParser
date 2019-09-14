@@ -25,6 +25,7 @@ from sortedcontainers.sortedset import SortedSet
 from collections import OrderedDict
 
 PY2 = sys.version_info[0] == 2
+PY3 = sys.version_info[0] >= 3
 
 
 def iterIdentifierNames():
@@ -1807,6 +1808,10 @@ def _set_linecache(filename, source):
     linecache.cache[filename] = None, None, [line+'\n' for line in source.splitlines()], filename
 
 def _ctype_ptr_get_value(ptr):
+    """
+    :param ctypes.c_void_p ptr:
+    :rtype: int
+    """
     ptr = ctypes.cast(ptr, wrapCTypeClass(ctypes.c_void_p))
     return ptr.value or 0
 
@@ -1912,6 +1917,9 @@ class Interpreter:
         print("Error (ignored):", s)
 
     def register(self, stateStruct):
+        """
+        :param State stateStruct:
+        """
         self.stateStructs += [stateStruct]
         if stateStruct._global_include_wrapper:
             stateStruct._global_include_wrapper.interpreter = self
@@ -1941,6 +1949,10 @@ class Interpreter:
         sys.exit(i)
 
     def _make_string(self, s):
+        """
+        :param str s:
+        :rtype: ctypes.Array
+        """
         if s in self.constStrings:
             return self.constStrings[s]
         # Array so that we have the len info.
@@ -1952,7 +1964,12 @@ class Interpreter:
         return buf
 
     def _malloc(self, size):
-        if size == 0: size = 1
+        """
+        :param int size:
+        :rtype: ctypes.c_void_p
+        """
+        if size == 0:
+            size = 1
         buf = (self.ctypes_wrapped.c_byte * size)()
         ptr_addr = _ctype_get_ptr_addr(buf)
         self.mallocs[ptr_addr] = buf
@@ -1961,6 +1978,11 @@ class Interpreter:
         return ret
 
     def _realloc(self, ptr_addr, size):
+        """
+        :param int ptr_addr:
+        :param int size:
+        :rtype: ctypes.c_void_p
+        """
         if not ptr_addr:
             return self._malloc(size)
         try:
@@ -1974,12 +1996,20 @@ class Interpreter:
         return ptr
 
     def _free(self, ptr_addr):
+        """
+        :param int ptr_addr:
+        """
         try:
             self.mallocs.pop(ptr_addr)
         except KeyError:
             raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
 
     def _storePtr(self, ptr, offset=0, value=None):
+        """
+        :param ctypes.c_void_p ptr:
+        :param int offset:
+        :param PointerStorage|None value:
+        """
         assert isinstance(ptr, (ctypes.c_void_p, ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr))
         ptr_addr = _ctype_ptr_get_value(ptr)
         if ptr_addr == 0:
@@ -2027,6 +2057,11 @@ class Interpreter:
                 ptr, objs, ptr_addr, [hex(_ctype_get_ptr_addr(o) + offset) for o in objs]))
 
     def _getPtr(self, addr, ptr_type=None):
+        """
+        :param int addr:
+        :param type ptr_type:
+        :rtype: ctypes.pointer
+        """
         assert isinstance(addr, (int, long))
         if addr == 0:
             assert ptr_type

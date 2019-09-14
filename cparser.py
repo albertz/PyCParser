@@ -8,9 +8,13 @@ code under BSD 2-Clause License
 
 from __future__ import print_function
 import typing
-import ctypes, _ctypes
+import ctypes
+import _ctypes
 from inspect import isclass
 from cparser_utils import unicode, long, unichr
+
+if typing.TYPE_CHECKING:
+    import globalincludewrappers
 
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
@@ -545,7 +549,7 @@ class State(object):
         # 0->didnt got true yet, 1->in true part, 2->after true part. and that as a stack
         self._preprocessIncludeLevel = []
         self._errors = []
-        self._global_include_wrapper = None
+        self._global_include_wrapper = None  # type: typing.Optional[globalincludewrappers.Wrapper]
         self._global_include_list = []
         self._construct_struct_type_stack = []  # via _getCTypeStruct
 
