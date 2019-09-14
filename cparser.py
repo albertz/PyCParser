@@ -1717,7 +1717,7 @@ class CBody(object):
         self.funcs = {}
         self.vars = {}
         self.enumconsts = {}
-        self.contentlist = []
+        self.contentlist = []  # type: typing.List[_CBaseWithOptBody]
     def __str__(self): return "CBody %s" % self.contentlist
     def __repr__(self): return "<%s>" % self
     def asCCode(self, indent=""):
@@ -2040,19 +2040,27 @@ class CVarDecl(_CBaseWithOptBody):
         s += asCCode(self.body)
         return s
 
+
 def needWrapCTypeClass(t):
-    if t is None: return False
+    if t is None:
+        return False
     return t.__base__ is _ctypes._SimpleCData
+
 
 def wrapCTypeClassIfNeeded(t):
     if needWrapCTypeClass(t): return wrapCTypeClass(t)
     else: return t
 
+
 _wrapCTypeClassCache = {}
 
+
 def wrapCTypeClass(t):
-    if id(t) in _wrapCTypeClassCache: return _wrapCTypeClassCache[id(t)]
-    class WrappedType(t): pass
+    if id(t) in _wrapCTypeClassCache:
+        return _wrapCTypeClassCache[id(t)]
+    class WrappedType(t):
+        def __repr__(self):
+            return "%s(%r)" % (t.__name__, self.value)
     WrappedType.__name__ = "wrapCTypeClass_%s" % t.__name__
     _wrapCTypeClassCache[id(t)] = WrappedType
     return WrappedType

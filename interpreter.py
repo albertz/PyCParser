@@ -252,7 +252,7 @@ class FuncEnv:
         self.vars = {} # name -> varDecl
         self.varNames = {} # id(varDecl) -> name
         self.localTypes = {} # type -> var-name
-        self.scopeStack = [] # FuncCodeblockScope
+        self.scopeStack = []  # type: typing.List[FuncCodeblockScope]
         self.needGotoHandling = False
         self.astNode = ast.FunctionDef(
             args=ast.arguments(args=[], vararg=None, kwarg=None, defaults=[]),
@@ -318,14 +318,24 @@ class FuncEnv:
         if varDecl is not None:
             del self.varNames[id(varDecl)]
         del self.vars[varName]
+
     def pushScope(self, bodyStmntList):
+        """
+        :param list bodyStmntList:
+        :rtype: FuncCodeblockScope
+        """
         scope = FuncCodeblockScope(funcEnv=self, body=bodyStmntList)
         self.scopeStack += [scope]
         return scope
+
     def popScope(self):
         scope = self.scopeStack.pop()
         scope.finishMe()
+
     def getBody(self):
+        """
+        :rtype: list
+        """
         return self.scopeStack[-1].body
 
 NoneAstNode = ast.Name(id="None", ctx=ast.Load())
@@ -737,6 +747,10 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
 
 class FuncCodeblockScope:
     def __init__(self, funcEnv, body):
+        """
+        :param FuncEnv funcEnv:
+        :param list body:
+        """
         self.varNames = set()
         self.funcEnv = funcEnv
         self.body = body
@@ -1703,7 +1717,8 @@ def astForCReturn(funcEnv, stmnt):
 
 def cStatementToPyAst(funcEnv, c):
     """
-    :type funcEnv: FuncEnv
+    :param FuncEnv funcEnv:
+    :param cparser._CBaseWithOptBody c:
     """
     body = funcEnv.getBody()
     if isinstance(c, (CVarDecl,CFunc)):
@@ -1744,7 +1759,12 @@ def cStatementToPyAst(funcEnv, c):
     else:
         assert False, "cannot handle " + str(c)
 
+
 def cCodeToPyAstList(funcEnv, cBody):
+    """
+    :param FuncEnv funcEnv:
+    :param CBody|cparser._CBaseWithOptBody cBody:
+    """
     if isinstance(cBody, CBody):
         for c in cBody.contentlist:
             cStatementToPyAst(funcEnv, c)
@@ -2062,17 +2082,17 @@ class Interpreter:
             base.astNode = goto.transform_goto(base.astNode, gotoVarName)
         return base
 
-    def _compile(self, pyAst):
+    def _compile(self, pyAst, mode="single"):
         # We unparse + parse again for now for better debugging (so we get some code in a backtrace).
-        SRC_FILENAME = "<PyCParser_" + pyAst.name + ">"
+        SRC_FILENAME = "<PyCParser_%s>" % getattr(pyAst, "name", "unknown")
         def _unparseAndParse(pyAst):
             src = _unparse(pyAst)
             _set_linecache(SRC_FILENAME, src)
-            return compile(src, SRC_FILENAME, "single")
+            return compile(src, SRC_FILENAME, mode)
         def _justCompile(pyAst):
             exprAst = ast.Interactive(body=[pyAst])
             ast.fix_missing_locations(exprAst)
-            return compile(exprAst, SRC_FILENAME, "single")
+            return compile(exprAst, SRC_FILENAME, mode)
         return _unparseAndParse(pyAst)
 
     def _translateFuncToPy(self, funcname):
@@ -2093,12 +2113,37 @@ class Interpreter:
         return func
 
     def getFunc(self, funcname):
+        """
+        :param str funcname:
+        :return: generated Python function, via :func:`_translateFuncToPy`
+        :rtype: function
+        """
         if funcname in self._func_cache:
             return self._func_cache[funcname]
         else:
             func = self._translateFuncToPy(funcname)
             self._func_cache[funcname] = func
             return func
+
+    def runSingleStatement(self, statement, dump=False):
+        """
+        :param CStatement statement:
+        :param bool dump:
+        :return: value
+        """
+        # Create a dummy FuncEnv, as the API requires that.
+        # See _translateFuncToPyAst.
+        funcEnv = FuncEnv(globalScope=self.globalScope)
+        funcEnv.pushScope(funcEnv.astNode.body)
+        cStatementToPyAst(funcEnv, statement)
+        d = {}
+        res = None
+        for pyAst in funcEnv.astNode.body:
+            if dump:
+                print("Python:", _unparse(pyAst).strip())
+            compiled = self._compile(pyAst, "eval")
+            res = eval(compiled, self.globalsDict, d)
+        return res
 
     def dumpFunc(self, funcname, output=sys.stdout):
         f = self.getFunc(funcname)
