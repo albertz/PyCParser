@@ -29,6 +29,7 @@ Interpreters:
 * [Ch](http://www.softintegration.com/). Not in Python. Is not really free.
 * [ups debugger](http://ups.sourceforge.net/main.html). Not in Python.
 * [PicoC](http://code.google.com/p/picoc/). Not in Python. "A very small C interpreter."
+* [BIC](https://github.com/hexagonal-sun/bic). Not in Python.
 
 Why this project?
 -----------------
