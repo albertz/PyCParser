@@ -49,6 +49,8 @@ Examples
 
 Also see the *tests/test_interpreter.{c,py}* 'Hello world' example.
 
+Also try out `./demos/interactive_interpreter.py --debug`.
+
 Current state
 -------------
 
@@ -59,6 +61,13 @@ Current state
 * C++ isn't supported yet. :)
 * The code style does not conform to PEP8 and standard Python conventions in many places, as it is quite old. Also, it probably should be restructured, as it has grown too much in single files. I'm slowly fixing this.
 
+How does the interpreter work
+-----------------------------
+
+This is probably a bit unusual.
+We wrap the most important standard C library functions directly to the native libc, via `ctypes`.
+We translate the parsed C code to a equivalent Python AST (via `ast`), which makes heavy use of `ctypes`.
+Then we just run this generated Python code. But we can also dump it. Thus we can compile C code to an equivalent Python program.
 
 --- Albert Zeyer, <http://www.az2000.de>
 
