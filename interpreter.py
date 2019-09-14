@@ -806,7 +806,7 @@ OpBin = {
     "+": ast.Add,
     "-": ast.Sub,
     "*": ast.Mult,
-    "/": ast.Div if PY2 else ast.FloorDiv,
+    "/": ast.Div,  # we cast after the div to right type
     "%": ast.Mod,
     "<<": ast.LShift,
     ">>": ast.RShift,
@@ -1093,7 +1093,8 @@ def autoCastArgs(funcEnv, required_arg_types, stmnt_args):
         # even when it supports it.
         # Thus, just remove it any assume we support it.
         required_arg_types = required_arg_types[:-1]
-    assert len(stmnt_args) >= len(required_arg_types)
+    assert len(stmnt_args) >= len(required_arg_types), "requires %i args (%r) but got %i args (%r)" % (
+        len(required_arg_types), required_arg_types, len(stmnt_args), stmnt_args)
     # variable num of args
     required_arg_types = required_arg_types + [None] * (len(stmnt_args) - len(required_arg_types))
     r_args = []
@@ -1308,6 +1309,7 @@ def getAstNode_ptrBinOpExpr(stateStruct, aAst, aType, opStr, bAst, bType):
     assert not isPointerType(bType)
     bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
     return makeAstNodeCall(Helpers.ptrArithmetic, aAst, opAst, bValueAst)
+
 
 def getAstNode_ptrSubstract(stateStruct, aAst, aType, bAst, bType):
     if isinstance(aType, CArrayType):

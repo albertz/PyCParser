@@ -1,4 +1,6 @@
 
+from __future__ import print_function
+
 import helpers_test
 from cparser import *
 from interpreter import *
@@ -18,6 +20,7 @@ def test_interpret_c_cast():
     print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 42
+
 
 def test_interpret_c_cast_ptr():
     state = parse("void f()\n { int* v = (int*) 0; } \n")
@@ -4098,3 +4101,74 @@ def test_interpret_fcntl_open_close():
     print("result:", r)
     assert isinstance(r, ctypes.c_int)
     assert r.value == 3
+
+
+def test_interpret_strcpy_str_A():
+    state = parse("""
+    #include <stdlib.h>
+    #include <string.h>
+    int f() {
+        char *s = malloc(10);
+        strcpy(s, "ABC");
+        int c = s[0];
+        free(s);
+        return c;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Func dump:")
+    interpreter.dumpFunc("f", output=sys.stdout)
+    print("Run f:")
+    r = interpreter.runFunc("f")
+    print("result:", r)
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 65
+
+
+def test_interpret_int_div():
+    state = parse("""
+    #include <stdlib.h>
+    #include <string.h>
+    int f() {
+        int x;
+        x = 1;
+        x = x / 2;
+        return (int) (x * 2);
+    }
+    """, withGlobalIncludeWrappers=True)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Func dump:")
+    interpreter.dumpFunc("f", output=sys.stdout)
+    print("Run f:")
+    r = interpreter.runFunc("f")
+    print("result:", r)
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 0
+
+
+def test_interpret_float_div():
+    state = parse("""
+    #include <stdlib.h>
+    #include <string.h>
+    int f() {
+        float x;
+        x = 1.;
+        x = x / 2.;
+        return (int) (x * 2.1);
+    }
+    """, withGlobalIncludeWrappers=True)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Func dump:")
+    interpreter.dumpFunc("f", output=sys.stdout)
+    print("Run f:")
+    r = interpreter.runFunc("f")
+    print("result:", r)
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 1
+
+
+if __name__ == '__main__':
+    helpers_test.main(globals())
