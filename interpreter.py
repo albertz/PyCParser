@@ -963,7 +963,6 @@ class Helpers:
         assert op in ("+=","-=")
         op = OpBinFuncs[op]
         bValue *= ctypes.sizeof(a._type_)
-        aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         # Should be safe as long as `a` already contains all the refs.
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value = op(aPtr.contents.value, bValue)
