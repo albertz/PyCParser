@@ -1955,10 +1955,17 @@ class Interpreter:
         """
         if s in self.constStrings:
             return self.constStrings[s]
+        if PY3:
+            s = s.encode("utf8")
         # Array so that we have the len info.
         # c_byte because we always treat `char` as c_byte to avoid problems.
         t = self.ctypes_wrapped.c_byte * (len(s) + 1)
-        buf = t(*map(ord, s))
+        if PY3:
+            assert isinstance(s, bytes)
+            buf = t(*s)
+        else:
+            assert isinstance(s, str)
+            buf = t(*map(ord, s))
         self.constStrings[s] = buf
         self._storePtr(buf)
         return buf
