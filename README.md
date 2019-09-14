@@ -69,5 +69,7 @@ We wrap the most important standard C library functions directly to the native l
 We translate the parsed C code to a equivalent Python AST (via `ast`), which makes heavy use of `ctypes`.
 Then we just run this generated Python code. But we can also dump it. Thus we can compile C code to an equivalent Python program.
 
+![demo](https://github.com/albertz/PyCParser/raw/master/screenshots/pycparser-interactive-interpreter-demo.gif)
+
 --- Albert Zeyer, <http://www.az2000.de>
 
