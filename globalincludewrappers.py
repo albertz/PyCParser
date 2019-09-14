@@ -14,11 +14,13 @@ PY3 = sys.version_info[0] >= 3
 
 libc = ctypes.CDLL(None)
 
+
 def _fixCType(stateStruct, t):
     if t is ctypes.c_void_p: t = CBuiltinType(("void", "*"))
     if t is ctypes.c_char_p: t = CPointerType(CBuiltinType(("char",)))
     if t is ctypes.c_char: t = CBuiltinType(("char",))
     return t
+
 
 def wrapCFunc(state, funcname, restype, argtypes, varargs=False):
     f = getattr(libc, funcname)
@@ -34,6 +36,7 @@ def wrapCFunc(state, funcname, restype, argtypes, varargs=False):
     state.funcs[funcname] = CWrapValue(
         f, name=funcname, funcname=funcname,
         returnType=restype, argTypes=argtypes)
+
 
 def wrapCFunc_varargs(state, funcname, wrap_funcname):
     """
@@ -92,15 +95,20 @@ class Wrapper:
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
         state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1)))
         state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
+
     def handle_stdio_h(self, state):
         state.macros["NULL"] = Macro(rightside="0")
         FileP = CPointerType(CStdIntType("FILE")).getCType(state)
         wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
         wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
         wrapCFunc(state, "fdopen", restype=FileP, argtypes=(ctypes.c_int, ctypes.c_char_p))
-        state.vars["stdin"] = CWrapValue(callCFunc("fdopen", 0, "r"), name="stdin")
-        state.vars["stdout"] = CWrapValue(callCFunc("fdopen", 1, "a"), name="stdout")
-        state.vars["stderr"] = CWrapValue(callCFunc("fdopen", 2, "a"), name="stderr")
+        if sys.platform == "darwin":
+            sym_names = ("__stdinp", "__stdoutp", "__stderrp")
+        else:
+            sym_names = ("stdin", "stdout", "stderr")
+        state.vars["stdin"] = CWrapValue(FileP.in_dll(libc, sym_names[0]), name="stdin")
+        state.vars["stdout"] = CWrapValue(FileP.in_dll(libc, sym_names[1]), name="stdout")
+        state.vars["stderr"] = CWrapValue(FileP.in_dll(libc, sym_names[2]), name="stderr")
         wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,), varargs=True)
         wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p), varargs=True)
         wrapCFunc(state, "sprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p), varargs=True)
@@ -130,6 +138,7 @@ class Wrapper:
         state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
         state.macros["S_IFMT"] = Macro(rightside="0") # TODO
         state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
+
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
         state.macros["EXIT_FAILURE"] = Macro(rightside="1")
