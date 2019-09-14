@@ -3,7 +3,7 @@
 """
 Test interpreter
 by Albert Zeyer, 2011
-code under GPL
+code under BSD 2-Clause License
 """
 
 from __future__ import print_function
