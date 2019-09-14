@@ -67,7 +67,7 @@ class InteractiveInterpreter:
             for m in state.contentlist[old_content_list_num:]:
                 if self.debug:
                     print("Parsed:", m)
-                if isinstance(m, cparser.CStatement):
+                if isinstance(m, (cparser.CStatement, cparser._CControlStructure)):
                     try:
                         res = self.interp.runSingleStatement(m, dump=self.debug)
                         print(res)

@@ -2127,7 +2127,7 @@ class Interpreter:
 
     def runSingleStatement(self, statement, dump=False):
         """
-        :param CStatement statement:
+        :param CStatement|cparser._CControlStructure statement:
         :param bool dump:
         :return: value
         """
@@ -2141,7 +2141,7 @@ class Interpreter:
         for pyAst in funcEnv.astNode.body:
             if dump:
                 print("Python:", _unparse(pyAst).strip())
-            compiled = self._compile(pyAst, "eval")
+            compiled = self._compile(pyAst, mode="eval" if isinstance(statement, CStatement) else "single")
             res = eval(compiled, self.globalsDict, d)
         return res
 
