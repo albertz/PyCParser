@@ -19,6 +19,12 @@ sys.path.append(os.path.dirname(MyDir))
 import cparser
 import interpreter
 
+PY2 = sys.version_info[0] == 2
+
+if PY2:
+    # noinspection PyUnresolvedReferences
+    input = raw_input
+
 
 class InteractiveInterpreter:
     def __init__(self, debug=False):
