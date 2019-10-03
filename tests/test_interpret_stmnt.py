@@ -1849,6 +1849,64 @@ def test_interpret_strlen_plus1():
     assert r.value == 4
 
 
+def test_interpret_atoi():
+    state = parse("""
+    #include <stdlib.h>
+    int f() {
+        return atoi("42");
+    }
+    """, withGlobalIncludeWrappers=True)
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
+    assert isinstance(state.funcs["f"].body, CBody)
+    pprint(state.funcs["f"].body.contentlist)
+
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Func dump:")
+    interpreter.dumpFunc("f", output=sys.stdout)
+    print("Run f:")
+    r = interpreter.runFunc("f")
+    print("result:", r)
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 42
+
+
+
+def test_interpret_env_c_str():
+    state = parse("""
+    #include <stdio.h>
+    #include <stdlib.h>
+    const char* f() {
+        const char* s = getenv("_cparser_test_interpret_env_c_str");
+        printf("env: %s\n", s);
+        return s;
+    }
+    """, withGlobalIncludeWrappers=True)
+    print("Parsed:")
+    print("f:", state.funcs["f"])
+    print("f body:")
+    assert isinstance(state.funcs["f"].body, CBody)
+    pprint(state.funcs["f"].body.contentlist)
+
+    import os
+    os.environ["_cparser_test_interpret_env_c_str"] = "ABC"
+    print("Py get env:", os.getenv("_cparser_test_interpret_env_c_str"))
+
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Func dump:")
+    interpreter.dumpFunc("f", output=sys.stdout)
+    print("Run f:")
+    r = interpreter.runFunc("f")
+    print("result:", r)
+    wrapped_c_byte = interpreter.globalsDict["ctypes_wrapped"].c_byte
+    assert isinstance(r, ctypes.POINTER(wrapped_c_byte))  # char is always byte in the interpreter
+    r = ctypes.cast(r, ctypes.c_char_p)
+    assert r.value.decode("utf8") == "ABC"
+
+
 def test_interpret_cond_c_str():
     state = parse("""
     const char* f() {

@@ -178,7 +178,7 @@ class Wrapper:
             name="atoi"
         )
         state.funcs["getenv"] = CWrapValue(
-            lambda x: _fixCArg(ctypes.c_char_p(os.getenv(ctypes.cast(x, ctypes.c_char_p).value))),
+            lambda x: self.interpreter._make_string(os.getenv(ctypes.cast(x, ctypes.c_char_p).value.decode("utf8"))),
             returnType=CPointerType(ctypes.c_byte),
             name="getenv"
         )
