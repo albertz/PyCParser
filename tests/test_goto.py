@@ -2,13 +2,13 @@
 from nose.tools import assert_equal, assert_is_instance, assert_in, assert_greater, assert_true, assert_false
 
 import ast
-import goto
+from cparser import goto
 
 
 def unparse(pyAst):
     from six import StringIO
     output = StringIO()
-    from py_demo_unparse import Unparser
+    from cparser.py_demo_unparse import Unparser
     Unparser(pyAst, file=output)
     output.write("\n")
     return output.getvalue()
@@ -23,7 +23,8 @@ def get_indent_prefix(s):
 
 
 def get_same_indent_prefix(lines):
-    if not lines: return ""
+    if not lines:
+        return ""
     prefix = get_indent_prefix(lines[0])
     if not prefix: return ""
     if all([l.startswith(prefix) for l in lines]):
@@ -32,7 +33,8 @@ def get_same_indent_prefix(lines):
 
 
 def remove_indent_lines(s):
-    if not s: return ""
+    if not s:
+        return ""
     lines = s.splitlines(True)
     prefix = get_same_indent_prefix(lines)
     if prefix is None:  # not in expected format. just lstrip all lines
@@ -41,8 +43,10 @@ def remove_indent_lines(s):
 
 
 def fix_code(s):
-    if not s: return ""
-    if not s[0]: return fix_code(s[1:])
+    if not s:
+        return ""
+    if not s[0]:
+        return fix_code(s[1:])
     s = remove_indent_lines(s[1:])
     s = s.replace("\t", " " * 4)
     return s

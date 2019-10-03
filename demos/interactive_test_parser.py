@@ -8,13 +8,7 @@ code under BSD 2-Clause License
 
 from __future__ import print_function
 
-import sys, os, os.path
-if __name__ == '__main__':
-    MyDir = os.path.dirname(sys.argv[0]) or "."
-else:
-    MyDir = "."
-
-sys.path.append(MyDir + "/..")
+import sys
 
 import better_exchook
 better_exchook.install()

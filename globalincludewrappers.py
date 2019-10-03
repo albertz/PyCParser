@@ -2,17 +2,16 @@
 # by Albert Zeyer, 2011
 # code under BSD 2-Clause License
 
-from cparser import *
-from interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
+from .cparser import *
+from .interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
 import ctypes
 import _ctypes
-import errno
 import os
 import sys
 import typing
 
 if typing.TYPE_CHECKING:
-    import interpreter
+    from . import interpreter
 
 PY2 = sys.version_info[0] == 2
 PY3 = sys.version_info[0] >= 3

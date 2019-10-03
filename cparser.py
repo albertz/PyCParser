@@ -11,10 +11,10 @@ import typing
 import ctypes
 import _ctypes
 from inspect import isclass
-from cparser_utils import unicode, long, unichr
+from .cparser_utils import unicode, long, unichr
 
 if typing.TYPE_CHECKING:
-    import globalincludewrappers
+    from . import globalincludewrappers
 
 SpaceChars = " \t"
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
@@ -585,7 +585,7 @@ class State(object):
 
     def autoSetupGlobalIncludeWrappers(self):
         if self._global_include_wrapper: return
-        from globalincludewrappers import Wrapper
+        from .globalincludewrappers import Wrapper
         self._global_include_wrapper = Wrapper(self)
         self._global_include_wrapper.install()
 
@@ -3484,11 +3484,11 @@ def _getLastCBody(base):
         if isinstance(base.body, CBody):
             if not base.body.contentlist: break
             last = base.body.contentlist[-1]
-        elif isinstance(base.body, _CControlStructure):
+        elif isinstance(base.body, CControlStructureBase):
             last = base.body
         else:
             break
-        if not isinstance(last, _CControlStructure): break
+        if not isinstance(last, CControlStructureBase): break
         if isinstance(last, CIfStatement):
             if last.elsePart is not None:
                 base = last.elsePart
@@ -3500,7 +3500,7 @@ def _getLastCBody(base):
             break
     return last
 
-class _CControlStructure(_CBaseWithOptBody):
+class CControlStructureBase(_CBaseWithOptBody):
     NameIsRelevant = False
     StrOutAttribList = [
         ("args", bool, None, str),
@@ -3514,9 +3514,9 @@ class _CControlStructure(_CBaseWithOptBody):
         if hasattr(self, "whilePart"): s += "\n" + asCCode(self.whilePart, indent)
         if hasattr(self, "elsePart"): s += "\n" + asCCode(self.elsePart, indent)
         return s
-class CForStatement(_CControlStructure):
+class CForStatement(CControlStructureBase):
     Keyword = "for"
-class CDoStatement(_CControlStructure):
+class CDoStatement(CControlStructureBase):
     Keyword = "do"
     StrOutAttribList = [
         ("body", None, None, lambda x: "<...>"),
@@ -3524,7 +3524,7 @@ class CDoStatement(_CControlStructure):
             ("defPos", None, "@", str),
     ]
     whilePart = None
-class CWhileStatement(_CControlStructure):
+class CWhileStatement(CControlStructureBase):
     Keyword = "while"
     def finalize(self, stateStruct, addToContent = None):
         if self._finalized:
@@ -3540,14 +3540,14 @@ class CWhileStatement(_CControlStructure):
                 last.whilePart = self
                 addToContent = False
 
-        _CControlStructure.finalize(self, stateStruct, addToContent)
-class CContinueStatement(_CControlStructure):
+        CControlStructureBase.finalize(self, stateStruct, addToContent)
+class CContinueStatement(CControlStructureBase):
     Keyword = "continue"
     AlwaysNonZero = True
-class CBreakStatement(_CControlStructure):
+class CBreakStatement(CControlStructureBase):
     Keyword = "break"
     AlwaysNonZero = True
-class CIfStatement(_CControlStructure):
+class CIfStatement(CControlStructureBase):
     Keyword = "if"
     StrOutAttribList = [
         ("args", bool, None, str),
@@ -3556,7 +3556,7 @@ class CIfStatement(_CControlStructure):
             ("defPos", None, "@", str),
     ]
     elsePart = None
-class CElseStatement(_CControlStructure):
+class CElseStatement(CControlStructureBase):
     Keyword = "else"
     def finalize(self, stateStruct, addToContent = False):
         if self._finalized:
@@ -3595,17 +3595,17 @@ class CElseStatement(_CControlStructure):
             lastIf.elsePart = self
         else:
             stateStruct.error("'else' " + str(self) + " without 'if', last was " + str(last))
-        _CControlStructure.finalize(self, stateStruct, addToContent)
-class CSwitchStatement(_CControlStructure):
+        CControlStructureBase.finalize(self, stateStruct, addToContent)
+class CSwitchStatement(CControlStructureBase):
     Keyword = "switch"
-class CCaseStatement(_CControlStructure):
+class CCaseStatement(CControlStructureBase):
     Keyword = "case"
-class CCaseDefaultStatement(_CControlStructure):
+class CCaseDefaultStatement(CControlStructureBase):
     Keyword = "default"
     AlwaysNonZero = True
-class CGotoStatement(_CControlStructure):
+class CGotoStatement(CControlStructureBase):
     Keyword = "goto"
-class CReturnStatement(_CControlStructure):
+class CReturnStatement(CControlStructureBase):
     Keyword = "return"
     AlwaysNonZero = True
 
@@ -3733,7 +3733,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
                 curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
             elif curCObj is not None and isinstance(curCObj.body, CStatement):
                 curCObj.body._cpre3_parse_brackets(stateStruct, token, input_iter)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 curCObj._bracketlevel = list(token.brackets)
                 if token.content == "(":
                     cpre3_parse_statements_in_brackets(stateStruct, curCObj, sepToken=CSemicolon(), addToList=curCObj.args, input_iter=input_iter)
@@ -3798,7 +3798,7 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
                 curCObj = None
         elif curCObj is not None and isinstance(curCObj.body, CStatement):
             curCObj.body._cpre3_handle_token(stateStruct, token)
-        elif isinstance(curCObj, _CControlStructure):
+        elif isinstance(curCObj, CControlStructureBase):
             stateStruct.error("cpre3 parse after %s: didn't expected identifier %s" % (curCObj, token))
         elif curCObj is None:
             curCObj = CStatement(parent=parentCObj)
@@ -3843,7 +3843,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                 if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
                     curCObj.args.append(CStatement(parent=parentCObj))
                 curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected identifier '" + token.content + "'")
             elif token.content == "typedef":
                 CTypedef.overtake(curCObj)
@@ -3947,7 +3947,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
             elif isinstance(curCObj, CCaseDefaultStatement) and token.content == ":":
                 curCObj.finalize(stateStruct)
                 curCObj = _CBaseWithOptBody(parent=parentCObj)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 if isinstance(curCObj.body, CStatement): # for example, because of op(,), we might have missed that above
                     curCObj.body._cpre3_handle_token(stateStruct, token)
                 else:
@@ -3996,7 +3996,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                 if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
                     curCObj.args.append(CStatement(parent=parentCObj))
                 curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected number '" + str(token.content) + "'")
             else:
                 CStatement.overtake(curCObj)
@@ -4018,7 +4018,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                 if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
                     curCObj.args.append(CStatement(parent=parentCObj))
                 curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 if token.content == "(":
                     cpre3_parse_statements_in_brackets(stateStruct, curCObj, sepToken=CSemicolon(), addToList=curCObj.args, input_iter=input_iter)
                     curCObj._bracketlevel = list(parentCObj._bracketlevel or [])
@@ -4110,7 +4110,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                 if not curCObj.args or not isinstance(curCObj.args[-1], CStatement):
                     curCObj.args.append(CStatement(parent=parentCObj))
                 curCObj.args[-1]._cpre3_handle_token(stateStruct, token)
-            elif isinstance(curCObj, _CControlStructure):
+            elif isinstance(curCObj, CControlStructureBase):
                 stateStruct.error("cpre3 parse after " + str(curCObj) + ": didn't expected " + str(token))
             elif not curCObj:
                 CStatement.overtake(curCObj)

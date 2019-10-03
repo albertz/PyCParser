@@ -4,8 +4,7 @@ from __future__ import print_function
 
 from helpers_test import main
 import ast
-import inspect
-from py_demo_unparse import Unparser
+from cparser.py_demo_unparse import Unparser
 
 
 def test_Unparser():

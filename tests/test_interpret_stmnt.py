@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import helpers_test
 from cparser import *
-from interpreter import *
+from cparser.interpreter import *
 from helpers_test import *
 import ctypes
 

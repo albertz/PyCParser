@@ -9,7 +9,7 @@ import sys
 import ast
 import os
 import six
-from cparser_utils import unicode
+from .cparser_utils import unicode
 
 # Large float and imaginary literals get turned into infinities in the AST.
 # We unparse those infinities to INFSTR.
@@ -641,5 +641,5 @@ def main(args):
             roundtrip(a)
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main(sys.argv[1:])

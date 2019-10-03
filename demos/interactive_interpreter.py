@@ -17,7 +17,7 @@ MyDir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(MyDir))
 
 import cparser
-import interpreter
+from cparser import interpreter
 
 PY2 = sys.version_info[0] == 2
 
@@ -73,7 +73,7 @@ class InteractiveInterpreter:
             for m in state.contentlist[old_content_list_num:]:
                 if self.debug:
                     print("Parsed:", m)
-                if isinstance(m, (cparser.CStatement, cparser._CControlStructure)):
+                if isinstance(m, (cparser.CStatement, cparser.CControlStructureBase)):
                     try:
                         res = self.interp.runSingleStatement(m, dump=self.debug)
                         print(res)

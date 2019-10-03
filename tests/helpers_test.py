@@ -2,10 +2,7 @@
 
 from __future__ import print_function
 
-import sys, os
-my_dir = os.path.dirname(os.path.abspath(__file__))
-base_dir = os.path.normpath(my_dir + "/..")
-sys.path = [base_dir] + sys.path  # add at the very first entry to avoid problems which being a package
+import sys
 
 import better_exchook
 better_exchook.install()

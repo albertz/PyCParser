@@ -23,7 +23,7 @@ def test_interpreter_helloworld():
 
     state = helpers_test.parse(testcode, withGlobalIncludeWrappers=True)
 
-    import interpreter
+    from cparser import interpreter
     interp = interpreter.Interpreter()
     interp.register(state)
 

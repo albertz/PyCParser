@@ -2,9 +2,9 @@
 # by Albert Zeyer, 2011
 # code under BSD 2-Clause License
 
-import cparser
 import ctypes
-from cparser_utils import *
+from . import cparser
+from .cparser_utils import *
 
 
 class CStateDictWrapper:
