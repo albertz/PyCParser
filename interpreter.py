@@ -1956,6 +1956,8 @@ class Interpreter:
         """
         if s in self.constStrings:
             return self.constStrings[s]
+        if s is None:
+            return self._getPtr(0, ctypes.POINTER(ctypes.c_byte))
         if PY3:
             s = s.encode("utf8")
         # Array so that we have the len info.
