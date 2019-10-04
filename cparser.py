@@ -517,6 +517,7 @@ class State(object):
         "int64_t": ctypes.c_int64,
         "byte": ctypes.c_byte,
         "wchar_t": ctypes.c_wchar,
+        "wint_t": ctypes.c_int,
         "size_t": ctypes.c_size_t,
         "ptrdiff_t": ctypes.c_long,
         "intptr_t": ctypes.c_long,
