@@ -237,6 +237,8 @@ class Wrapper:
         wrapCFunc(state, "isupper", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "toupper", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
     def handle_wctype_h(self, state): pass
+    def handle_wchar_h(self, state):
+        state.macros["wcslen"] = Macro(rightside="strlen")  # TODO...
     def handle_assert_h(self, state):
         def assert_wrap(x):
             if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
