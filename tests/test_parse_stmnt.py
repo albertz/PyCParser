@@ -267,5 +267,14 @@ def test_parse_enum_const_prev_identifier():
     assert_equal(s.enumconsts["_PyTime_ROUND_TIMEOUT"].value, 3)
 
 
+def test_parse_const_func_ptr():
+    s = parse("int (*const hash)(const void *, int);")
+    v = s.vars["hash"]
+    print(v)
+    assert isinstance(v, CVarDecl)
+    assert isinstance(v.type, CFuncPointerDecl)
+    assert "const" in v.type.attribs
+
+
 if __name__ == "__main__":
     main(globals())

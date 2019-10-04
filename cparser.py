@@ -3214,8 +3214,11 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
             if token == COp("*"):
                 curCObj.ptrLevel += 1
             elif isinstance(token, CIdentifier):
-                curCObj.name = token.content
-                state = 2
+                if token.content in stateStruct.Attribs:
+                    curCObj.attribs += [token.content]
+                else:
+                    curCObj.name = token.content
+                    state = 2
             else:
                 stateStruct.error("cpre3 parse func pointer name: token " + str(token) + " not expected; expected identifier")
         elif state == 2: # after identifier in func ptr
