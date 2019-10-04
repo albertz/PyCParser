@@ -289,6 +289,10 @@ class Wrapper:
         wrapCFunc(state, "localeconv", restype=struct_lconv, argtypes=())
     def handle_sys_types_h(self, state):
         pass  # dummy
+    def handle_pthread_h(self, state):
+        state.typedefs["pthread_key_t"] = CTypedef(name="pthread_key_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_cond_t"] = CTypedef(name="pthread_cond_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_mutex_t"] = CTypedef(name="pthread_mutex_t", type=CBuiltinType(("int",)))
 
     def find_handler_func(self, filename):
         funcname = "handle_" + filename.replace("/", "_").replace(".", "_")
