@@ -573,6 +573,7 @@ class State(object):
 
     def autoSetupSystemMacros(self, system_specific=False):
         import sys
+        self.macros["L"] = Macro(rightside="")  # ugly hack to ignore wchar_t string literals (like `L"abc"`)
         self.macros["__attribute__"] = Macro(args=("x",), rightside="")
         self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
         self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
