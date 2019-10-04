@@ -293,6 +293,21 @@ class Wrapper:
         state.typedefs["pthread_key_t"] = CTypedef(name="pthread_key_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_cond_t"] = CTypedef(name="pthread_cond_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_mutex_t"] = CTypedef(name="pthread_mutex_t", type=CBuiltinType(("int",)))
+    def handle_stdatomic_h(self, state):
+        from .cparser import _CBaseWithOptBody
+        parentObj = _CBaseWithOptBody()
+        parentObj.body = state
+        memory_order = CEnum(name="memory_order", parent=parentObj)
+        memory_order.body = CEnumBody(parent=memory_order)
+        CEnumConst(parent=memory_order, name="memory_order_relaxed").finalize(state)
+        CEnumConst(parent=memory_order, name="memory_order_consume").finalize(state)
+        CEnumConst(parent=memory_order, name="memory_order_acquire").finalize(state)
+        CEnumConst(parent=memory_order, name="memory_order_release").finalize(state)
+        CEnumConst(parent=memory_order, name="memory_order_acq_rel").finalize(state)
+        CEnumConst(parent=memory_order, name="memory_order_seq_cst").finalize(state)
+        memory_order.finalize(state)
+        state.typedefs["atomic_uintptr_t"] = CTypedef(name="atomic_uintptr_t", type=CBuiltinType(("int",)))
+        state.typedefs["atomic_int"] = CTypedef(name="atomic_int", type=CBuiltinType(("int",)))
 
     def find_handler_func(self, filename):
         funcname = "handle_" + filename.replace("/", "_").replace(".", "_")
