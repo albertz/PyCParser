@@ -1757,11 +1757,14 @@ def make_type_from_typetokens(stateStruct, curCObj, type_tokens):
     elif len(type_tokens) > 1 and type_tokens[-1] == "*":
         t = CPointerType(make_type_from_typetokens(stateStruct, curCObj, type_tokens[:-1]))
     elif len(type_tokens) == 1:
-        assert isinstance(type_tokens[0], (str, unicode))
-        t = findObjInNamespace(stateStruct, curCObj, type_tokens[0])
-        if not isType(t):
-            stateStruct.error("type token is not a type: %s" % t)
+        if not isinstance(type_tokens[0], (str, unicode)):
+            stateStruct.error("type token is not expected str but %r" % (type_tokens[0],))
             t = None
+        else:
+            t = findObjInNamespace(stateStruct, curCObj, type_tokens[0])
+            if not isType(t):
+                stateStruct.error("type token is not a type: %s" % t)
+                t = None
     elif type_tokens == [".", ".", "."]:
         t = CVariadicArgsType()
     else:
