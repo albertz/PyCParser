@@ -267,6 +267,28 @@ def test_parse_enum_const_prev_identifier():
     assert_equal(s.enumconsts["_PyTime_ROUND_TIMEOUT"].value, 3)
 
 
+def test_struct_pad_unnamed():
+    s = parse("""
+    struct {
+        unsigned int interned:2;
+        unsigned int kind:3;
+        unsigned int compact:1;
+        unsigned int ascii:1;
+        unsigned int ready:1;
+        unsigned int :24;
+    } state;
+    """)
+    v = s.vars["state"]
+    print(v)
+    assert isinstance(v, CVarDecl)
+    assert isinstance(v.type, CStruct)
+    a = v.type.body.contentlist[-1]
+    print(a)
+    assert isinstance(a, CVarDecl)
+    assert a.name is None
+    assert a.bitsize == 24
+
+
 def test_parse_const_func_ptr():
     s = parse("int (*const hash)(const void *, int);")
     v = s.vars["hash"]

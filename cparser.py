@@ -2013,7 +2013,7 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 
     if obj.type is None:
         obj.type = make_type_from_typetokens(stateStruct, obj, obj._type_tokens)
-    _CBaseWithOptBody.finalize(obj, stateStruct, addToContent=addToContent)
+    _CBaseWithOptBody.finalize(obj, stateStruct, addToContent=None)
 
     if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
         _addToParent(obj=obj, stateStruct=stateStruct, dictName=dictName, listName=listName, allowPredec=allowPredec)
@@ -3979,7 +3979,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                     curCObj.clearDeclForNextVar()
                     curCObj.name = None
                     curCObj.body = None
-                elif token.content == ":" and curCObj and curCObj._type_tokens and curCObj.name:
+                elif token.content == ":" and curCObj and curCObj._type_tokens:
                     CVarDecl.overtake(curCObj)
                     curCObj.bitsize = None
                 elif token.content == "=" and curCObj and (isinstance(curCObj, CVarDecl) or not curCObj.isDerived()):
@@ -3992,7 +3992,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                         _addToParent(curCObj, stateStruct, dictName="vars")
                         curCObj._already_added = True
                 else:
-                    stateStruct.error("cpre3 parse: op '" + token.content + "' not expected in " + str(parentCObj) + " after " + str(curCObj))
+                    stateStruct.error(
+                        "cpre3 parse: op %r not expected in %s after %s" % (
+                            token.content, parentCObj, curCObj))
         elif isinstance(token, CNumber):
             if isinstance(curCObj, CVarDecl) and hasattr(curCObj, "bitsize"):
                 curCObj.bitsize = token.content
