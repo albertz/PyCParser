@@ -1903,13 +1903,13 @@ class Interpreter:
         self.constStrings = {}  # str -> ctype c_char_p
         self.globalsDict = {
             "ctypes": ctypes,
-                "ctypes_wrapped": self.ctypes_wrapped,
-                "helpers": self.helpers,
-                "g": self.globalsWrapper,
-                "structs": self.globalsStructWrapper,
-                "unions": self.globalsUnionsWrapper,
-                "values": self.wrappedValues,
-                "intp": self
+            "ctypes_wrapped": self.ctypes_wrapped,
+            "helpers": self.helpers,
+            "g": self.globalsWrapper,
+            "structs": self.globalsStructWrapper,
+            "unions": self.globalsUnionsWrapper,
+            "values": self.wrappedValues,
+            "intp": self
         }
         self.debug_print_getFunc = False
         self.debug_print_getVar = False

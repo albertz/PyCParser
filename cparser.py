@@ -3246,8 +3246,12 @@ def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
             if state == 0:
                 curCObj.name = token.content
                 state = 1
+            elif state == 2:
+                valueStmnt._cpre3_handle_token(stateStruct, token)
             else:
-                stateStruct.error("cpre3 parse enum: unexpected identifier " + token.content + " after " + str(curCObj) + " in state " + str(state))
+                stateStruct.error(
+                    "cpre3 parse enum: unexpected identifier %s after %s in state %s" % (
+                        token.content, curCObj, state))
         elif token == COp("="):
             if state == 1:
                 valueStmnt = CStatement(parent=parentCObj)

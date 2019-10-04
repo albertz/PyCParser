@@ -243,5 +243,29 @@ def test_parse_array():
     assert l == 10
 
 
+def test_parse_enum_const_prev_identifier():
+    s = parse("""
+    typedef enum {
+    _PyTime_ROUND_FLOOR=0,
+    _PyTime_ROUND_CEILING=1,
+    _PyTime_ROUND_HALF_EVEN=2,
+    _PyTime_ROUND_UP=3,
+    _PyTime_ROUND_TIMEOUT = _PyTime_ROUND_UP
+    } _PyTime_round_t;
+    """)
+    t = s.typedefs["_PyTime_round_t"]
+    assert isinstance(t, CTypedef)
+    t = t.type
+    assert isinstance(t, CEnum)
+    print(t, t.body)
+    assert isinstance(t.body, CEnumBody)
+    for c in t.body.contentlist:
+        assert isinstance(c, CEnumConst)
+        assert s.enumconsts[c.name] is c
+    assert_equal(s.enumconsts["_PyTime_ROUND_HALF_EVEN"].value, 2)
+    assert_equal(s.enumconsts["_PyTime_ROUND_UP"].value, 3)
+    assert_equal(s.enumconsts["_PyTime_ROUND_TIMEOUT"].value, 3)
+
+
 if __name__ == "__main__":
     main(globals())

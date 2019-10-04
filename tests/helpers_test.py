@@ -32,6 +32,10 @@ def parse(testcode, withSystemMacros=True, withGlobalIncludeWrappers=False):
     return state
 
 
+def assert_equal(a, b):
+    assert a == b
+
+
 def main(mod):
     """
     :param dict[str] mod:
