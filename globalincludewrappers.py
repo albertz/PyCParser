@@ -224,7 +224,8 @@ class Wrapper:
         wrapCFunc(state, "memmove", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t))
         wrapCFunc(state, "memchr", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t))
         wrapCFunc(state, "memcmp", restype=ctypes.c_int, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t))
-    def handle_time_h(self, state): pass
+    def handle_time_h(self, state):
+        state.typedefs["time_t"] = CTypedef(name="time_t", type=CBuiltinType(("int",)))
     def handle_ctype_h(self, state):
         wrapCFunc(state, "isalpha", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
