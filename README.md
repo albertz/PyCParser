@@ -31,6 +31,10 @@ Interpreters:
 * [PicoC](http://code.google.com/p/picoc/). Not in Python. "A very small C interpreter."
 * [BIC](https://github.com/hexagonal-sun/bic). Not in Python.
 
+Compiler:
+
+* [c500](https://github.com/vgel/c500/). Python. Compiler in 500 lines. But only a subset of C.
+
 Why this project?
 -----------------
 
