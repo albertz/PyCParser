@@ -27,6 +27,8 @@ def _ast_bin_op_to_ast_expression(op):
     if sys.version_info[0] >= 3:
         a.kwonlyargs = []
         a.kw_defaults = []
+    if sys.version_info >= (3, 8):
+        a.posonlyargs = []
     t = l.body = ast.BinOp()
     t.left = ast.Name(id="a", ctx=ast.Load())
     t.right = ast.Name(id="b", ctx=ast.Load())
