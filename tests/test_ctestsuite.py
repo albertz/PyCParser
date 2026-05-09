@@ -1,6 +1,7 @@
 
 import os
 import sys
+from typing import Optional
 
 # Ensure tests/ is in sys.path so we can import cparser as a package from there
 my_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +15,8 @@ import better_exchook
 import ctypes
 import io
 
-def run_ctest(c_file):
+
+def run_ctest(c_file: str, *, timeout: float = 1.0):
     with open(c_file, "r") as f:
         code = f.read()
     
@@ -46,9 +48,9 @@ def run_ctest(c_file):
     sys.stdout = io.StringIO()
     try:
         if arg_count == 0:
-            res = interp.runFunc("main")
+            res = interp.runFunc("main", timeout=timeout)
         else:
-            res = interp.runFunc("main", 1, ["./test", None])
+            res = interp.runFunc("main", 1, ["./test", None], timeout=timeout)
     finally:
         output = sys.stdout.getvalue()
         sys.stdout = old_stdout
@@ -67,7 +69,8 @@ def run_ctest(c_file):
 
     return res
 
-def test_ctestsuite(limit=20):
+
+def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False):
     base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
     if not os.path.exists(base_dir):
         print("c-testsuite not found at", base_dir)
@@ -81,21 +84,30 @@ def test_ctestsuite(limit=20):
     failed = []
     
     for f in files:
+        print(f"test: {f}")
         c_path = os.path.join(base_dir, f)
         try:
             res = run_ctest(c_path)
             if res == 0:
                 passed += 1
             else:
-                failed.append(f"{f} (rc {res})")
+                if summarize:
+                    failed.append(f"{f} (rc {res})")
+                else:
+                    raise Exception(f"Test failed with rc {res}")
         except Exception as e:
-            failed.append(f"{f} (error: {e})")
+            if summarize:
+                failed.append(f"{f} (error: {e})")
+            else:
+                raise
             
     print(f"ctestsuite: {passed} passed, {len(failed)} failed")
     if failed:
         print("Failed tests:")
         for f_err in failed:
             print(f"  {f_err}")
+        raise Exception("ctestsuite failed")
+
 
 if __name__ == "__main__":
-    test_ctestsuite(limit=None)
+    test_ctestsuite(summarize=True)
