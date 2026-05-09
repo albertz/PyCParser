@@ -255,5 +255,44 @@ def test_atomic_store_explicit_and_load_explicit():
     assert r.value == 7, "atomic_explicit round-trip returned %r" % r
 
 
+# ---------------------------------------------------------------------------
+# stdbool.h: bool / true / false macros
+# ---------------------------------------------------------------------------
+
+def test_stdbool_true_is_one():
+    """true from stdbool.h must evaluate to 1."""
+    r = _run("""
+    #include <stdbool.h>
+    int f() {
+        return true;
+    }
+    """)
+    assert r.value == 1, "true != 1: %r" % r
+
+
+def test_stdbool_false_is_zero():
+    """false from stdbool.h must evaluate to 0."""
+    r = _run("""
+    #include <stdbool.h>
+    int f() {
+        return false;
+    }
+    """)
+    assert r.value == 0, "false != 0: %r" % r
+
+
+def test_stdbool_bool_as_type():
+    """bool can be used as an int-compatible variable type."""
+    r = _run("""
+    #include <stdbool.h>
+    int f() {
+        bool x = true;
+        bool y = false;
+        return x + y;
+    }
+    """)
+    assert r.value == 1, "bool arithmetic returned %r" % r
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())

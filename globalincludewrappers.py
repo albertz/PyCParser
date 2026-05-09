@@ -116,6 +116,7 @@ class Wrapper:
         wrapCFunc(state, "printf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,), varargs=True)
         wrapCFunc(state, "fprintf", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_char_p), varargs=True)
         wrapCFunc(state, "sprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p), varargs=True)
+        wrapCFunc(state, "snprintf", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p), varargs=True)
         wrapCFunc_varargs(state, "vprintf", wrap_funcname="printf")
         wrapCFunc_varargs(state, "vfprintf", wrap_funcname="fprintf")
         wrapCFunc_varargs(state, "vsprintf", wrap_funcname="sprintf")
@@ -213,6 +214,10 @@ class Wrapper:
         state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((__va_arg(list, type())))")
         state.funcs["__va_arg"] = CWrapValue(__va_arg, name="__va_arg",
                                              returnType=None, getReturnType=__va_arg_getReturnType)
+    def handle_stdbool_h(self, state):
+        state.macros["bool"] = Macro(rightside="int")
+        state.macros["true"] = Macro(rightside="1")
+        state.macros["false"] = Macro(rightside="0")
     def handle_stddef_h(self, state): pass
     def handle_math_h(self, state): pass
     def handle_string_h(self, state):
