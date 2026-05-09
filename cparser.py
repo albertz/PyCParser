@@ -574,7 +574,7 @@ class State(object):
 
     def autoSetupSystemMacros(self, system_specific=False):
         import sys
-        self.macros["L"] = Macro(rightside="")  # ugly hack to ignore wchar_t string literals (like `L"abc"`)
+        # L"..." wchar string literals are handled directly in the tokenizer (cpre2_parse)
         self.macros["__attribute__"] = Macro(args=("x",), rightside="")
         self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
         self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
@@ -1400,6 +1400,16 @@ class CStr(_CBase):
     def asCCode(self, indent=""): return indent + '"' + escape_cstr(self.content) + '"'
 
 
+class CWideStr(CStr):
+    """wchar_t string literal (L"...")"""
+    def asCCode(self, indent=""): return indent + 'L"' + escape_cstr(self.content) + '"'
+
+
+class CFuncName(CStr):
+    """Sentinel for __func__: replaced with the enclosing function name at interpretation time."""
+    def asCCode(self, indent=""): return indent + "__func__"
+
+
 class CChar(_CBase):
     def __init__(self, content=None, rawstr=None, **kwargs):
         if isinstance(content, (unicode,str)): content = ord(content)
@@ -1452,8 +1462,10 @@ def cpre2_parse_number(stateStruct, s):
             stateStruct.error("cpre2_parse_number: " + s + " looks like hex but got error " + str(e))
             return 0
     try:
-        s = s.rstrip("ULul")
-        return long(s)
+        s_stripped = s.rstrip("ULulfF")
+        if 'e' in s_stripped.lower() or '.' in s_stripped:
+            return float(s_stripped)
+        return long(s_stripped)
     except Exception as e:
         stateStruct.error("cpre2_parse_number: " + s + " cannot be parsed: " + str(e))
         return 0
@@ -1613,6 +1625,29 @@ def cpre2_parse(stateStruct, input, brackets=None):
             elif state == 26: # escape in 'str
                 laststr += simple_escape_char(c)
                 state = 25
+            elif state == 22: # wchar "str (L"...")
+                if c == '"':
+                    yield CWideStr(laststr)
+                    laststr = ""
+                    state = 0
+                elif c == "\\": state = 23
+                else: laststr += c
+            elif state == 23: # escape in wchar "str
+                laststr += simple_escape_char(c)
+                state = 22
+            elif state == 27: # wchar 'char' (L'...')
+                if c == "'":
+                    if len(laststr) == 1:
+                        yield CChar(laststr)
+                    else:
+                        yield CChar(laststr)
+                    laststr = ""
+                    state = 0
+                elif c == "\\": state = 28
+                else: laststr += c
+            elif state == 28: # escape in wchar 'char'
+                laststr += simple_escape_char(c)
+                state = 27
             elif state == 30: # identifier
                 if c in NumberChars + LetterChars + "_": laststr += c
                 else:
@@ -1629,6 +1664,16 @@ def cpre2_parse(stateStruct, input, brackets=None):
                             yield CStr(stateStruct.curFile())
                         elif laststr == "__LINE__":
                             yield CNumber(stateStruct.curLine())
+                        elif laststr == "__func__":
+                            yield CFuncName("")
+                        elif laststr == "L" and c == '"':
+                            laststr = ""
+                            state = 22  # wchar string literal
+                            continue  # consumed the '"'
+                        elif laststr == "L" and c == "'":
+                            laststr = ""
+                            state = 27  # wchar char literal (treat like regular char)
+                            continue  # consumed the "'"
                         else:
                             yield CIdentifier(laststr)
                         laststr = ""
@@ -3712,12 +3757,40 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
         elif token == sepToken:
             _finalizeCObj(curCObj)
             addToList.append(curCObj)
+            # For C99 for-loop init (sepToken=semicolon): make declared vars visible
+            # in subsequent statements (condition and increment parts).
+            if isinstance(sepToken, CSemicolon) and isinstance(curCObj, CVarDecl) and curCObj.name:
+                p = parentCObj
+                while p is not None:
+                    if hasattr(p, 'body') and isinstance(p.body, CBody):
+                        if curCObj.name not in p.body.vars:
+                            p.body.vars[curCObj.name] = curCObj
+                        break
+                    p = getattr(p, 'parent', None)
             curCObj = _CBaseWithOptBody(parent=parentCObj)
         elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
             stateStruct.error("cpre3 parse statements in brackets: ';' not expected, separator should be " + str(sepToken))
         elif isinstance(curCObj, CVarDecl) and token == COp("="):
             curCObj.body = CStatement(parent=curCObj)
         else:
+            # Handle C99 designated initializer syntax: .fieldname = value
+            if (isinstance(token, COp) and token.content == "."
+                    and not curCObj.isDerived() and not curCObj):
+                # Consume .fieldname =
+                for _t in input_iter:
+                    if isinstance(_t, COp) and _t.content == "=":
+                        break
+                # Consume the entire value expression until next , at same level or closing }
+                _hit_end = False
+                for _t in input_iter:
+                    if isinstance(_t, CClosingBracket) and _t.brackets == brackets:
+                        _hit_end = True
+                        break
+                    elif _t == sepToken:
+                        break
+                if _hit_end:
+                    break  # closing bracket consumed; exit outer loop
+                continue  # separator consumed; next field follows
             if not curCObj.isDerived():
                 _make_statement(curCObj)
             if isinstance(curCObj, CStatement):

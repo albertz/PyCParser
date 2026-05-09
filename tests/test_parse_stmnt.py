@@ -298,5 +298,114 @@ def test_parse_const_func_ptr():
     assert "const" in v.type.attribs
 
 
+# ---------------------------------------------------------------------------
+# Wide string / char literals in parsed code
+# ---------------------------------------------------------------------------
+
+def test_wchar_string_literal_in_function():
+    """L\"...\" used as an initialiser should parse without errors."""
+    parse("""
+    void f() {
+        wchar_t *s = L"hello";
+    }
+    """)
+
+
+def test_wchar_char_literal_in_function():
+    """L'x' used in a comparison should parse without errors."""
+    parse("""
+    int f(wchar_t c) {
+        return c == L'A';
+    }
+    """)
+
+
+# ---------------------------------------------------------------------------
+# Scientific-notation number literals in parsed code
+# ---------------------------------------------------------------------------
+
+def test_number_scientific_notation_in_var_decl():
+    """Variable initialised with scientific notation must parse cleanly."""
+    parse("float v = 1e10;")
+
+
+# ---------------------------------------------------------------------------
+# __func__ predefined identifier
+# ---------------------------------------------------------------------------
+
+def test_func_identifier_in_function():
+    """__func__ used as a string value must parse without errors."""
+    parse("""
+    void f() {
+        const char *name = __func__;
+    }
+    """)
+
+
+# ---------------------------------------------------------------------------
+# C99 for-loop init-variable visibility
+# ---------------------------------------------------------------------------
+
+def test_for_loop_c99_init():
+    """for(int i = 0; i < n; i++) must parse without errors."""
+    parse("""
+    void f() {
+        for(int i = 0; i < 10; i++) {}
+    }
+    """)
+
+
+def test_for_loop_c99_init_used_in_body():
+    """Loop variable declared in for-init must be usable in the body."""
+    parse("""
+    void f() {
+        int a[10];
+        for(int i = 0; i < 10; i++) {
+            a[i] = i;
+        }
+    }
+    """)
+
+
+def test_for_loop_c99_init_multiple():
+    """Multiple consecutive C99 for loops must each parse cleanly."""
+    parse("""
+    void f() {
+        for(int i = 0; i < 5; i++) {}
+        for(int j = 0; j < 5; j++) {}
+    }
+    """)
+
+
+# ---------------------------------------------------------------------------
+# Designated initializers (.field = value)
+# ---------------------------------------------------------------------------
+
+def test_designated_init_struct():
+    """Struct literal with .field = value syntax must parse without errors."""
+    parse("""
+    struct Point { int x; int y; };
+    struct Point p = { .x = 1, .y = 2 };
+    """)
+
+
+def test_designated_init_partial():
+    """Partial designated initializer (only some fields) must parse."""
+    parse("""
+    struct S { int a; int b; int c; };
+    struct S v = { .a = 10, .c = 30 };
+    """)
+
+
+def test_designated_init_in_function():
+    """Designated initializer inside a function body must parse."""
+    parse("""
+    struct Pair { int first; int second; };
+    void f() {
+        struct Pair p = { .first = 42, .second = 99 };
+    }
+    """)
+
+
 if __name__ == "__main__":
     main(globals())
