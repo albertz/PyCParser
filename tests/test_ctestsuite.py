@@ -76,7 +76,7 @@ def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = Fa
     return res
 
 
-def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False, debug_log_assign: bool = False):
+def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False, debug_log_assign: bool = False, capture_stdout: bool = True):
     if not os.path.exists(base_dir):
         raise Exception("c-testsuite not found at", base_dir)
 
@@ -91,7 +91,7 @@ def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False, deb
         print(f"test: {f}")
         c_path = os.path.join(base_dir, f)
         try:
-            res = run_ctest(c_path, debug_log_assign=debug_log_assign)
+            res = run_ctest(c_path, debug_log_assign=debug_log_assign, capture_stdout=capture_stdout)
             if res == 0:
                 passed += 1
             else:
@@ -134,7 +134,9 @@ def _main():
             assert res == 0
     else:
         print("Running ctestsuite...")
-        test_ctestsuite(summarize=args.summarize, limit=args.limit, debug_log_assign=args.debug_log_assign)
+        test_ctestsuite(
+            summarize=args.summarize, limit=args.limit,
+            debug_log_assign=args.debug_log_assign, capture_stdout=args.capture_stdout)
 
 
 def _convert_user_test_name(name: str) -> str:
