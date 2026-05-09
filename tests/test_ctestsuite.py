@@ -15,9 +15,11 @@ from cparser import interpreter
 from cparser import globalincludewrappers
 from cparser import cparser
 
+
 base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
 
-def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = False):
+
+def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = False, capture_stdout: bool = True) -> int:
     with open(c_file, "r") as f:
         code = f.read()
 
@@ -45,14 +47,18 @@ def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = Fa
 
     # Capture stdout
     old_stdout = sys.stdout
-    sys.stdout = io.StringIO()
+    if capture_stdout:
+        sys.stdout = io.StringIO()
     try:
         if arg_count == 0:
             res = interp.runFunc("main", timeout=timeout)
         else:
             res = interp.runFunc("main", 1, ["./test", None], timeout=timeout)
     finally:
-        output = sys.stdout.getvalue()
+        if capture_stdout:
+            output = sys.stdout.getvalue()
+        else:
+            output = None
         sys.stdout = old_stdout
 
     if hasattr(res, "value"):
@@ -61,7 +67,7 @@ def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = Fa
         res = 0
 
     expected_file = c_file + ".expected"
-    if os.path.exists(expected_file):
+    if capture_stdout and os.path.exists(expected_file):
         with open(expected_file, "r") as f:
             expected_output = f.read()
         if output.strip() != expected_output.strip():
@@ -112,14 +118,15 @@ def _main():
     arg_parser.add_argument("--limit", type=int, default=None)
     arg_parser.add_argument("--no-summarize", dest="summarize", action="store_false")
     arg_parser.add_argument("--debug-log-assign", action="store_true")
+    arg_parser.add_argument("--no-capture-stdout", dest="capture_stdout", action="store_false")
     arg_parser.add_argument("tests", nargs="*")
-    arg_parser.set_defaults(summarize=True)
+    arg_parser.set_defaults(summarize=True, capture_stdout=True, debug_log_assign=False)
     args = arg_parser.parse_args()
     if args.tests:
         for test in args.tests:
             test_path = _convert_user_test_name(test)
             print(f"Running test: {test_path}")
-            res = run_ctest(test_path, debug_log_assign=args.debug_log_assign)
+            res = run_ctest(test_path, debug_log_assign=args.debug_log_assign, capture_stdout=args.capture_stdout)
             print(f"Result: {res}")
             assert res == 0
     else:
