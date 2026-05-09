@@ -480,6 +480,9 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
     elif isValueType(objType):
         astValue = getAstNodeAttrib(objAst, "value")
+        if isinstance(objType, CStdIntType) and objType.name == "wchar_t":
+            # c_wchar.value returns a Python str char; convert to int for arithmetic/comparison
+            return makeAstNodeCall(ast.Name(id="ord", ctx=ast.Load()), astValue)
         return astValue
     elif isinstance(objType, CEnum):
         # We expect that this is just the int type.
@@ -722,7 +725,11 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
         #astVoidP = makeAstNodeCall(astVoidPT, *args)
         #return makeAstNodeCall(astCast, astVoidP, typeAst)
 
-    if isIntType(objType) and args:
+    if isinstance(objType, CStdIntType) and objType.name == "wchar_t" and args:
+        # c_wchar expects a unicode character string, not an int
+        assert len(args) == 1
+        args = [makeAstNodeCall(ast.Name(id="chr", ctx=ast.Load()), *args)]
+    elif isIntType(objType) and args:
         # Introduce a Python int-cast, because ctypes will fail if it is a float or so.
         assert len(args) == 1
         args = [makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), *args)]
@@ -912,6 +919,8 @@ class Helpers:
             ctypes.pointer(a)[0] = bValue
         elif isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
             assert hasattr(a, "value")
+            if isinstance(a, ctypes.c_wchar) and isinstance(bValue, int):
+                bValue = chr(bValue)
             a.value = bValue
         else:
             assert False, "assign: not handled: %r of type %r" % (a, type(a))
@@ -930,6 +939,8 @@ class Helpers:
             self.interpreter._storePtr(b)
         if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.Array)):
             b = ctypes.cast(b, ctypes.c_void_p)
+        if isinstance(b, ctypes.c_wchar):
+            return ord(b.value)
         if isinstance(b, (ctypes.c_void_p, ctypes._SimpleCData)):
             b = b.value
         return b
@@ -1156,6 +1167,20 @@ def astAndTypeForStatement(funcEnv, stmnt):
         t = stmnt.parent
         assert isinstance(t, CEnum)
         return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.value)), t
+    elif isinstance(stmnt, CWideStr):
+        s = str(stmnt.content)
+        l = len(s) + 1
+        ta = CArrayType(arrayOf=CStdIntType("wchar_t"), arrayLen=CNumber(l))
+        ss = makeAstNodeCall(getAstNodeAttrib("intp", "_make_wchar_string"), ast.Str(s=s))
+        return ss, ta
+    elif isinstance(stmnt, CFuncName):
+        # __func__ expands to the name of the enclosing function
+        func_name = funcEnv.func.name if (funcEnv and funcEnv.func and funcEnv.func.name) else ""
+        s = func_name
+        l = len(s) + 1
+        ta = CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(l))
+        ss = makeAstNodeCall(getAstNodeAttrib("intp", "_make_string"), ast.Str(s=s))
+        return ss, ta
     elif isinstance(stmnt, CStr):
         s = str(stmnt.content)
         l = len(s) + 1
@@ -1949,6 +1974,22 @@ class Interpreter:
         print("C exit(%i) call." % i)
         sys.exit(i)
 
+    def _make_wchar_string(self, s):
+        """
+        :param str s:
+        :rtype: ctypes array of wrapped c_wchar
+        """
+        key = ("wchar", s)
+        if key in self.constStrings:
+            return self.constStrings[key]
+        if s is None:
+            return self._getPtr(0, ctypes.POINTER(self.ctypes_wrapped.c_wchar))
+        t = self.ctypes_wrapped.c_wchar * (len(s) + 1)
+        buf = t(*s)
+        self.constStrings[key] = buf
+        self._storePtr(buf)
+        return buf
+
     def _make_string(self, s):
         """
         :param str s:
@@ -2009,6 +2050,8 @@ class Interpreter:
         """
         :param int ptr_addr:
         """
+        if not ptr_addr:
+            return  # free(NULL) is a no-op in C
         try:
             self.mallocs.pop(ptr_addr)
         except KeyError:
@@ -2200,6 +2243,11 @@ class Interpreter:
             if arg is None:
                 return ctyp()
             elif isinstance(arg, (str,unicode)):
+                ptr_of = typ.pointerOf
+                while isinstance(ptr_of, CTypedef):
+                    ptr_of = ptr_of.type
+                if isinstance(ptr_of, CStdIntType) and ptr_of.name == 'wchar_t':
+                    return self._make_wchar_string(arg)
                 return self._make_string(arg)
             assert isinstance(arg, (list,tuple))
             o = (ctyp._type_ * (len(arg) + 1))()

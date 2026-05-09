@@ -4252,5 +4252,138 @@ def test_interpret_float_div():
     assert r.value == 1
 
 
+# ---------------------------------------------------------------------------
+# __func__ predefined identifier: interpreter evaluation
+# ---------------------------------------------------------------------------
+
+def test_interpret_func_identifier():
+    """__func__ must evaluate to the enclosing function's name at interpretation time."""
+    from cparser.interpreter import _ctype_ptr_get_value
+    state = parse("""
+    const char *f() { return __func__; }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    result = interp.runFunc("f")
+    addr = _ctype_ptr_get_value(result)
+    assert addr, "__func__ returned NULL"
+    obj = interp.pointerStorage.get(addr)
+    assert obj is not None, "pointer not in pointerStorage"
+    s = ""
+    for ch in obj:
+        v = ch.value if hasattr(ch, 'value') else ch
+        if v == 0 or v == b'\x00' or v == '\x00':
+            break
+        s += chr(v) if isinstance(v, int) else v
+    assert s == "f", "__func__ should expand to 'f', got %r" % s
+
+
+# ---------------------------------------------------------------------------
+# wchar_t: arithmetic, assignment, and comparison
+# ---------------------------------------------------------------------------
+
+def test_interpret_wchar_comparison():
+    """Comparing two wchar_t values via == must work correctly."""
+    state = parse("""
+    int f() {
+        wchar_t c = L'A';
+        if (c == L'A') return 1;
+        return 0;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "wchar_t comparison failed, got %r" % r
+
+
+def test_interpret_wchar_assign_int():
+    """Assigning an integer to wchar_t via chr() conversion must work."""
+    state = parse("""
+    int f() {
+        wchar_t c;
+        c = 65;
+        if (c == L'A') return 1;
+        return 0;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "wchar_t int assignment failed, got %r" % r
+
+
+def test_interpret_wchar_arithmetic():
+    """Arithmetic on wchar_t must produce an integer result."""
+    state = parse("""
+    int f() {
+        wchar_t c = L'A';
+        return c + 1;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == ord('B'), "wchar_t arithmetic failed, got %r" % r
+
+
+# ---------------------------------------------------------------------------
+# L"..." wide string literals at runtime
+# ---------------------------------------------------------------------------
+
+def test_interpret_wchar_string_indexing():
+    """Characters of an L\"...\" literal must be accessible by index."""
+    state = parse("""
+    int f() {
+        wchar_t *s = L"AB";
+        if (s[0] == L'A' && s[1] == L'B') return 1;
+        return 0;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "L\"...\" indexing failed, got %r" % r
+
+
+def test_interpret_make_wchar_string_cached():
+    """_make_wchar_string must return the same buffer object for the same string."""
+    state = parse("void f() {}")
+    interp = Interpreter()
+    interp.register(state)
+    a = interp._make_wchar_string("hello")
+    b = interp._make_wchar_string("hello")
+    assert a is b, "_make_wchar_string not cached: %r is not %r" % (a, b)
+
+
+# ---------------------------------------------------------------------------
+# wchar_t* parameter: passing Python str from the call site
+# ---------------------------------------------------------------------------
+
+def test_interpret_wchar_ptr_arg():
+    """Calling a wchar_t* function with a Python str must use _make_wchar_string."""
+    state = parse("""
+    int f(wchar_t *s) {
+        return s[0] == L'H';
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f", "Hello")
+    assert r.value == 1, "wchar_t* arg from Python str failed, got %r" % r
+
+
+# ---------------------------------------------------------------------------
+# _free(NULL): no-op per the C standard
+# ---------------------------------------------------------------------------
+
+def test_interpret_free_null():
+    """free(NULL) must be a no-op and not raise any exception."""
+    state = parse("void f() {}")
+    interp = Interpreter()
+    interp.register(state)
+    interp._free(0)  # must not raise
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())
