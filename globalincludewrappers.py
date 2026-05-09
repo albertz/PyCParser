@@ -247,8 +247,8 @@ class Wrapper:
         wrapCFunc(state, "toupper", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
     def handle_wctype_h(self, state): pass
     def handle_wchar_h(self, state):
-        state.macros["wcslen"] = Macro(rightside="strlen")  # TODO...
         wchar_p = CPointerType(CStdIntType("wchar_t"))
+        wrapCFunc(state, "wcslen", restype=ctypes.c_size_t, argtypes=(wchar_p,))
         wrapCFunc(state, "wcscmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p))
         wrapCFunc(state, "wcsncmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p, ctypes.c_size_t))
         wchar_t = CStdIntType("wchar_t")

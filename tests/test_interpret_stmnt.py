@@ -4385,5 +4385,171 @@ def test_interpret_free_null():
     interp._free(0)  # must not raise
 
 
+# ---------------------------------------------------------------------------
+# Struct function-pointer fields: assign and call through the struct
+# ---------------------------------------------------------------------------
+
+def test_interpret_struct_func_ptr_call():
+    """A function assigned to a struct function-pointer field and then called
+    through that field must return the correct value."""
+    state = parse("""
+    static int add_one(int x) { return x + 1; }
+
+    typedef struct {
+        int (*op)(int x);
+    } IntOp;
+
+    int f() {
+        IntOp io;
+        io.op = add_one;
+        return io.op(41);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 42, "struct func ptr call returned %r" % r
+
+
+def test_interpret_struct_func_ptr_init_and_call():
+    """A struct initialized with a function pointer at declaration time and
+    then called through the struct must return the correct value."""
+    state = parse("""
+    static int double_it(int x) { return x * 2; }
+
+    typedef struct {
+        int (*op)(int x);
+    } IntOp;
+
+    static IntOp g_op = { double_it };
+
+    int f() {
+        return g_op.op(21);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 42, "struct func ptr init+call returned %r" % r
+
+
+def test_interpret_allocator_via_struct_func_ptr():
+    """A malloc-like function called through a struct function-pointer field
+    must allocate usable memory — the CPython PyMemAllocatorEx pattern."""
+    state = parse("""
+    #include <stdlib.h>
+
+    static void *my_malloc(void *ctx, size_t size) { return malloc(size); }
+    static void  my_free  (void *ctx, void *ptr)   { free(ptr); }
+
+    typedef struct {
+        void *ctx;
+        void *(*malloc)(void *ctx, size_t size);
+        void  (*free)  (void *ctx, void *ptr);
+    } AllocEx;
+
+    static AllocEx g_alloc = {0, my_malloc, my_free};
+
+    int f() {
+        int *p = (int *)g_alloc.malloc(g_alloc.ctx, sizeof(int) * 4);
+        int ok = (p != 0);
+        g_alloc.free(g_alloc.ctx, p);
+        return ok;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "allocator via struct func ptr returned %r" % r
+
+
+def test_interpret_pymem_raw_malloc_chain():
+    """PyMem_RawMalloc-style: a public function calls malloc through a struct
+    function-pointer field, passing ctx — the full CPython call chain."""
+    state = parse("""
+    #include <stdlib.h>
+
+    static void *raw_malloc(void *ctx, size_t size) { return malloc(size); }
+    static void  raw_free  (void *ctx, void *ptr)   { free(ptr); }
+
+    typedef struct {
+        void *ctx;
+        void *(*malloc)(void *ctx, size_t size);
+        void  (*free)  (void *ctx, void *ptr);
+    } AllocEx;
+
+    static AllocEx _raw = {0, raw_malloc, raw_free};
+
+    void *my_raw_malloc(size_t size) { return _raw.malloc(_raw.ctx, size); }
+    void  my_raw_free(void *ptr)     { _raw.free(_raw.ctx, ptr); }
+
+    int f() {
+        int *p = (int *)my_raw_malloc(sizeof(int) * 4);
+        int ok = (p != 0);
+        my_raw_free(p);
+        return ok;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "pymem_raw malloc chain returned %r" % r
+
+
+def test_interpret_wcslen_via_wchar_h():
+    """wcslen(L\"hi\") must return 2 via the wchar.h global include wrapper."""
+    state = parse("""
+    #include <wchar.h>
+    size_t f() {
+        return wcslen(L"hi");
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 2, "wcslen returned %r" % r
+
+
+def test_interpret_wcsdup_via_struct_malloc():
+    """_PyMem_RawWcsdup-like: duplicate a wchar_t* string via malloc from a
+    struct function-pointer field, then verify the copy's first character."""
+    state = parse("""
+    #include <stdlib.h>
+    #include <string.h>
+    #include <wchar.h>
+
+    static void *raw_malloc(void *ctx, size_t size) { return malloc(size); }
+    static void  raw_free  (void *ctx, void *ptr)   { free(ptr); }
+
+    typedef struct {
+        void *ctx;
+        void *(*malloc)(void *ctx, size_t size);
+        void  (*free)  (void *ctx, void *ptr);
+    } AllocEx;
+
+    static AllocEx _raw = {0, raw_malloc, raw_free};
+
+    wchar_t *my_wcsdup(const wchar_t *s) {
+        size_t len = wcslen(s);
+        size_t size = (len + 1) * sizeof(wchar_t);
+        wchar_t *copy = (wchar_t *)_raw.malloc(_raw.ctx, size);
+        if (!copy) return 0;
+        memcpy(copy, s, size);
+        return copy;
+    }
+
+    int f() {
+        wchar_t *dup = my_wcsdup(L"hello");
+        int ok = (dup != 0) && (dup[0] == L'h');
+        _raw.free(_raw.ctx, dup);
+        return ok;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 1, "wcsdup via struct malloc returned %r" % r
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

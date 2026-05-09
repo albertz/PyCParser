@@ -407,5 +407,66 @@ def test_designated_init_in_function():
     """)
 
 
+# ---------------------------------------------------------------------------
+# Struct initializer with function-pointer fields (function-to-pointer decay)
+# ---------------------------------------------------------------------------
+
+def test_parse_struct_func_ptr_field():
+    """A struct with a function-pointer field must parse without errors."""
+    parse("""
+    typedef struct {
+        void (*fn)(void);
+    } Ops;
+    """)
+
+
+def test_parse_struct_func_ptr_init():
+    """Struct initializer using a named function as a function-pointer value
+    (function-to-pointer decay) must parse and the variable must appear in
+    state.vars."""
+    state = parse("""
+    void my_func(void) {}
+    typedef struct {
+        void (*fn)(void);
+    } Ops;
+    Ops ops = { my_func };
+    """)
+    assert "ops" in state.vars, "ops not in state.vars"
+
+
+def test_parse_struct_multi_func_ptr_init():
+    """Struct with multiple function-pointer fields initialized from named
+    functions must parse cleanly — mirrors the CPython PyMemAllocatorEx pattern."""
+    state = parse("""
+    static void *my_malloc(void *ctx, size_t size) { return 0; }
+    static void *my_calloc(void *ctx, size_t n, size_t s) { return 0; }
+    static void *my_realloc(void *ctx, void *ptr, size_t n) { return 0; }
+    static void  my_free(void *ctx, void *ptr) {}
+
+    typedef struct {
+        void *ctx;
+        void *(*malloc)(void *ctx, size_t size);
+        void *(*calloc)(void *ctx, size_t n, size_t s);
+        void *(*realloc)(void *ctx, void *ptr, size_t n);
+        void  (*free)(void *ctx, void *ptr);
+    } AllocEx;
+
+    static AllocEx alloc = {0, my_malloc, my_calloc, my_realloc, my_free};
+    """)
+    assert "alloc" in state.vars, "alloc not in state.vars"
+
+
+def test_parse_wcslen_via_wchar_h():
+    """wcslen must be available after including <wchar.h> via the global
+    include wrappers."""
+    state = parse("""
+    #include <wchar.h>
+    size_t f(wchar_t *s) {
+        return wcslen(s);
+    }
+    """, withGlobalIncludeWrappers=True)
+    assert "f" in state.funcs, "f not parsed"
+
+
 if __name__ == "__main__":
     main(globals())
