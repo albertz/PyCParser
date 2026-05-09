@@ -305,6 +305,8 @@ class FuncEnv:
         a = ast.Assign()
         a.targets = [ast.Name(id=varName, ctx=ast.Store())]
         a.value = getAstNodeForVarType(self, typedef.type)
+        if self.interpreter.debug_log_assign:
+            a.value = makeAstNodeCall(getAstNodeAttrib("helpers", "logAssign"), ast.Str(varName), a.value)
         self.scopeStack[-1].body.append(a)
     def registerLocalType(self, typeObj):
         assert isinstance(typeObj, (CStruct, CUnion, CEnum))
@@ -319,6 +321,8 @@ class FuncEnv:
         wrappedType = self.interpreter.getCType(typeObj)
         v = getAstForWrapValue(self.interpreter, CWrapValue(wrappedType))
         a.value = getAstNodeAttrib(v, "value")
+        if self.interpreter.debug_log_assign:
+            a.value = makeAstNodeCall(getAstNodeAttrib("helpers", "logAssign"), ast.Str(varName), a.value)
         self.scopeStack[-1].body.append(a)
     def getAstNodeForVarDecl(self, varDecl):
         assert varDecl is not None
@@ -947,41 +951,52 @@ class Helpers:
     def __init__(self, interpreter):
         self.interpreter = interpreter
 
+    def _checkAborted(self):
+        if self.interpreter.aborted:
+            raise InterruptedError("Interpreter aborted")
+
     def prefixInc(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: prefixInc %r" % a)
         a.value += 1
         return a
 
     def prefixDec(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: prefixDec %r" % a)
         a.value -= 1
         return a
 
     def postfixInc(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: postfixInc %r" % a)
         b = self.copy(a)
         a.value += 1
         return b
 
     def postfixDec(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: postfixDec %r" % a)
         b = self.copy(a)
         a.value -= 1
         return b
 
     def prefixIncPtr(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: prefixIncPtr %r" % a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value += ctypes.sizeof(a._type_)
         return a
 
     def prefixDecPtr(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: prefixDecPtr %r" % a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value -= ctypes.sizeof(a._type_)
         return a
 
     def postfixIncPtr(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: postfixIncPtr %r" % a)
         b = self.copy(a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
@@ -989,6 +1004,7 @@ class Helpers:
         return b
 
     def postfixDecPtr(self, a):
+        self._checkAborted()
         if self.interpreter.debug_log_assign: print("LOG: postfixDecPtr %r" % a)
         b = self.copy(a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
@@ -996,6 +1012,7 @@ class Helpers:
         return b
 
     def copy(self, a):
+        self._checkAborted()
         if isinstance(a, ctypes.c_void_p):
             return ctypes.cast(a, wrapCTypeClass(ctypes.c_void_p))
         if isinstance(a, ctypes._Pointer):
@@ -1010,11 +1027,13 @@ class Helpers:
         raise NotImplementedError("cannot copy %r" % a)
 
     def logAssign(self, name, value):
+        self._checkAborted()
         if self.interpreter.debug_log_assign:
             print("LOG: assign local %s = %r" % (name, value))
         return value
 
     def assign(self, a, bValue):
+        self._checkAborted()
         if self.interpreter.debug_log_assign:
             print("LOG: assign %r = %r" % (a, bValue))
         if isinstance(a, Helpers.VarArgs):
@@ -1035,6 +1054,7 @@ class Helpers:
         return a
 
     def assignPtr(self, a, bValue):
+        self._checkAborted()
         if self.interpreter.debug_log_assign:
             print("LOG: assignPtr %r = 0x%x" % (a, bValue))
         # WARNING: This can be dangerous/unsafe.
@@ -1044,6 +1064,7 @@ class Helpers:
         return a
 
     def getValueGeneric(self, b):
+        self._checkAborted()
         if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.Array, ctypes.c_void_p)):
             self.interpreter._storePtr(b)
         if isinstance(b, (ctypes._Pointer, ctypes._CFuncPtr, ctypes.Array)):
@@ -1055,6 +1076,7 @@ class Helpers:
         return b
 
     def assignGeneric(self, a, bValue):
+        self._checkAborted()
         from inspect import isfunction
         if isinstance(a, ctypes._CFuncPtr):
             if isfunction(bValue):
@@ -1071,6 +1093,7 @@ class Helpers:
             return self.assign(a, bValue)
 
     def augAssign(self, a, op, bValue):
+        self._checkAborted()
         if self.interpreter.debug_log_assign:
             print("LOG: augAssign %r %s %r" % (a, op, bValue))
         if isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
@@ -1080,6 +1103,7 @@ class Helpers:
         return a
 
     def augAssignPtr(self, a, op, bValue):
+        self._checkAborted()
         if self.interpreter.debug_log_assign:
             print("LOG: augAssignPtr %r %s %r" % (a, op, bValue))
         # `a` is itself a pointer.
@@ -1093,6 +1117,7 @@ class Helpers:
         return a
 
     def ptrArithmetic(self, a, op, bValue):
+        self._checkAborted()
         assert op in ("+","-")
         return self.augAssignPtr(self.copy(a), op + "=", bValue)
 
@@ -2054,6 +2079,7 @@ class Interpreter:
         self.debug_print_getFunc = False
         self.debug_print_getVar = False
         self.debug_log_assign = False
+        self.aborted = False
 
     def _cStateWrapperError(self, s):
         print("Error (ignored):", s)
@@ -2390,12 +2416,19 @@ class Interpreter:
             def _run():
                 try:
                     _result[0] = f(*args)
-                except Exception as e:
+                except (InterruptedError, Exception) as e:
                     _exc[0] = e
-            t = threading.Thread(target=_run, daemon=True)
+            t = threading.Thread(target=_run, daemon=False)
             t.start()
-            t.join(timeout)
+            try:
+                t.join(timeout)
+            except KeyboardInterrupt:
+                self.aborted = True
+                t.join()
+                raise
             if t.is_alive():
+                self.aborted = True
+                t.join()
                 raise TimeoutError("runFunc %r timed out after %s seconds" % (funcname, timeout))
             if _exc[0] is not None:
                 raise _exc[0]
