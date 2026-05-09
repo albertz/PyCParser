@@ -2043,7 +2043,7 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
             return
 
         if obj.name in d:
-            if allowPredec and d[obj.name].body is None:
+            if allowPredec and getattr(d[obj.name], "body", None) is None:
                 # If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
                 d[obj.name] = obj
             elif "extern" in d[obj.name].attribs:
