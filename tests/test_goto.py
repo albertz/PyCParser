@@ -1,5 +1,10 @@
 
-from nose.tools import assert_equal, assert_is_instance, assert_in, assert_greater, assert_true, assert_false
+def assert_equal(a, b): assert a == b
+def assert_is_instance(a, b): assert isinstance(a, b)
+def assert_in(a, b): assert a in b
+def assert_greater(a, b): assert a > b
+def assert_true(a): assert a
+def assert_false(a): assert not a
 
 import ast
 from cparser import goto
