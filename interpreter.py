@@ -507,6 +507,10 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         # We handle this special anyway.
         return objAst
     else:
+        from inspect import isclass
+        if isclass(objType) and issubclass(objType, ctypes._SimpleCData):
+            # Raw ctypes type from a wrapped C function return value (e.g. c_double, c_float).
+            return getAstNodeAttrib(objAst, "value")
         assert False, "bad type: " + str(objType)
 
 

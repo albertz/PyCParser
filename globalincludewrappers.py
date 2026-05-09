@@ -171,7 +171,16 @@ class Wrapper:
             returnType=CVoidType,
             name="free"
         )
+        state.funcs["calloc"] = CWrapValue(
+            lambda nmemb, size: self.interpreter._malloc(nmemb.value * size.value),  # size_t, size_t
+            returnType=ctypes.c_void_p,
+            name="calloc"
+        )
         wrapCFunc(state, "strtoul", restype=ctypes.c_ulong, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
+        wrapCFunc(state, "strtol", restype=ctypes.c_long, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p), ctypes.c_int))
+        wrapCFunc(state, "strtod", restype=ctypes.c_double, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p)))
+        wrapCFunc(state, "qsort", restype=CVoidType, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p))
+        wrapCFunc(state, "bsearch", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p))
         state.funcs["atoi"] = CWrapValue(
             lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
             returnType=ctypes.c_int,
@@ -239,6 +248,22 @@ class Wrapper:
     def handle_wctype_h(self, state): pass
     def handle_wchar_h(self, state):
         state.macros["wcslen"] = Macro(rightside="strlen")  # TODO...
+        wchar_p = CPointerType(CStdIntType("wchar_t"))
+        wrapCFunc(state, "wcscmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p))
+        wrapCFunc(state, "wcsncmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p, ctypes.c_size_t))
+        wchar_t = CStdIntType("wchar_t")
+        wrapCFunc(state, "wcschr", restype=wchar_p, argtypes=(wchar_p, wchar_t))
+        wrapCFunc(state, "wcsrchr", restype=wchar_p, argtypes=(wchar_p, wchar_t))
+        wrapCFunc(state, "wcstok", restype=wchar_p, argtypes=(wchar_p, wchar_p, CPointerType(wchar_p)))
+        wrapCFunc(state, "wcsdup", restype=wchar_p, argtypes=(wchar_p,))
+        wrapCFunc(state, "wcscpy", restype=wchar_p, argtypes=(wchar_p, wchar_p))
+        wrapCFunc(state, "wcsncpy", restype=wchar_p, argtypes=(wchar_p, wchar_p, ctypes.c_size_t))
+        wrapCFunc(state, "wcscat", restype=wchar_p, argtypes=(wchar_p, wchar_p))
+        wrapCFunc(state, "wcsstr", restype=wchar_p, argtypes=(wchar_p, wchar_p))
+        wrapCFunc(state, "wcstol", restype=ctypes.c_long, argtypes=(wchar_p, CPointerType(wchar_p), ctypes.c_int))
+        wrapCFunc(state, "wcstoul", restype=ctypes.c_ulong, argtypes=(wchar_p, CPointerType(wchar_p), ctypes.c_int))
+        wrapCFunc(state, "wcstod", restype=ctypes.c_double, argtypes=(wchar_p, CPointerType(wchar_p)))
+        wrapCFunc(state, "wcsftime", restype=ctypes.c_size_t, argtypes=(wchar_p, ctypes.c_size_t, wchar_p, ctypes.c_void_p))
     def handle_assert_h(self, state):
         def assert_wrap(x):
             if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
@@ -284,11 +309,20 @@ class Wrapper:
         state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
         state.macros["SIG_ERR"] = Macro(rightside="((sig_t)-1)")
     def handle_locale_h(self, state):
+        import locale as _locale
         struct_lconv = state.structs["lconv"] = CStruct(name="lconv") # TODO
         struct_lconv.body = CBody(parent=struct_lconv)
         CVarDecl(parent=struct_lconv, name="grouping", type=ctypes.c_char_p).finalize(state)
         CVarDecl(parent=struct_lconv, name="thousands_sep", type=ctypes.c_char_p).finalize(state)
         wrapCFunc(state, "localeconv", restype=struct_lconv, argtypes=())
+        state.macros["LC_ALL"] = Macro(rightside=str(_locale.LC_ALL))
+        state.macros["LC_CTYPE"] = Macro(rightside=str(_locale.LC_CTYPE))
+        state.macros["LC_COLLATE"] = Macro(rightside=str(_locale.LC_COLLATE))
+        state.macros["LC_MONETARY"] = Macro(rightside=str(_locale.LC_MONETARY))
+        state.macros["LC_NUMERIC"] = Macro(rightside=str(_locale.LC_NUMERIC))
+        state.macros["LC_TIME"] = Macro(rightside=str(_locale.LC_TIME))
+        state.macros["LC_MESSAGES"] = Macro(rightside=str(getattr(_locale, "LC_MESSAGES", 6)))
+        wrapCFunc(state, "setlocale", restype=ctypes.c_char_p, argtypes=(ctypes.c_int, ctypes.c_char_p))
     def handle_sys_types_h(self, state):
         pass  # dummy
     def handle_pthread_h(self, state):
@@ -310,6 +344,10 @@ class Wrapper:
         memory_order.finalize(state)
         state.typedefs["atomic_uintptr_t"] = CTypedef(name="atomic_uintptr_t", type=CBuiltinType(("int",)))
         state.typedefs["atomic_int"] = CTypedef(name="atomic_int", type=CBuiltinType(("int",)))
+        state.macros["atomic_load_explicit"] = Macro(args=("obj", "order"), rightside="(*(obj))")
+        state.macros["atomic_store_explicit"] = Macro(args=("obj", "val", "order"), rightside="((*(obj)) = (val))")
+        state.macros["atomic_load"] = Macro(args=("obj",), rightside="(*(obj))")
+        state.macros["atomic_store"] = Macro(args=("obj", "val"), rightside="((*(obj)) = (val))")
 
     def find_handler_func(self, filename):
         funcname = "handle_" + filename.replace("/", "_").replace(".", "_")
