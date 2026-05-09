@@ -368,6 +368,12 @@ class CPointerType(CType):
 
     def getCType(self, stateStruct):
         try:
+            target = self.pointerOf
+            while isinstance(target, CTypedef):
+                target = target.type
+            if isinstance(target, CFunc):
+                return target.getCType(stateStruct)
+            
             t = getCType(self.pointerOf, stateStruct)
             if t is None:
                 ptrType = getCType(ctypes.c_void_p, stateStruct)
@@ -3488,6 +3494,7 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
                             cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
                             curCObj.name = typeObj.name
                         else: # eg.: typedef int Function();
+                            CFunc.overtake(typeObj)
                             typeObj.name = curCObj.name
                             cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
                     else:

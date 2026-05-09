@@ -59,7 +59,6 @@ Current state
 -------------
 
 * Many simple C programs should be parsed and interpret correctly now.
-* I'm quite sure that function pointer typedefs are handled incorrectly. E.g. `typedef void f();` and `typedef void (*f)();` are just the same right now. See `cpre3_parse_typedef` and do some testing if you want to fix this.
 * Many functions from the standard C library are still missing.
 * There might be some bugs. :)
 * C++ isn't supported yet. :)
