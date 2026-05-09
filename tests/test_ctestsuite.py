@@ -1,6 +1,8 @@
 
 import os
 import sys
+import io
+import argparse
 from typing import Optional
 
 # Ensure tests/ is in sys.path so we can import cparser as a package from there
@@ -8,20 +10,15 @@ my_dir = os.path.dirname(os.path.abspath(__file__))
 if my_dir not in sys.path:
     sys.path.insert(0, my_dir)
 
-import helpers_test
+from cparser import cparser
 from cparser import interpreter
 from cparser import globalincludewrappers
-import better_exchook
-import ctypes
-import io
 
 
 def run_ctest(c_file: str, *, timeout: float = 1.0):
     with open(c_file, "r") as f:
         code = f.read()
-    
-    from cparser import cparser
-    
+
     state = cparser.State()
     state.autoSetupSystemMacros()
     # Pre-load all wrappers to handle tests that declare functions without including headers
@@ -100,7 +97,7 @@ def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False):
                 failed.append(f"{f} (error: {e})")
             else:
                 raise
-            
+
     print(f"ctestsuite: {passed} passed, {len(failed)} failed")
     if failed:
         print("Failed tests:")
@@ -109,5 +106,14 @@ def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False):
         raise Exception("ctestsuite failed")
 
 
+def _main():
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--limit", type=int, default=None)
+    arg_parser.add_argument("--no-summarize", dest="summarize", action="store_false")
+    arg_parser.set_defaults(summarize=True)
+    args = arg_parser.parse_args()
+    test_ctestsuite(summarize=args.summarize, limit=args.limit)
+
+
 if __name__ == "__main__":
-    test_ctestsuite(summarize=True)
+    _main()
