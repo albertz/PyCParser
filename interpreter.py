@@ -253,6 +253,7 @@ class FuncEnv:
         self.vars = {} # name -> varDecl
         self.varNames = {} # id(varDecl) -> name
         self.localTypes = {} # type -> var-name
+        self.localTypeNames = {} # (type-class, name) -> var-name
         self.scopeStack = []  # type: typing.List[FuncCodeblockScope]
         self.needGotoHandling = False
         self.astNode = ast.FunctionDef(
@@ -299,9 +300,25 @@ class FuncEnv:
         if typedef in self.localTypes: return
         varName = self.registerNewUnscopedVarName(typedef.name or "anon_type", initNone=False)
         self.localTypes[typedef] = varName
+        if typedef.name:
+            self.localTypeNames[(CTypedef, typedef.name)] = varName
         a = ast.Assign()
         a.targets = [ast.Name(id=varName, ctx=ast.Store())]
         a.value = getAstNodeForVarType(self, typedef.type)
+        self.scopeStack[-1].body.append(a)
+    def registerLocalType(self, typeObj):
+        assert isinstance(typeObj, (CStruct, CUnion, CEnum))
+        if typeObj in self.localTypes: return
+        name = getattr(typeObj, "name", None) or "anon_type"
+        varName = self.registerNewUnscopedVarName(name, initNone=False)
+        self.localTypes[typeObj] = varName
+        if getattr(typeObj, "name", None):
+            self.localTypeNames[(typeObj.__class__, typeObj.name)] = varName
+        a = ast.Assign()
+        a.targets = [ast.Name(id=varName, ctx=ast.Store())]
+        wrappedType = self.interpreter.getCType(typeObj)
+        v = getAstForWrapValue(self.interpreter, CWrapValue(wrappedType))
+        a.value = getAstNodeAttrib(v, "value")
         self.scopeStack[-1].body.append(a)
     def getAstNodeForVarDecl(self, varDecl):
         assert varDecl is not None
@@ -381,6 +398,10 @@ def getAstNodeForVarType(funcEnv, t):
     elif isinstance(t, CStdIntType):
         return getAstNodeForCTypesBasicType(State.StdIntTypes[t.name])
     elif isinstance(t, CEnum):
+        if t in funcEnv.localTypes:
+            return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
+        if (CEnum, t.name) in funcEnv.localTypeNames:
+            return ast.Name(id=funcEnv.localTypeNames[(CEnum, t.name)], ctx=ast.Load())
         # Just use the related int type.
         stdtype = t.getMinCIntType()
         assert stdtype is not None
@@ -395,6 +416,13 @@ def getAstNodeForVarType(funcEnv, t):
             return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
         return getAstNodeAttrib("g", t.name)
     elif isinstance(t, CStruct):
+        if t in funcEnv.localTypes:
+            return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
+        if t.name in funcEnv.globalScope.stateStruct.structs:
+            if funcEnv.globalScope.stateStruct.structs[t.name] in funcEnv.localTypes:
+                return ast.Name(id=funcEnv.localTypes[funcEnv.globalScope.stateStruct.structs[t.name]], ctx=ast.Load())
+        if (CStruct, t.name) in funcEnv.localTypeNames:
+            return ast.Name(id=funcEnv.localTypeNames[(CStruct, t.name)], ctx=ast.Load())
         if t.name is None:
             # This is an anonymous struct. E.g. like in:
             # `struct A { struct { int x; } a; };`
@@ -405,6 +433,10 @@ def getAstNodeForVarType(funcEnv, t):
         # TODO: this assumes the was previously declared globally.
         return getAstNodeAttrib("structs", t.name)
     elif isinstance(t, CUnion):
+        if t in funcEnv.localTypes:
+            return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
+        if (CUnion, t.name) in funcEnv.localTypeNames:
+            return ast.Name(id=funcEnv.localTypeNames[(CUnion, t.name)], ctx=ast.Load())
         assert t.name is not None
         return getAstNodeAttrib("unions", t.name)
     elif isinstance(t, CArrayType):
@@ -1788,7 +1820,7 @@ def cStatementToPyAst(funcEnv, c):
     elif isinstance(c, CTypedef):
         funcEnv.registerLocalTypedef(c)
     elif isinstance(c, (CStruct, CUnion, CEnum)):
-        pass # type declarations are handled during parsing and stored in the AST
+        funcEnv.registerLocalType(c)
     else:
         assert False, "cannot handle " + str(c)
 
@@ -1964,13 +1996,7 @@ class Interpreter:
 
     def getCType(self, obj):
         wrappedStateStruct = self._cStateWrapper
-        for T,DictName in [(CStruct,"structs"), (CUnion,"unions"), (CEnum,"enums")]:
-            if isinstance(obj, T):
-                if obj.name is not None:
-                    return getattr(wrappedStateStruct, DictName)[obj.name].getCValue(wrappedStateStruct)
-                else:
-                    return obj.getCValue(wrappedStateStruct)
-        return obj.getCValue(wrappedStateStruct)
+        return getCType(obj, wrappedStateStruct)
 
     def _abort(self):
         print("C abort() call.")
@@ -2097,6 +2123,7 @@ class Interpreter:
                 obj_size = ctypes.sizeof(obj)
                 self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
                 return ptr
+
         # This is slower. Check pointerStorageRanges if we have it.
         for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
                 reverse=True, maximum=(ptr_addr + 1, 0), inclusive=(True, False)

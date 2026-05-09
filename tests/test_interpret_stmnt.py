@@ -4551,5 +4551,126 @@ def test_interpret_wcsdup_via_struct_malloc():
     assert r.value == 1, "wcsdup via struct malloc returned %r" % r
 
 
+def test_interpret_local_struct():
+    code = """
+    int f() {
+        struct S { int x; int y; } s;
+        s.x = 1;
+        s.y = 2;
+        return s.x + s.y;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 3
+
+
+def test_interpret_local_union():
+    code = """
+    int f() {
+        union U { int x; int y; } u;
+        u.x = 42;
+        return u.y;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 42
+
+
+def test_interpret_local_enum():
+    code = """
+    int f() {
+        enum E { A = 1, B = 2 } e;
+        e = B;
+        return e;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 2
+
+
+def test_interpret_anonymous_struct_union():
+    code = """
+    typedef struct {
+        int a;
+        union {
+            int b1;
+            int b2;
+        };
+        struct {
+            int c;
+        };
+    } s;
+    int f() {
+        s v;
+        v.a = 1;
+        v.b1 = 2;
+        v.c = 3;
+        if (v.b2 != 2) return 10;
+        return v.a + v.b1 + v.c;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 6
+
+
+def test_interpret_precedence_address_of_sub():
+    code = """
+    int f() {
+        int x[2];
+        x[0] = 10;
+        x[1] = 20;
+        int *p1 = &x[1];
+        int *p0 = &x[0];
+        return p1 - p0;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 1
+
+
+def test_interpret_precedence_address_of_sub_direct():
+    code = """
+    int f() {
+        int x[2];
+        return &x[1] - &x[0];
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 1
+
+
+def test_interpret_integer_promotion_signed():
+    code = """
+    int f() {
+        int x = 4;
+        if (-x != 0 - 4) return 1;
+        return 0;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 0
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

@@ -468,5 +468,36 @@ def test_parse_wcslen_via_wchar_h():
     assert "f" in state.funcs, "f not parsed"
 
 
+def test_parse_precedence_address_of_sub():
+    """&x[1] - &x[0] should be parsed as (&(x[1])) - (&(x[0])) and not &(x[1] - &x[0])."""
+    state = parse("""
+    void f() {
+        int x[2];
+        int r = &x[1] - &x[0];
+    }
+    """)
+    f = state.funcs["f"]
+    # int r = ...
+    stmt = f.body.contentlist[1].body
+    # should be a binary '-' op
+    assert isinstance(stmt, CStatement)
+    assert stmt._op.content == "-"
+    assert isinstance(stmt._leftexpr, CStatement)
+    assert stmt._leftexpr._op.content == "&"
+    assert isinstance(stmt._rightexpr, CStatement)
+    assert stmt._rightexpr._op.content == "&"
+
+
+def test_parse_library_collision():
+    """Declaring a library function without a body should not crash or overwrite the wrapper."""
+    state = parse("""
+    #include <string.h>
+    int strlen(const char *);
+    int f() { return strlen("foo"); }
+    """, withGlobalIncludeWrappers=True)
+    assert "strlen" in state.funcs
+    assert isinstance(state.funcs["strlen"], CWrapValue)
+
+
 if __name__ == "__main__":
     main(globals())

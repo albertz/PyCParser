@@ -447,7 +447,17 @@ def getCType(t, stateStruct):
             if isinstance(t, CStruct): D = "structs"
             elif isinstance(t, CUnion): D = "unions"
             elif isinstance(t, CEnum): D = "enums"
+            
             t = getattr(stateStruct, D).get(t.name, t)
+            
+            if t.body is None and t.name:
+                p = t.parent
+                while p:
+                    if hasattr(p, "body") and isinstance(p.body, CBody):
+                        if t.name in getattr(p.body, D):
+                            t = getattr(p.body, D)[t.name]
+                            if t.body is not None: break
+                    p = p.parent
         return t.getCType(stateStruct)
     if isinstance(t, _CBaseWithOptBody):
         return t.getCType(stateStruct)
@@ -1967,10 +1977,26 @@ class _CBaseWithOptBody(object):
             if isinstance(self, CStruct): D = "structs"
             elif isinstance(self, CUnion): D = "unions"
             elif isinstance(self, CEnum): D = "enums"
+            
             self = getattr(stateStruct, D).get(self.name, self)
+            
+            if self.body is None and self.name:
+                p = self.parent
+                while p:
+                    if hasattr(p, "body") and isinstance(p.body, CBody):
+                        if self.name in getattr(p.body, D):
+                            self = getattr(p.body, D)[self.name]
+                            if self.body is not None: break
+                    p = p.parent
+
         if self.body is None: return None
         for c in self.body.contentlist:
-            if not isinstance(c, CVarDecl): continue
+            if not isinstance(c, CVarDecl):
+                if isinstance(c, (CStruct, CUnion)) and c.name is None:
+                    # Anonymous struct/union. Search recursively.
+                    sub = c.findAttrib(stateStruct, attrib)
+                    if sub: return sub
+                continue
             if c.name == attrib: return c
         return None
 
@@ -2043,15 +2069,30 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
             return
 
         if obj.name in d:
-            if allowPredec and getattr(d[obj.name], "body", None) is None:
-                # If the body is empty, it was a pre-declaration and it is ok to overwrite it now.
+            old_obj = d[obj.name]
+            old_has_body = getattr(old_obj, "body", None) is not None
+            new_has_body = getattr(obj, "body", None) is not None
+            
+            if new_has_body:
+                # Always overwrite if the new one has a body.
+                # In C, it is an error if both have a body, but we don't strictly enforce it here yet
+                # (or we expect the earlier parsing to have caught it).
                 d[obj.name] = obj
-            elif "extern" in d[obj.name].attribs:
+            elif allowPredec and not old_has_body:
+                # Both have no body. Prefer CWrapValue.
+                if isinstance(old_obj, CWrapValue):
+                    pass # Keep old one
+                else:
+                    d[obj.name] = obj
+            elif "extern" in getattr(old_obj, "attribs", []):
                 # Otherwise, if we explicitely use the "extern" attribute, it's also ok.
                 d[obj.name] = obj
             else:
                 # Otherwise however, it is an error.
-                stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
+                if not old_has_body and not new_has_body:
+                    pass # Both are just pre-declarations, that's fine.
+                else:
+                    stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
         else:
             d[obj.name] = obj
     else:
@@ -2133,7 +2174,14 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
 
     def _construct(obj):
         fields = []
+        anonymous = []
         for c in obj.body.contentlist:
+            if isinstance(c, (CStruct, CUnion)) and c.name is None:
+                t = getCType(c, stateStruct)
+                name = "__anon_" + str(len(fields))
+                fields += [(name, t)]
+                anonymous += [name]
+                continue
             if not isinstance(c, CVarDecl): continue
             try:
                 obj._construct_struct_attrib = c.type
@@ -2152,6 +2200,8 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
             else:
                 fields += [(str(c.name), t)]
         if obj._ctype_is_constructing:
+            if anonymous:
+                obj._ctype._anonymous_ = anonymous
             obj._ctype._fields_ = fields
             obj._ctype_is_constructing = False
 
@@ -2217,8 +2267,8 @@ def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True)
     if b is None: b = a
     bits = minBits
     while bits <= maxBits:
+        if a >= -(1<<(bits-1)) and b < (1<<(bits-1)): return "int" + str(bits) + "_t"
         if useUnsignedTypes and a >= 0 and b < (1<<bits): return "uint" + str(bits) + "_t"
-        elif a >= -(1<<(bits-1)) and b < (1<<(bits-1)): return "int" + str(bits) + "_t"
         bits *= 2
     return None
 
@@ -2424,11 +2474,14 @@ def _create_cast_call(stateStruct, parent, base, token):
     return funcCall
 
 
-def opsDoLeftToRight(stateStruct, op1, op2):
-    try: opprec1 = OpPrecedences[op1]
-    except KeyError:
-        stateStruct.error("internal error: statement parsing: op1 " + repr(op1) + " unknown")
-        opprec1 = 100
+def opsDoLeftToRight(stateStruct, op1, op2, prefix1=False):
+    if prefix1:
+        opprec1 = 3
+    else:
+        try: opprec1 = OpPrecedences[op1]
+        except KeyError:
+            stateStruct.error("internal error: statement parsing: op1 " + repr(op1) + " unknown")
+            opprec1 = 100
     try: opprec2 = OpPrecedences[op2]
     except KeyError:
         stateStruct.error("internal error: statement parsing: op2 " + repr(op2) + " unknown")
@@ -2438,7 +2491,7 @@ def opsDoLeftToRight(stateStruct, op1, op2):
         return True
     elif opprec1 > opprec2:
         return False
-    if op1 in OpsRightToLeft:
+    if op1 in OpsRightToLeft or prefix1:
         return False
     return True
 
@@ -2477,7 +2530,11 @@ def getValueType(stateStruct, obj):
         while isinstance(base_type, CTypedef):
             base_type = base_type.type
         assert isinstance(base_type, (CStruct,CUnion))
-        return base_type.body.vars[obj.name].type
+        attrib = base_type.findAttrib(stateStruct, obj.name)
+        if attrib is None:
+            stateStruct.error("attrib %r not found in %r" % (obj.name, base_type))
+            return CBuiltinType(("int",))
+        return attrib.type
     if isinstance(obj, CPtrAccessRef):
         pbase_type = getValueType(stateStruct, obj.base)
         while isinstance(pbase_type, CTypedef):
@@ -2487,13 +2544,11 @@ def getValueType(stateStruct, obj):
         while isinstance(base_type, CTypedef):
             base_type = base_type.type
         assert isinstance(base_type, (CStruct,CUnion))
-        if base_type.body is None:
-            if isinstance(base_type, CStruct):
-                base_type = stateStruct.structs[base_type.name]
-            elif isinstance(base_type, CUnion):
-                base_type = stateStruct.unions[base_type.name]
-            assert base_type.body is not None
-        return base_type.body.vars[obj.name].type
+        attrib = base_type.findAttrib(stateStruct, obj.name)
+        if attrib is None:
+            stateStruct.error("attrib %r not found in %r" % (obj.name, base_type))
+            return CBuiltinType(("int",))
+        return attrib.type
     if isinstance(obj, CArrayIndexRef):
         t = getValueType(stateStruct, obj.base)
         while isinstance(t, CTypedef):
@@ -2897,7 +2952,7 @@ class CStatement(_CBaseWithOptBody):
                     self._rightexpr = None
                     self._op = COp("?:")
                     self._state = 6
-                elif opsDoLeftToRight(stateStruct, self._op.content, token.content):
+                elif opsDoLeftToRight(stateStruct, self._op.content, token.content, prefix1=self._leftexpr is None):
                     import copy
                     subStatement = copy.copy(self)
                     self._leftexpr = subStatement
@@ -2935,7 +2990,7 @@ class CStatement(_CBaseWithOptBody):
                     else:
                         self._rightexpr._cpre3_handle_token(stateStruct, token)
                         self._state = 8
-                elif opsDoLeftToRight(stateStruct, self._op.content, token.content):
+                elif opsDoLeftToRight(stateStruct, self._op.content, token.content, prefix1=self._leftexpr is None):
                     import copy
                     subStatement = copy.copy(self)
                     self._leftexpr = subStatement
