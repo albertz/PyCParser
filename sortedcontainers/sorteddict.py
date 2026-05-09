@@ -4,10 +4,16 @@
 
 from .sortedset import SortedSet
 from .sortedlist import SortedList, recursive_repr, SortedListWithKey
-from collections import Set, Sequence
-from collections import KeysView as AbstractKeysView
-from collections import ValuesView as AbstractValuesView
-from collections import ItemsView as AbstractItemsView
+try:
+    from collections import Set, Sequence
+    from collections import KeysView as AbstractKeysView
+    from collections import ValuesView as AbstractValuesView
+    from collections import ItemsView as AbstractItemsView
+except ImportError:
+    from collections.abc import Set, Sequence
+    from collections.abc import KeysView as AbstractKeysView
+    from collections.abc import ValuesView as AbstractValuesView
+    from collections.abc import ItemsView as AbstractItemsView
 
 from functools import wraps
 from sys import hexversion

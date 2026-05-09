@@ -3,7 +3,10 @@
 # Sorted set implementation.
 
 from .sortedlist import SortedList, recursive_repr, SortedListWithKey
-from collections import Set, MutableSet, Sequence
+try:
+    from collections import Set, MutableSet, Sequence
+except ImportError:
+    from collections.abc import Set, MutableSet, Sequence
 from itertools import chain
 import operator as op
 

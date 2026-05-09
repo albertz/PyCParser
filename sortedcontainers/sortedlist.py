@@ -7,7 +7,10 @@ from sys import hexversion
 
 from bisect import bisect_left, bisect_right, insort
 from itertools import chain, repeat, starmap
-from collections import Sequence, MutableSequence
+try:
+    from collections import Sequence, MutableSequence
+except ImportError:
+    from collections.abc import Sequence, MutableSequence
 import operator as op
 from operator import iadd, add
 from functools import wraps
