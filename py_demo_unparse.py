@@ -361,6 +361,21 @@ class Unparser:
         if repr_n.startswith("-"):
             self.write(")")
 
+    def _Constant(self, t):
+        # ast.Constant was introduced in Python 3.8, replacing Num/Str/etc.
+        if isinstance(t.value, (int, float, complex)):
+            fake = type("N", (), {"n": t.value})()
+            self._Num(fake)
+        elif isinstance(t.value, str):
+            fake = type("S", (), {"s": t.value})()
+            self._Str(fake)
+        elif isinstance(t.value, bytes):
+            self.write(repr(t.value))
+        elif t.value is ...:
+            self._Ellipsis(t)
+        else:
+            self.write(repr(t.value))
+
     def _List(self, t):
         self.write("[")
         interleave(lambda: self.write(", "), self.dispatch, t.elts)
