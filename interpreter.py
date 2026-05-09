@@ -1787,6 +1787,8 @@ def cStatementToPyAst(funcEnv, c):
         body.append(goto.GotoLabel(c.name))
     elif isinstance(c, CTypedef):
         funcEnv.registerLocalTypedef(c)
+    elif isinstance(c, (CStruct, CUnion, CEnum)):
+        pass # type declarations are handled during parsing and stored in the AST
     else:
         assert False, "cannot handle " + str(c)
 
