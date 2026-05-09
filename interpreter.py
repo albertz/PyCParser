@@ -888,6 +888,9 @@ class FuncCodeblockScope:
             a.value = ast.Name(id="None", ctx=ast.Load())
         else:
             assert False, "didn't expected " + str(varDecl)
+        
+        if self.funcEnv.interpreter.debug_log_assign:
+            a.value = makeAstNodeCall(getAstNodeAttrib("helpers", "logAssign"), ast.Str(varName), a.value)
         self.body.append(a)
         return varName
     def _astForDeleteVar(self, varName):
@@ -944,56 +947,55 @@ class Helpers:
     def __init__(self, interpreter):
         self.interpreter = interpreter
 
-    @staticmethod
-    def prefixInc(a):
+    def prefixInc(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: prefixInc %r" % a)
         a.value += 1
         return a
 
-    @staticmethod
-    def prefixDec(a):
+    def prefixDec(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: prefixDec %r" % a)
         a.value -= 1
         return a
 
-    @staticmethod
-    def postfixInc(a):
-        b = Helpers.copy(a)
+    def postfixInc(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: postfixInc %r" % a)
+        b = self.copy(a)
         a.value += 1
         return b
 
-    @staticmethod
-    def postfixDec(a):
-        b = Helpers.copy(a)
+    def postfixDec(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: postfixDec %r" % a)
+        b = self.copy(a)
         a.value -= 1
         return b
 
-    @staticmethod
-    def prefixIncPtr(a):
+    def prefixIncPtr(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: prefixIncPtr %r" % a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value += ctypes.sizeof(a._type_)
         return a
 
-    @staticmethod
-    def prefixDecPtr(a):
+    def prefixDecPtr(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: prefixDecPtr %r" % a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value -= ctypes.sizeof(a._type_)
         return a
 
-    @staticmethod
-    def postfixIncPtr(a):
-        b = Helpers.copy(a)
+    def postfixIncPtr(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: postfixIncPtr %r" % a)
+        b = self.copy(a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value += ctypes.sizeof(a._type_)
         return b
 
-    @staticmethod
-    def postfixDecPtr(a):
-        b = Helpers.copy(a)
+    def postfixDecPtr(self, a):
+        if self.interpreter.debug_log_assign: print("LOG: postfixDecPtr %r" % a)
+        b = self.copy(a)
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
         aPtr.contents.value -= ctypes.sizeof(a._type_)
         return b
 
-    @staticmethod
-    def copy(a):
+    def copy(self, a):
         if isinstance(a, ctypes.c_void_p):
             return ctypes.cast(a, wrapCTypeClass(ctypes.c_void_p))
         if isinstance(a, ctypes._Pointer):
@@ -1007,8 +1009,14 @@ class Helpers:
             return a.__class__(a.value)
         raise NotImplementedError("cannot copy %r" % a)
 
-    @staticmethod
-    def assign(a, bValue):
+    def logAssign(self, name, value):
+        if self.interpreter.debug_log_assign:
+            print("LOG: assign local %s = %r" % (name, value))
+        return value
+
+    def assign(self, a, bValue):
+        if self.interpreter.debug_log_assign:
+            print("LOG: assign %r = %r" % (a, bValue))
         if isinstance(a, Helpers.VarArgs):
             a.assign(bValue)
         elif isinstance(a, type(bValue)):
@@ -1026,8 +1034,9 @@ class Helpers:
             assert False, "assign: not handled: %r of type %r" % (a, type(a))
         return a
 
-    @staticmethod
-    def assignPtr(a, bValue):
+    def assignPtr(self, a, bValue):
+        if self.interpreter.debug_log_assign:
+            print("LOG: assignPtr %r = 0x%x" % (a, bValue))
         # WARNING: This can be dangerous/unsafe.
         # It will correctly copy the content. However, we might loose any Python obj refs.
         # TODO: Fix this somehow?
@@ -1061,8 +1070,9 @@ class Helpers:
             assert isinstance(bValue, (int, long, float))
             return self.assign(a, bValue)
 
-    @staticmethod
-    def augAssign(a, op, bValue):
+    def augAssign(self, a, op, bValue):
+        if self.interpreter.debug_log_assign:
+            print("LOG: augAssign %r %s %r" % (a, op, bValue))
         if isinstance(a, (ctypes.c_void_p, ctypes._SimpleCData)):
             a.value = OpBinFuncs[op](a.value, bValue)
         else:
@@ -1070,14 +1080,16 @@ class Helpers:
         return a
 
     def augAssignPtr(self, a, op, bValue):
+        if self.interpreter.debug_log_assign:
+            print("LOG: augAssignPtr %r %s %r" % (a, op, bValue))
         # `a` is itself a pointer.
         assert op in ("+=","-=")
-        op = OpBinFuncs[op]
+        func = OpBinFuncs[op]
         bValue *= ctypes.sizeof(a._type_)
         # Should be safe as long as `a` already contains all the refs.
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
-        aPtr.contents.value = op(aPtr.contents.value, bValue)
-        a = self.interpreter._storePtr(a, offset=op(0, bValue))
+        aPtr.contents.value = func(aPtr.contents.value, bValue)
+        a = self.interpreter._storePtr(a, offset=func(0, bValue))
         return a
 
     def ptrArithmetic(self, a, op, bValue):
@@ -2041,6 +2053,7 @@ class Interpreter:
         }
         self.debug_print_getFunc = False
         self.debug_print_getVar = False
+        self.debug_log_assign = False
 
     def _cStateWrapperError(self, s):
         print("Error (ignored):", s)

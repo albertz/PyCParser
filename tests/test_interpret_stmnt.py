@@ -4724,5 +4724,58 @@ def test_interpret_nested_struct_init():
     assert res.value == 0
 
 
+def test_interpret_debug_log_assign():
+    code = """
+    int f() {
+        int x = 4;
+        x = 5;
+        x += 2;
+        return x;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    interp.debug_log_assign = True
+    
+    import io
+    from contextlib import redirect_stdout
+    f = io.StringIO()
+    with redirect_stdout(f):
+        res = interp.runFunc("f")
+    
+    output = f.getvalue()
+    print("Logged output:")
+    print(output)
+    assert "LOG: assign" in output
+    assert "LOG: augAssign" in output
+    assert res.value == 7
+
+
+def test_interpret_debug_log_assign_local():
+    code = """
+    int f() {
+        int x = 42;
+        return x;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    interp.debug_log_assign = True
+    
+    import io
+    from contextlib import redirect_stdout
+    f = io.StringIO()
+    with redirect_stdout(f):
+        res = interp.runFunc("f")
+    
+    output = f.getvalue()
+    print("Logged output:")
+    print(output)
+    assert "LOG: assign local x = c_int(42)" in output
+    assert res.value == 42
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())
