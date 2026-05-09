@@ -2,6 +2,7 @@
 import os
 import sys
 import io
+import re
 import argparse
 from typing import Optional
 
@@ -9,6 +10,8 @@ from typing import Optional
 my_dir = os.path.dirname(os.path.abspath(__file__))
 if my_dir not in sys.path:
     sys.path.insert(0, my_dir)
+
+base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
 
 from cparser import cparser
 from cparser import interpreter
@@ -68,10 +71,8 @@ def run_ctest(c_file: str, *, timeout: float = 10.0):
 
 
 def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False):
-    base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
     if not os.path.exists(base_dir):
-        print("c-testsuite not found at", base_dir)
-        return
+        raise Exception("c-testsuite not found at", base_dir)
 
     files = sorted([f for f in os.listdir(base_dir) if f.endswith(".c")])
     if limit:
@@ -111,9 +112,29 @@ def _main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--limit", type=int, default=None)
     arg_parser.add_argument("--no-summarize", dest="summarize", action="store_false")
+    arg_parser.add_argument("tests", nargs="*")
     arg_parser.set_defaults(summarize=True)
     args = arg_parser.parse_args()
-    test_ctestsuite(summarize=args.summarize, limit=args.limit)
+    if args.tests:
+        for test in args.tests:
+            test = _convert_user_test_name(test)
+            print(f"Running test: {test}")
+            res = run_ctest(test)
+            print(f"Result: {res}")
+            assert res == 0
+    else:
+        print("Running ctestsuite...")
+        test_ctestsuite(summarize=args.summarize, limit=args.limit)
+
+
+def _convert_user_test_name(name: str) -> str:
+    if name.startswith("/"):
+        return name
+    if name.startswith("0") and name.endswith(".c"):
+        return os.path.join(base_dir, name)
+    if re.match(r"^\d+$", name):
+        return os.path.join(base_dir, f"{name.zfill(5)}.c")
+    raise ValueError(f"Unknown test name: {name!r}")
 
 
 if __name__ == "__main__":
