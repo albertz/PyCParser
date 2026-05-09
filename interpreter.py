@@ -2383,7 +2383,7 @@ class Interpreter:
         f = self.getFunc(funcname)
         assert len(args) == len(f.C_argTypes)
         args = [self._castArgToCType(arg,typ) for (arg, typ) in zip(args,f.C_argTypes)]
-        if timeout is not None:
+        if timeout is not None and timeout > 0:
             import threading
             _result = [None]
             _exc = [None]

@@ -119,6 +119,7 @@ def _main():
     arg_parser.add_argument("--no-summarize", dest="summarize", action="store_false")
     arg_parser.add_argument("--debug-log-assign", action="store_true")
     arg_parser.add_argument("--no-capture-stdout", dest="capture_stdout", action="store_false")
+    arg_parser.add_argument("--timeout", type=float, default=10.0, help="Timeout for each test in seconds.")
     arg_parser.add_argument("tests", nargs="*")
     arg_parser.set_defaults(summarize=True, capture_stdout=True, debug_log_assign=False)
     args = arg_parser.parse_args()
@@ -126,7 +127,9 @@ def _main():
         for test in args.tests:
             test_path = _convert_user_test_name(test)
             print(f"Running test: {test_path}")
-            res = run_ctest(test_path, debug_log_assign=args.debug_log_assign, capture_stdout=args.capture_stdout)
+            res = run_ctest(
+                test_path,
+                debug_log_assign=args.debug_log_assign, capture_stdout=args.capture_stdout, timeout=args.timeout)
             print(f"Result: {res}")
             assert res == 0
     else:
