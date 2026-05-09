@@ -2271,11 +2271,30 @@ class Interpreter:
         return {"return_as_ctype": return_as_ctype}
 
     def runFunc(self, funcname, *args, **kwargs):
+        timeout = kwargs.pop("timeout", None)
         kwargs = self._runFunc_kwargs_resolve(**kwargs)
         f = self.getFunc(funcname)
         assert len(args) == len(f.C_argTypes)
         args = [self._castArgToCType(arg,typ) for (arg, typ) in zip(args,f.C_argTypes)]
-        res = f(*args)
+        if timeout is not None:
+            import threading
+            _result = [None]
+            _exc = [None]
+            def _run():
+                try:
+                    _result[0] = f(*args)
+                except Exception as e:
+                    _exc[0] = e
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+            t.join(timeout)
+            if t.is_alive():
+                raise TimeoutError("runFunc %r timed out after %s seconds" % (funcname, timeout))
+            if _exc[0] is not None:
+                raise _exc[0]
+            res = _result[0]
+        else:
+            res = f(*args)
         if kwargs["return_as_ctype"]:
             res_ctype = f.C_resType.getCType(self.globalScope.stateStruct)
             if res_ctype is not None:
