@@ -53,6 +53,8 @@ def test_interpreter_helloworld():
         os.set_inheritable(pipes[1][0], True)
         os.set_inheritable(pipes[1][1], True)
 
+    sys.stdout.flush()
+    sys.stderr.flush()
     pid = os.fork()
     if pid == 0:  # child
         os.close(pipes[0][1])
@@ -68,7 +70,7 @@ def test_interpreter_helloworld():
         except BaseException:
             better_exchook.better_exchook(*sys.exc_info())
 
-        print("Normal exit.")
+        print("Normal exit.", flush=True)
         os._exit(0)
         return
 
