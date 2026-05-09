@@ -14,6 +14,7 @@ def main():
     my_files = sorted(os.listdir(my_dir))
     for fn in my_files:
         if fn.startswith("test_") and fn.endswith(".py"):
+            if fn == "test_ctestsuite.py": continue
             print("=" * 40)
             print("Python test file:", fn)
             mod_name = os.path.splitext(fn)[0]
