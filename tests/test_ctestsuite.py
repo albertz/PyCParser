@@ -2,8 +2,8 @@
 import os
 import sys
 import io
-import re
 import argparse
+import re
 from typing import Optional
 
 # Ensure tests/ is in sys.path so we can import cparser as a package from there
@@ -11,14 +11,13 @@ my_dir = os.path.dirname(os.path.abspath(__file__))
 if my_dir not in sys.path:
     sys.path.insert(0, my_dir)
 
-base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
-
-from cparser import cparser
 from cparser import interpreter
 from cparser import globalincludewrappers
+from cparser import cparser
 
+base_dir = os.path.join(os.path.dirname(__file__), "c-testsuite/tests/single-exec")
 
-def run_ctest(c_file: str, *, timeout: float = 10.0):
+def run_ctest(c_file: str, *, timeout: float = 10.0, debug_log_assign: bool = False):
     with open(c_file, "r") as f:
         code = f.read()
 
@@ -28,16 +27,17 @@ def run_ctest(c_file: str, *, timeout: float = 10.0):
     wrapper = globalincludewrappers.Wrapper(state)
     wrapper.install()
     wrapper.add_all_to_state(state)
-    
+
     cparser.parse_code(code, state)
-    
+
     interp = interpreter.Interpreter()
+    interp.debug_log_assign = debug_log_assign
     interp.register(state)
     wrapper.interpreter = interp
-    
+
     if "main" not in state.funcs:
         return 0
-    
+
     main_func = state.funcs["main"]
     arg_count = 0
     if hasattr(main_func, "args"):
@@ -54,12 +54,12 @@ def run_ctest(c_file: str, *, timeout: float = 10.0):
     finally:
         output = sys.stdout.getvalue()
         sys.stdout = old_stdout
-        
+
     if hasattr(res, "value"):
         res = res.value
     if res is None:
         res = 0
-        
+
     expected_file = c_file + ".expected"
     if os.path.exists(expected_file):
         with open(expected_file, "r") as f:
@@ -70,23 +70,22 @@ def run_ctest(c_file: str, *, timeout: float = 10.0):
     return res
 
 
-def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False):
+def test_ctestsuite(*, limit: Optional[int] = None, summarize: bool = False, debug_log_assign: bool = False):
     if not os.path.exists(base_dir):
         raise Exception("c-testsuite not found at", base_dir)
 
     files = sorted([f for f in os.listdir(base_dir) if f.endswith(".c")])
     if limit:
         files = files[:limit]
-    
+
     passed = 0
     failed = []
-    
+
     for f in files:
-        if f == "00040.c": continue
         print(f"test: {f}")
         c_path = os.path.join(base_dir, f)
         try:
-            res = run_ctest(c_path)
+            res = run_ctest(c_path, debug_log_assign=debug_log_assign)
             if res == 0:
                 passed += 1
             else:
@@ -112,22 +111,25 @@ def _main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--limit", type=int, default=None)
     arg_parser.add_argument("--no-summarize", dest="summarize", action="store_false")
+    arg_parser.add_argument("--debug-log-assign", action="store_true")
     arg_parser.add_argument("tests", nargs="*")
     arg_parser.set_defaults(summarize=True)
     args = arg_parser.parse_args()
     if args.tests:
         for test in args.tests:
-            test = _convert_user_test_name(test)
-            print(f"Running test: {test}")
-            res = run_ctest(test)
+            test_path = _convert_user_test_name(test)
+            print(f"Running test: {test_path}")
+            res = run_ctest(test_path, debug_log_assign=args.debug_log_assign)
             print(f"Result: {res}")
             assert res == 0
     else:
         print("Running ctestsuite...")
-        test_ctestsuite(summarize=args.summarize, limit=args.limit)
+        test_ctestsuite(summarize=args.summarize, limit=args.limit, debug_log_assign=args.debug_log_assign)
 
 
 def _convert_user_test_name(name: str) -> str:
+    if os.path.exists(name):
+        return name
     if name.startswith("/"):
         return name
     if name.startswith("0") and name.endswith(".c"):
