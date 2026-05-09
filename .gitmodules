@@ -1,0 +1,3 @@
+[submodule "c-testsuite"]
+	path = c-testsuite
+	url = git@github.com:c-testsuite/c-testsuite.git
