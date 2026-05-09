@@ -471,12 +471,13 @@ def findHelperFunc(f):
     return None
 
 
-def makeAstNodeCall(func, *args):
+def makeAstNodeCall(func, *args, **kwargs):
     if not isinstance(func, ast.AST):
         name = findHelperFunc(func)
         assert name is not None, str(func) + " unknown"
         func = getAstNodeAttrib("helpers", name)
-    return ast.Call(func=func, args=list(args), keywords=[], starargs=None, kwargs=None)
+    keywords = [ast.keyword(arg=k, value=v) for k, v in kwargs.items()]
+    return ast.Call(func=func, args=list(args), keywords=keywords, starargs=None, kwargs=None)
 
 
 def makeCastToVoidP(v):
@@ -546,6 +547,125 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         assert False, "bad type: " + str(objType)
 
 
+def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
+    """
+    Handle initialization of struct/array with curly braces { ... }.
+    argType is a list of (designators, type).
+    """
+    interpreter = funcEnv.interpreter
+    stateStruct = interpreter.globalScope.stateStruct
+    while isinstance(objType, CTypedef):
+        objType = objType.type
+
+    typeAst = getAstNodeForVarType(funcEnv, objType)
+    assert isinstance(argAst, ast.Tuple)
+    assert len(argAst.elts) == len(argType)
+
+    if isinstance(objType, (CStruct, CUnion)):
+        if not objType.body:
+            assert objType.name
+            if isinstance(objType, CStruct):
+                objType = interpreter.globalScope.stateStruct.structs[objType.name]
+            elif isinstance(objType, CUnion):
+                objType = interpreter.globalScope.stateStruct.unions[objType.name]
+
+        fields = []
+        for c in objType.body.contentlist:
+            if not isinstance(c, CVarDecl): continue
+            fields.append(c)
+
+        if isinstance(objType, CUnion):
+            # Only use the first field or the designated field
+            idx = 0
+            s_arg_ast = None
+            s_arg_type = None
+            if argType:
+                designators, s_arg_type = argType[-1] # last one wins
+                s_arg_ast = argAst.elts[-1]
+                if designators:
+                    # TODO: support multiple designators
+                    designator = designators[0]
+                    if isinstance(designator, str):
+                        for i, field in enumerate(fields):
+                            if field.name == designator:
+                                idx = i
+                                break
+                else:
+                    idx = 0
+            
+            if s_arg_ast is not None:
+                field = fields[idx]
+                _s_arg_ast = _makeVal(funcEnv, field.type, s_arg_ast, s_arg_type)
+                return makeAstNodeCall(typeAst, **{str(field.name): _s_arg_ast})
+            else:
+                return makeAstNodeCall(typeAst)
+
+        # CStruct
+        s_args_map = {} # field idx -> (ast, type)
+        cur_field_idx = 0
+        for i, (designators, s_arg_type) in enumerate(argType):
+            s_arg_ast = argAst.elts[i]
+            if designators:
+                # TODO: support multiple designators
+                designator = designators[0]
+                if isinstance(designator, str):
+                    found = False
+                    for idx, field in enumerate(fields):
+                        if field.name == designator:
+                            cur_field_idx = idx
+                            found = True
+                            break
+                    if not found:
+                        stateStruct.error("field %r not found in %r" % (designator, objType))
+                else:
+                    # [index] designator or similar
+                    stateStruct.error("invalid designator %r for struct" % designator)
+
+            s_args_map[cur_field_idx] = (s_arg_ast, s_arg_type)
+            cur_field_idx += 1
+
+        s_args_kwargs = {}
+        for idx, field in enumerate(fields):
+            if idx in s_args_map:
+                _s_arg_ast, _s_arg_type = s_args_map[idx]
+                _s_arg_ast = _makeVal(funcEnv, field.type, _s_arg_ast, _s_arg_type)
+                s_args_kwargs[str(field.name)] = _s_arg_ast
+        return makeAstNodeCall(typeAst, **s_args_kwargs)
+
+    elif isinstance(objType, CArrayType):
+        arrayLen = None
+        if objType.arrayLen:
+            arrayLen = getConstValue(stateStruct, objType.arrayLen)
+
+        s_args_map = {} # index -> (ast, type)
+        cur_idx = 0
+        for i, (designators, s_arg_type) in enumerate(argType):
+            s_arg_ast = argAst.elts[i]
+            if designators:
+                # TODO support [index]
+                pass
+            s_args_map[cur_idx] = (s_arg_ast, s_arg_type)
+            cur_idx += 1
+
+        if arrayLen is None:
+            arrayLen = max(s_args_map.keys()) + 1 if s_args_map else 0
+            objType.arrayLen = CNumber(arrayLen)
+            typeAst = ast.BinOp(left=getAstNodeForVarType(funcEnv, objType.arrayOf), op=ast.Mult(), right=ast.Num(n=arrayLen))
+
+        s_args = []
+        for idx in range(arrayLen):
+            if idx in s_args_map:
+                _s_arg_ast, _s_arg_type = s_args_map[idx]
+                _s_arg_ast = _makeVal(funcEnv, objType.arrayOf, _s_arg_ast, _s_arg_type)
+                s_args.append(_s_arg_ast)
+            else:
+                s_args.append(getAstNode_newTypeInstance(funcEnv, objType.arrayOf))
+        return makeAstNodeCall(typeAst, *s_args)
+
+    else:
+        assert False, "did not expect type %r for curly braces init" % objType
+
+
 def _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type):
     interpreter = funcEnv.interpreter
     stateStruct = interpreter.globalScope.stateStruct
@@ -555,38 +675,7 @@ def _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type):
         s_arg_type = s_arg_type.type
 
     if isinstance(s_arg_type, (tuple, list)):  # CCurlyArrayArgs
-        arrayLen = len(s_arg_type)
-        typeAst = getAstNodeForVarType(funcEnv, f_arg_type)
-        assert isinstance(s_arg_ast, ast.Tuple)
-        assert len(s_arg_ast.elts) == len(s_arg_type)
-        # There is a bit of inconsistency between basic types init
-        # (like c_int), which must get a value (int),
-        # and ctypes.Structure/ctypes.ARRAY, which for some field can either
-        # get a value (int) or a c_int. For pointers, it must get
-        # the var, not the value.
-        # This is mostly the same as for calling functions.
-        f_args = []
-        if isinstance(f_arg_type, (CStruct,CUnion)):
-            if not f_arg_type.body:
-                assert f_arg_type.name
-                if isinstance(f_arg_type, CStruct):
-                    f_arg_type = interpreter.globalScope.stateStruct.structs[f_arg_type.name]
-                elif isinstance(f_arg_type, CUnion):
-                    f_arg_type = interpreter.globalScope.stateStruct.unions[f_arg_type.name]
-            for c in f_arg_type.body.contentlist:
-                if not isinstance(c, CVarDecl): continue
-                f_args += [c.type]
-        elif isinstance(f_arg_type, CArrayType):
-            f_args += [f_arg_type.arrayOf] * arrayLen
-        else:
-            assert False, "did not expect type %r" % f_arg_type
-        assert len(s_arg_type) <= len(f_args)
-        # Somewhat like autoCastArgs():
-        s_args = []
-        for _f_arg_type, _s_arg_ast, _s_arg_type in zip(f_args, s_arg_ast.elts, s_arg_type):
-            _s_arg_ast = _makeVal(funcEnv, _f_arg_type, _s_arg_ast, _s_arg_type)
-            s_args += [_s_arg_ast]
-        return makeAstNodeCall(typeAst, *s_args)
+        return getAstNode_curlyArrayArgsInit(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
 
     f_arg_ctype = getCType(f_arg_type, stateStruct)
     if isinstance(s_arg_type, CArrayType) and not s_arg_type.arrayLen:
@@ -659,32 +748,7 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
         typeAst = getAstNodeForVarType(funcEnv, origObjType)
 
     if isinstance(argType, (tuple, list)):  # CCurlyArrayArgs
-        assert isinstance(argAst, ast.Tuple)
-        assert len(argAst.elts) == len(argType)
-        # There is a bit of inconsistency between basic types init
-        # (like c_int), which must get a value (int),
-        # and ctypes.Structure/ctypes.ARRAY, which for some field can either
-        # get a value (int) or a c_int. For pointers, it must get
-        # the var, not the value.
-        # This is mostly the same as for calling functions.
-        f_args = []
-        while isinstance(objType, CTypedef):
-            objType = objType.type
-        if isinstance(objType, CStruct):
-            for c in objType.body.contentlist:
-                if not isinstance(c, CVarDecl): continue
-                f_args += [c.type]
-        elif isinstance(objType, CArrayType):
-            f_args += [objType.arrayOf] * arrayLen
-        else:
-            assert False, "did not expect type %r" % objType
-        assert len(argType) <= len(f_args)
-        # Somewhat like autoCastArgs():
-        s_args = []
-        for f_arg_type, s_arg_ast, s_arg_type in zip(f_args, argAst.elts, argType):
-            s_arg_ast = _makeVal(funcEnv, f_arg_type, s_arg_ast, s_arg_type)
-            s_args += [s_arg_ast]
-        return makeAstNodeCall(typeAst, *s_args)
+        return getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType)
 
     if isinstance(objType, CArrayType) and isinstance(argType, CArrayType):
         return ast.Call(func=typeAst, args=[], keywords=[], starargs=argAst, kwargs=None)
@@ -1323,7 +1387,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
     elif isinstance(stmnt, CCurlyArrayArgs):
         elts = [astAndTypeForStatement(funcEnv, s) for s in stmnt.args]
         a = ast.Tuple(elts=tuple([e[0] for e in elts]), ctx=ast.Load())
-        return a, tuple([e[1] for e in elts])
+        # Return a list of (designators, type)
+        return a, [(getattr(s, "designators", []), e[1]) for s, e in zip(stmnt.args, elts)]
     else:
         assert False, "cannot handle " + str(stmnt)
 

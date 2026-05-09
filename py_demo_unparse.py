@@ -535,8 +535,6 @@ class Unparser:
             else: comma = True
             self.write("**")
             self.dispatch(t.kwargs)
-        if getattr(t, "keywords", None):
-            raise NotImplementedError
         self.write(")")
 
     def _Subscript(self, t):

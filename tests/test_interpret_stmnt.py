@@ -4672,5 +4672,57 @@ def test_interpret_integer_promotion_signed():
     assert res.value == 0
 
 
+def test_interpret_designated_init_struct():
+    code = """
+    struct S { int a; int b; };
+    int f() {
+        struct S s = { .b = 2, .a = 1 };
+        if (s.a != 1) return 1;
+        if (s.b != 2) return 2;
+        return 0;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 0
+
+
+def test_interpret_designated_init_union():
+    code = """
+    union U { int x; float y; };
+    int f() {
+        union U u = { .y = 1.0f };
+        if (u.y != 1.0f) return 1;
+        return 0;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 0
+
+
+def test_interpret_nested_struct_init():
+    code = """
+    struct S1 { int a; };
+    struct S2 { int a; int b; struct S1 s1; };
+    int f() {
+        struct S2 v = { 1, 2, { 3 } };
+        if (v.a != 1) return 1;
+        if (v.b != 2) return 2;
+        if (v.s1.a != 3) return 3;
+        return 0;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 0
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

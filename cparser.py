@@ -1872,6 +1872,7 @@ class _CBaseWithOptBody(object):
         self.body = None
         self.value = None
         self.parent = None
+        self.designators = []
         for k,v in kwargs.items():
             setattr(self, k, v)
 
@@ -3835,24 +3836,33 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
         elif isinstance(curCObj, CVarDecl) and token == COp("="):
             curCObj.body = CStatement(parent=curCObj)
         else:
-            # Handle C99 designated initializer syntax: .fieldname = value
-            if (isinstance(token, COp) and token.content == "."
+            # Handle C99 designated initializer syntax: .fieldname = value or [index] = value
+            if (isinstance(token, COp) and token.content in (".", "[")
                     and not curCObj.isDerived() and not curCObj):
-                # Consume .fieldname =
-                for _t in input_iter:
-                    if isinstance(_t, COp) and _t.content == "=":
+                while True:
+                    if isinstance(token, COp) and token.content == ".":
+                        token = next(input_iter)
+                        if not isinstance(token, CIdentifier):
+                            stateStruct.error("expected identifier after '.' in designated initializer")
+                            break
+                        curCObj.designators.append(token.content)
+                        token = next(input_iter)
+                    elif isinstance(token, COpeningBracket) and token.content == "[":
+                        indexStmt = CStatement(parent=curCObj)
+                        indexStmt._bracketlevel = list(token.brackets)
+                        indexStmt._cpre3_parse_brackets(stateStruct, token, input_iter)
+                        indexStmt.finalize(stateStruct)
+                        curCObj.designators.append(indexStmt)
+                        token = next(input_iter)
+                    
+                    if isinstance(token, COp) and token.content == "=":
                         break
-                # Consume the entire value expression until next , at same level or closing }
-                _hit_end = False
-                for _t in input_iter:
-                    if isinstance(_t, CClosingBracket) and _t.brackets == brackets:
-                        _hit_end = True
+                    if not (isinstance(token, COp) and token.content in (".", "[")):
+                        stateStruct.error("expected '=' or another designator, got " + str(token))
                         break
-                    elif _t == sepToken:
-                        break
-                if _hit_end:
-                    break  # closing bracket consumed; exit outer loop
-                continue  # separator consumed; next field follows
+                _make_statement(curCObj)
+                continue
+
             if not curCObj.isDerived():
                 _make_statement(curCObj)
             if isinstance(curCObj, CStatement):
