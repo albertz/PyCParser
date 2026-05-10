@@ -4166,12 +4166,7 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
             if not _isBracketLevelOk(parentCObj._bracketlevel, token.brackets):
                 stateStruct.error("cpre3 parse body: internal error: bracket level messed up with opening bracket: " + str(token.brackets) + " on level " + str(parentCObj._bracketlevel) + " in " + str(parentCObj))
             if isinstance(curCObj, CStatement):
-                if token.content == "{":
-                    cpre3_parse_body(stateStruct, curCObj, input_iter)
-                    curCObj.finalize(stateStruct)
-                    curCObj = _CBaseWithOptBody(parent=parentCObj)
-                else:
-                    curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
+                curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
             elif isinstance(curCObj.body, CStatement):
                 curCObj.body._cpre3_parse_brackets(stateStruct, token, input_iter)
             elif isinstance(curCObj, CCaseStatement):

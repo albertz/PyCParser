@@ -653,6 +653,41 @@ def test_interpret_init_struct():
     assert r.value == 2
 
 
+def test_interpret_init_global_struct_funcptr():
+    state = parse("""
+    int dummy = 42;
+    void* my_malloc(void* ctx, unsigned long size) { return &dummy; }
+    struct {
+        void* ctx;
+        void* (*malloc)(void* ctx, unsigned long size);
+    } my_alloc = { (void*)0, my_malloc };
+    int call_malloc(unsigned long size) {
+        return *(int*)my_alloc.malloc(my_alloc.ctx, size);
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    print("Run call_malloc:")
+    r = interpreter.runFunc("call_malloc", 10)
+    print("result:", r)
+    assert r.value == 42
+
+
+def test_interpret_compound_literal_struct():
+    state = parse("""
+    typedef struct { int x; } S;
+    int f() {
+        S s;
+        s = (S){ 42 };
+        return s.x;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert r.value == 42
+
+
 def test_interpret_init_struct_via_self():
     state = parse("""
     #include <assert.h>

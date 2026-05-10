@@ -163,7 +163,7 @@ class Wrapper:
             name="malloc"
         )
         state.funcs["realloc"] = CWrapValue(
-            lambda ps: self.interpreter._realloc(_ctype_ptr_get_value(ps[0]), ps[1].value),  # void*, size_t
+            lambda p, s: self.interpreter._realloc(_ctype_ptr_get_value(p), s.value),  # void*, size_t
             returnType=ctypes.c_void_p,
             name="realloc"
         )
