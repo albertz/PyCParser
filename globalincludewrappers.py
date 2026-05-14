@@ -95,9 +95,19 @@ class Wrapper:
         # this is needed.
         self.interpreter = None  # type: typing.Optional[interpreter.Interpreter]
 
+    def handle_errno_h(self, state):
+        import errno as _errno_mod
+        for name in dir(_errno_mod):
+            if name.startswith("E"):
+                state.macros[name] = Macro(rightside=str(getattr(_errno_mod, name)))
+        # errno is also exposed as a writable global int variable.
+        if "errno" not in state.vars:
+            state.vars["errno"] = CWrapValue(0, name="errno")
+
     def handle_limits_h(self, state):
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
-        state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1)))
+        state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1))
+        state.macros["INT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1))))
         state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
 
     def handle_stdio_h(self, state):
@@ -143,6 +153,10 @@ class Wrapper:
         state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
         state.macros["S_IFMT"] = Macro(rightside="0") # TODO
         state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
+
+    def handle_unistd_h(self, state):
+        """POSIX <unistd.h>: pulls in sys/time types since Python.h includes this."""
+        self.handle_sys_time_h(state)
 
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
@@ -214,11 +228,21 @@ class Wrapper:
         state.macros["va_arg"] = Macro(args=("list", "type"), rightside="((__va_arg(list, type())))")
         state.funcs["__va_arg"] = CWrapValue(__va_arg, name="__va_arg",
                                              returnType=None, getReturnType=__va_arg_getReturnType)
+        # va_copy(dst, src): copy a va_list.  In our interpreter va_list is a VarArgs object,
+        # so we just make dst point to a shallow copy of src.
+        def va_copy(dst, src):
+            assert isinstance(dst, Helpers.VarArgs)
+            assert isinstance(src, Helpers.VarArgs)
+            dst.args = list(src.args)
+            dst.idx = src.idx
+        state.funcs["va_copy"] = CWrapValue(va_copy, name="va_copy", returnType=CVoidType)
+        state.funcs["__builtin_va_copy"] = CWrapValue(va_copy, name="__builtin_va_copy",
+                                                      returnType=CVoidType)
     def handle_stdbool_h(self, state):
         state.macros["bool"] = Macro(rightside="int")
         state.macros["true"] = Macro(rightside="1")
         state.macros["false"] = Macro(rightside="0")
-    def handle_stddef_h(self, state): pass
+    def handle_stddef_h(self, state): pass  # offsetof is handled as a cparser builtin keyword
     def handle_math_h(self, state): pass
     def handle_string_h(self, state):
         wrapCFunc(state, "strlen", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p,))
@@ -240,6 +264,11 @@ class Wrapper:
         wrapCFunc(state, "memcmp", restype=ctypes.c_int, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t))
     def handle_time_h(self, state):
         state.typedefs["time_t"] = CTypedef(name="time_t", type=CBuiltinType(("int",)))
+        if "timespec" not in state.structs:
+            s = state.structs["timespec"] = CStruct(name="timespec")
+            s.body = CBody(parent=s)
+            CVarDecl(parent=s, name="tv_sec", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=s, name="tv_nsec", type=CBuiltinType(("long",))).finalize(state)
     def handle_ctype_h(self, state):
         wrapCFunc(state, "isalpha", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
@@ -330,10 +359,49 @@ class Wrapper:
         wrapCFunc(state, "setlocale", restype=ctypes.c_char_p, argtypes=(ctypes.c_int, ctypes.c_char_p))
     def handle_sys_types_h(self, state):
         pass  # dummy
+    def handle_sys_time_h(self, state):
+        """Provide struct timeval, struct timezone and gettimeofday."""
+        if "timeval" not in state.structs:
+            s = state.structs["timeval"] = CStruct(name="timeval")
+            s.body = CBody(parent=s)
+            CVarDecl(parent=s, name="tv_sec", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=s, name="tv_usec", type=CBuiltinType(("long",))).finalize(state)
+        if "timezone" not in state.structs:
+            s = state.structs["timezone"] = CStruct(name="timezone")
+            s.body = CBody(parent=s)
+        import time as _time
+        def _gettimeofday(tv_ptr, tz_ptr):
+            t = _time.time()
+            if tv_ptr and ctypes.cast(tv_ptr, ctypes.c_void_p).value:
+                tv = ctypes.cast(tv_ptr, ctypes.POINTER(ctypes.c_long * 2))
+                tv.contents[0] = int(t)
+                tv.contents[1] = int((t % 1) * 1_000_000)
+            return ctypes.c_int(0)
+        state.funcs["gettimeofday"] = CWrapValue(_gettimeofday, name="gettimeofday",
+                                                  returnType=CBuiltinType(("int",)))
     def handle_pthread_h(self, state):
         state.typedefs["pthread_key_t"] = CTypedef(name="pthread_key_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_cond_t"] = CTypedef(name="pthread_cond_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_mutex_t"] = CTypedef(name="pthread_mutex_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_mutexattr_t"] = CTypedef(name="pthread_mutexattr_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_condattr_t"] = CTypedef(name="pthread_condattr_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_t"] = CTypedef(name="pthread_t", type=CBuiltinType(("int",)))
+        # Stub pthread functions: all return 0 (success).  The interpreter does
+        # not actually run multiple threads so lock/unlock are no-ops.
+        def _pthread_stub(*args):
+            return ctypes.c_int(0)
+        for _fname in (
+            "pthread_mutex_init", "pthread_mutex_destroy",
+            "pthread_mutex_lock", "pthread_mutex_unlock",
+            "pthread_cond_init", "pthread_cond_destroy",
+            "pthread_cond_wait", "pthread_cond_signal",
+            "pthread_cond_broadcast", "pthread_cond_timedwait",
+            "pthread_key_create", "pthread_key_delete",
+            "pthread_setspecific", "pthread_getspecific",
+            "pthread_self", "pthread_equal",
+        ):
+            state.funcs[_fname] = CWrapValue(_pthread_stub, name=_fname,
+                                              returnType=CBuiltinType(("int",)))
     def handle_stdatomic_h(self, state):
         from .cparser import _CBaseWithOptBody
         parentObj = _CBaseWithOptBody()

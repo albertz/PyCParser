@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import ctypes
+import errno as _errno_mod
 import helpers_test
 from cparser import *
 from cparser.interpreter import Interpreter
@@ -197,6 +198,89 @@ def test_wcstod_available():
 
 
 # ---------------------------------------------------------------------------
+# stddef.h: offsetof
+# ---------------------------------------------------------------------------
+
+def test_offsetof_parses():
+    """offsetof(struct, member) must parse without errors."""
+    _parse("""
+    #include <stddef.h>
+    struct Foo { int a; int b; };
+    size_t f() { return offsetof(struct Foo, b); }
+    """)
+
+
+def test_offsetof_returns_size_t():
+    """offsetof must return a non-negative integer."""
+    r = _run("""
+    #include <stddef.h>
+    struct Foo { int a; int b; };
+    size_t f() { return offsetof(struct Foo, b); }
+    """)
+    assert r.value >= 0, "offsetof returned negative: %r" % r
+
+
+def test_offsetof_second_field_greater_than_first():
+    """offsetof of a later field must be >= offsetof of an earlier field."""
+    r = _run("""
+    #include <stddef.h>
+    struct Foo { int a; int b; };
+    int f() {
+        int off_a = (int)offsetof(struct Foo, a);
+        int off_b = (int)offsetof(struct Foo, b);
+        return off_b > off_a;
+    }
+    """)
+    assert r.value == 1, "offsetof(b) not > offsetof(a): %r" % r
+
+
+# ---------------------------------------------------------------------------
+# errno.h: errno constants
+# ---------------------------------------------------------------------------
+
+def test_erange_defined():
+    """ERANGE must be available after #include <errno.h>."""
+    r = _run("""
+    #include <errno.h>
+    int f() { return ERANGE; }
+    """)
+    assert r.value == _errno_mod.ERANGE, "ERANGE mismatch: %r" % r
+
+
+def test_etimedout_defined():
+    """ETIMEDOUT must be available after #include <errno.h>."""
+    r = _run("""
+    #include <errno.h>
+    int f() { return ETIMEDOUT; }
+    """)
+    assert r.value == _errno_mod.ETIMEDOUT, "ETIMEDOUT mismatch: %r" % r
+
+
+def test_eintr_defined():
+    """EINTR must be available after #include <errno.h>."""
+    r = _run("""
+    #include <errno.h>
+    int f() { return EINTR; }
+    """)
+    assert r.value == _errno_mod.EINTR, "EINTR mismatch: %r" % r
+
+
+# ---------------------------------------------------------------------------
+# limits.h: INT_MIN
+# ---------------------------------------------------------------------------
+
+def test_int_min_defined():
+    """INT_MIN must be available after #include <limits.h>."""
+    r = _run("""
+    #include <limits.h>
+    int f() { return INT_MIN; }
+    """)
+    import ctypes as _ct
+    expected = _ct.c_int(-1 << (8 * _ct.sizeof(_ct.c_int) - 1)).value
+    assert r.value == expected, "INT_MIN mismatch: %r" % r
+
+
+# ---------------------------------------------------------------------------
 # locale.h: LC_* macros and setlocale
 # ---------------------------------------------------------------------------
 
@@ -292,6 +376,87 @@ def test_stdbool_bool_as_type():
     }
     """)
     assert r.value == 1, "bool arithmetic returned %r" % r
+
+
+# ---------------------------------------------------------------------------
+# time.h: struct timespec
+# ---------------------------------------------------------------------------
+
+def test_timespec_parse():
+    """struct timespec should be parseable from time.h."""
+    _parse("""
+    #include <time.h>
+    void f() {
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 0;
+    }
+    """)
+
+
+# ---------------------------------------------------------------------------
+# sys/time.h: struct timeval / gettimeofday
+# ---------------------------------------------------------------------------
+
+def test_timeval_parse():
+    """struct timeval should be parseable from sys/time.h."""
+    _parse("""
+    #include <sys/time.h>
+    void f() {
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+    }
+    """)
+
+
+def test_gettimeofday_returns_zero():
+    """gettimeofday must parse and return 0 (success)."""
+    r = _run("""
+    #include <sys/time.h>
+    int f() {
+        struct timeval tv;
+        return gettimeofday(&tv, 0);
+    }
+    """)
+    assert r.value == 0, "gettimeofday returned %r" % r
+
+
+# ---------------------------------------------------------------------------
+# pthread.h: mutex/cond stubs
+# ---------------------------------------------------------------------------
+
+def test_pthread_mutex_stub():
+    """pthread_mutex_init/lock/unlock/destroy must return 0."""
+    r = _run("""
+    #include <pthread.h>
+    int f() {
+        pthread_mutex_t m;
+        int r = 0;
+        r += pthread_mutex_init(&m, 0);
+        r += pthread_mutex_lock(&m);
+        r += pthread_mutex_unlock(&m);
+        r += pthread_mutex_destroy(&m);
+        return r;
+    }
+    """)
+    assert r.value == 0, "pthread mutex stubs returned %r" % r
+
+
+def test_pthread_cond_stub():
+    """pthread_cond_init/signal/destroy must return 0."""
+    r = _run("""
+    #include <pthread.h>
+    int f() {
+        pthread_cond_t c;
+        int r = 0;
+        r += pthread_cond_init(&c, 0);
+        r += pthread_cond_signal(&c);
+        r += pthread_cond_destroy(&c);
+        return r;
+    }
+    """)
+    assert r.value == 0, "pthread cond stubs returned %r" % r
 
 
 if __name__ == "__main__":
