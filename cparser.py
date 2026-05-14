@@ -1617,6 +1617,9 @@ def cpre2_parse(stateStruct, input, brackets=None):
             elif state == 10: # number (no correct float handling, will be [number, op("."), number])
                 if c in NumberChars: laststr += c
                 elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
+                elif c in "+-" and laststr and laststr[-1] in "eE":
+                    # Scientific notation exponent sign: 1e-6, 1E+3, etc.
+                    laststr += c
                 else:
                     yield CNumber(cpre2_parse_number(stateStruct, laststr), laststr)
                     laststr = ""

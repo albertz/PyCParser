@@ -110,6 +110,17 @@ def test_number_scientific_notation_with_suffix():
         "expected a float CNumber, got: %r" % nums
 
 
+def test_number_scientific_notation_negative_exponent():
+    """1e-6 should parse as the float 1e-6 without errors."""
+    state = State()
+    state.autoSetupSystemMacros()
+    tokens = list(cpre2_parse(state, "double v = 1e-6;"))
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    nums = [t for t in tokens if isinstance(t, CNumber)]
+    assert any(isinstance(t.content, float) and abs(t.content - 1e-6) < 1e-15
+               for t in nums), "expected 1e-6 in tokens, got: %r" % nums
+
+
 def test_number_integer_with_UL_suffix():
     """42UL should parse as integer 42 without errors."""
     state = State()
