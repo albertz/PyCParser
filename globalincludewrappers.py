@@ -106,9 +106,17 @@ class Wrapper:
 
     def handle_limits_h(self, state):
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
+        state.macros["CHAR_MAX"] = Macro(rightside="127")
+        state.macros["CHAR_MIN"] = Macro(rightside="-128")
         state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1))
         state.macros["INT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1))))
+        state.macros["UINT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_uint) * 8) - 1))
+        state.macros["LONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1) - 1))
+        state.macros["LONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1))))
         state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
+        state.macros["LLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1) - 1))
+        state.macros["LLONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1))))
+        state.macros["ULLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulonglong) * 8) - 1))
 
     def handle_stdio_h(self, state):
         state.macros["NULL"] = Macro(rightside="0")
@@ -146,11 +154,31 @@ class Wrapper:
         wrapCFunc(state, "isatty", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "fileno", restype=ctypes.c_int, argtypes=(FileP,))
         wrapCFunc(state, "getc", restype=ctypes.c_int, argtypes=(FileP,))
-        wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int,FileP))
+        wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int, FileP))
+        wrapCFunc(state, "fseek", restype=ctypes.c_int, argtypes=(FileP, ctypes.c_long, ctypes.c_int))
+        wrapCFunc(state, "feof", restype=ctypes.c_int, argtypes=(FileP,))
+        wrapCFunc(state, "remove", restype=ctypes.c_int, argtypes=(ctypes.c_char_p,))
+        wrapCFunc(state, "rename", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
+        state.macros["SEEK_SET"] = Macro(rightside="0")
+        state.macros["SEEK_CUR"] = Macro(rightside="1")
+        state.macros["SEEK_END"] = Macro(rightside="2")
 
     def handle_unistd_h(self, state):
         """POSIX <unistd.h>: pulls in sys/time types since Python.h includes this."""
         self.handle_sys_time_h(state)
+        wrapCFunc(state, "write", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))
+        wrapCFunc(state, "read", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))
+        wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+        wrapCFunc(state, "dup", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+        wrapCFunc(state, "dup2", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_int))
+        wrapCFunc(state, "getcwd", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_size_t))
+        wrapCFunc(state, "getpid", restype=ctypes.c_int, argtypes=())
+        wrapCFunc(state, "lseek", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_long, ctypes.c_int))
+        state.funcs["_exit"] = CWrapValue(
+            lambda code: self.interpreter._exit(code.value),
+            returnType=CVoidType,
+            name="_exit"
+        )
 
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
@@ -276,6 +304,8 @@ class Wrapper:
     def handle_wctype_h(self, state): pass
     def handle_wchar_h(self, state):
         wchar_p = CPointerType(CStdIntType("wchar_t"))
+        wrapCFunc(state, "mbstowcs", restype=ctypes.c_size_t, argtypes=(wchar_p, ctypes.c_char_p, ctypes.c_size_t))
+        wrapCFunc(state, "wcstombs", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p, wchar_p, ctypes.c_size_t))
         wrapCFunc(state, "wcslen", restype=ctypes.c_size_t, argtypes=(wchar_p,))
         wrapCFunc(state, "wcscmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p))
         wrapCFunc(state, "wcsncmp", restype=ctypes.c_int, argtypes=(wchar_p, wchar_p, ctypes.c_size_t))
@@ -300,9 +330,21 @@ class Wrapper:
         state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType, name="assert")
     def handle_fcntl_h(self, state):
         state.macros["O_RDONLY"] = Macro(rightside="0x0000")
+        state.macros["O_WRONLY"] = Macro(rightside="0x0001")
+        state.macros["O_RDWR"] = Macro(rightside="0x0002")
+        state.macros["O_CREAT"] = Macro(rightside="0x0200")
+        state.macros["O_TRUNC"] = Macro(rightside="0x0400")
+        state.macros["O_APPEND"] = Macro(rightside="0x0008")
+        state.macros["O_NONBLOCK"] = Macro(rightside="0x0004")
+        state.macros["O_CLOEXEC"] = Macro(rightside="0x01000000")
+        # F_* command codes for fcntl()
+        state.macros["F_GETFD"] = Macro(rightside="1")
+        state.macros["F_SETFD"] = Macro(rightside="2")
+        state.macros["F_GETFL"] = Macro(rightside="3")
+        state.macros["F_SETFL"] = Macro(rightside="4")
+        state.macros["FD_CLOEXEC"] = Macro(rightside="1")
         wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
-        wrapCFunc(state, "read", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))  # normally <unistd.h>
-        wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_int,))  # normally <unistd.h>
+        wrapCFunc(state, "fcntl", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_int, ctypes.c_int))
         # TODO: these are on OSX. cross-platform? probably not...
         state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
         state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
@@ -333,9 +375,17 @@ class Wrapper:
             return 0  # place-holder for SIG_DFL
         state.funcs["signal"] = CWrapValue(signal, name="signal", returnType=state.typedefs["sig_t"])
         state.macros["SIGINT"] = Macro(rightside="2")
+        state.macros["SIGABRT"] = Macro(rightside="6")
+        state.macros["SIGFPE"] = Macro(rightside="8")
+        state.macros["SIGKILL"] = Macro(rightside="9")
+        state.macros["SIGSEGV"] = Macro(rightside="11")
+        state.macros["SIGTERM"] = Macro(rightside="15")
+        state.macros["SIGBUS"] = Macro(rightside="10")
+        state.macros["SIGILL"] = Macro(rightside="4")
         state.macros["SIG_DFL"] = Macro(rightside="((sig_t)0)")
         state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
         state.macros["SIG_ERR"] = Macro(rightside="((sig_t)-1)")
+        wrapCFunc(state, "raise", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
     def handle_locale_h(self, state):
         import locale as _locale
         struct_lconv = state.structs["lconv"] = CStruct(name="lconv") # TODO
