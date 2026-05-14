@@ -450,7 +450,9 @@ def getAstNodeForVarType(funcEnv, t):
             arrayLen = ast.Num(n=v)
         else:
             arrayLen, _ = astAndTypeForStatement(funcEnv, t.arrayLen)
-            arrayLen = makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), arrayLen)
+            # astAndTypeForStatement always yields a ctypes-wrapped instance,
+            # so we extract .value.
+            arrayLen = ast.Attribute(value=arrayLen, attr="value", ctx=ast.Load())
         return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
     elif isinstance(t, (CFuncPointerDecl, CFunc)):
         return makeAstNodeCall(

@@ -77,6 +77,24 @@ def test_getAstNodeForVarType_void_ptr():
     assert isinstance(ast_node, ast.Attribute)
     assert ast_node.attr == "c_void_p"
 
+def test_sizeof_computed_array_size():
+    """sizeof(char[N]) where N is a non-constant expression must work.
+    The Py_BUILD_ASSERT macro in CPython uses the pattern
+       sizeof(char [1 - 2*!(cond)])
+    which triggers this exact code path.
+    """
+    # sizeof(char[1 - 2*!(1==1)]) == sizeof(char[1]) == 1, so result is 0
+    state = parse("""
+    int f() {
+        return (int)(sizeof(char[1 - 2*!(1 == 1)]) - 1);
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert r.value == 0, "expected 0, got %r" % r
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())
