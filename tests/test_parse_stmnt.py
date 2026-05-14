@@ -50,6 +50,48 @@ def test_parse_var_decl_body():
     assert value.content == 42
 
 
+def test_parse_typedef_redefinition():
+    # Identical typedef redefinition is allowed in C11
+    parse("""
+    typedef int T;
+    typedef int T;
+    """)
+
+
+def test_parse_typedef_redefinition_2():
+    # Typedef redefinition using the typedef itself
+    parse("""
+    typedef int T;
+    typedef T T;
+    """)
+
+
+def test_parse_macro_redefinition():
+    # Identical macro redefinition is allowed in C
+    state = State()
+    parse_code("""
+    #define M 1
+    #define M 1
+    """, state)
+    if state._errors:
+        print("Errors:", state._errors)
+        assert False, "should not have errors"
+    assert "M" in state.macros
+    assert state.macros["M"].rightside.strip() == "1"
+
+
+def test_parse_macro_redefinition_2():
+    # Redefinition with identical rightside (string-wise or token-wise) should be allowed.
+    state = State()
+    parse_code("""
+    #define M(a) a + 1
+    #define M(a) a + 1
+    """, state)
+    if state._errors:
+        print("Errors:", state._errors)
+        assert False, "should not have errors"
+
+
 def test_parse_var_decl_ptr():
     state = parse("int* v;")
     assert "v" in state.vars

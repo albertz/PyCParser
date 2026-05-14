@@ -1145,12 +1145,14 @@ def cpreprocess_handle_def(stateStruct, arg):
         stateStruct.error("preprocessor define: '" + macroname + "' is not a valid macro name")
         return
 
+    macro = Macro(stateStruct, macroname, args, rightside)
     if macroname in stateStruct.macros:
+        if stateStruct.macros[macroname] == macro:
+            return stateStruct.macros[macroname]
         stateStruct.error("preprocessor define: '" + macroname + "' already defined." +
                           " previously defined at " + stateStruct.macros[macroname].defPos)
         # pass through to use new definition
 
-    macro = Macro(stateStruct, macroname, args, rightside)
     stateStruct.macros[macroname] = macro
     return macro
 
@@ -3563,7 +3565,10 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
                 elif token.content in stateStruct.StdIntTypes:
                     curCObj._type_tokens += [token.content]
                 elif token.content in stateStruct.typedefs:
-                    curCObj._type_tokens += [token.content]
+                    if curCObj._type_tokens and curCObj.name is None:
+                        curCObj.name = token.content
+                    else:
+                        curCObj._type_tokens += [token.content]
                 else:
                     if typeObj is not None and not typeObj._finalized and typeObj.name is None:
                         typeObj.name = token.content
