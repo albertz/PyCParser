@@ -508,6 +508,21 @@ def test_function_like_macro_expanded_with_parens():
     assert not state._errors, "Unexpected errors: %r" % state._errors
 
 
+def test_prototype_after_definition():
+    """A forward declaration (no body) after the full definition must not be an error.
+
+    This mirrors the CPython clinic pattern where clinic/foo.c.h contains a
+    prototype for a function that was already fully defined earlier in foo.c.
+    """
+    state = parse("""
+    static int my_func(int x) { return x + 1; }
+    static int my_func(int x);
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    assert "my_func" in state.funcs
+    assert state.funcs["my_func"].body is not None, "body should be the existing definition"
+
+
 def test_parse_library_collision():
     """Declaring a library function without a body should not crash or overwrite the wrapper."""
     state = parse("""

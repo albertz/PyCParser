@@ -2093,6 +2093,8 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                 # In C, it is an error if both have a body, but we don't strictly enforce it here yet
                 # (or we expect the earlier parsing to have caught it).
                 d[obj.name] = obj
+            elif not new_has_body and old_has_body:
+                pass  # Redundant prototype after definition (e.g. clinic-generated forward decl). Keep existing.
             elif allowPredec and not old_has_body:
                 # Both have no body. Prefer CWrapValue.
                 if isinstance(old_obj, CWrapValue):
