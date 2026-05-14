@@ -430,6 +430,7 @@ class Wrapper:
         state.typedefs["pthread_mutex_t"] = CTypedef(name="pthread_mutex_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_mutexattr_t"] = CTypedef(name="pthread_mutexattr_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_condattr_t"] = CTypedef(name="pthread_condattr_t", type=CBuiltinType(("int",)))
+        state.typedefs["pthread_attr_t"] = CTypedef(name="pthread_attr_t", type=CBuiltinType(("int",)))
         state.typedefs["pthread_t"] = CTypedef(name="pthread_t", type=CBuiltinType(("int",)))
         # Stub pthread functions: all return 0 (success).  The interpreter does
         # not actually run multiple threads so lock/unlock are no-ops.
@@ -437,13 +438,14 @@ class Wrapper:
             return ctypes.c_int(0)
         for _fname in (
             "pthread_mutex_init", "pthread_mutex_destroy",
-            "pthread_mutex_lock", "pthread_mutex_unlock",
+            "pthread_mutex_lock", "pthread_mutex_unlock", "pthread_mutex_trylock",
             "pthread_cond_init", "pthread_cond_destroy",
             "pthread_cond_wait", "pthread_cond_signal",
             "pthread_cond_broadcast", "pthread_cond_timedwait",
             "pthread_key_create", "pthread_key_delete",
             "pthread_setspecific", "pthread_getspecific",
             "pthread_self", "pthread_equal",
+            "pthread_create", "pthread_detach", "pthread_exit",
         ):
             state.funcs[_fname] = CWrapValue(_pthread_stub, name=_fname,
                                               returnType=CBuiltinType(("int",)))
