@@ -2586,7 +2586,7 @@ def getValueType(stateStruct, obj):
         return base_type.type  # return-type
     if isinstance(obj, CFunc):
         return obj
-    if isinstance(obj, CSizeofSymbol):
+    if isinstance(obj, (CSizeofSymbol, COffsetofSymbol)):
         return CFunc(type=CStdIntType("size_t"))
     if isinstance(obj, CStr):
         return CArrayType(arrayOf=CBuiltinType(("char",)), arrayLen=CNumber(len(obj.content) + 1))
@@ -2780,6 +2780,8 @@ def isIntType(t):
 
 class CSizeofSymbol: pass
 
+class COffsetofSymbol: pass
+
 
 class CCurlyArrayArgs(_CBaseWithOptBody):
     # args is a list of CStatement
@@ -2822,11 +2824,27 @@ class CStatement(_CBaseWithOptBody):
     def overtake(cls, obj):
         obj.__class__ = cls
         obj._initStatement()
+    def _is_offsetof_field_arg(self):
+        """Return True if this statement is the field-name (second) argument of an offsetof() call.
+
+        When finalize is called on the second argument, the first argument has already been
+        appended to p.args (the comma separator triggers finalize+append for the first arg
+        before processing continues), so len(p.args) >= 1 identifies the second-or-later arg.
+        """
+        p = getattr(self, "parent", None)
+        if not isinstance(p, CFuncCall):
+            return False
+        if not isinstance(getattr(p, "base", None), COffsetofSymbol):
+            return False
+        # The first arg has already been appended when we finalize the second arg
+        return len(p.args) >= 1
+
     def _handlePushedErrorForUnknown(self, stateStruct):
         if isinstance(self._leftexpr, CUnknownType):
             s = getattr(self, "_pushedErrorForUnknown", False)
             if not s:
-                stateStruct.error("statement parsing: identifier %r unknown in state %i in handle pushed error" % (self._leftexpr.name, self._state))
+                if not self._is_offsetof_field_arg():
+                    stateStruct.error("statement parsing: identifier %r unknown in state %i in handle pushed error" % (self._leftexpr.name, self._state))
                 self._pushedErrorForUnknown = True
     def finalize(self, stateStruct, addToContent=None):
         self._handlePushedErrorForUnknown(stateStruct)
@@ -2864,6 +2882,8 @@ class CStatement(_CBaseWithOptBody):
                         return
                     elif token.content == "sizeof":
                         obj = CSizeofSymbol()
+                    elif token.content == "offsetof":
+                        obj = COffsetofSymbol()
                     elif token.content in stateStruct.Attribs:
                         self.attribs += [token.content]
                         return
@@ -2934,6 +2954,8 @@ class CStatement(_CBaseWithOptBody):
             if isinstance(token, CIdentifier):
                 if token.content == "sizeof":
                     obj = CSizeofSymbol()
+                elif token.content == "offsetof":
+                    obj = COffsetofSymbol()
                 else:
                     obj = findObjInNamespace(stateStruct, self.parent, token.content)
                     if obj is None:

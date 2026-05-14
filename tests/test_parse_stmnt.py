@@ -488,6 +488,26 @@ def test_parse_precedence_address_of_sub():
     assert stmt._rightexpr._op.content == "&"
 
 
+def test_function_like_macro_not_expanded_without_parens():
+    """A function-like macro must NOT be expanded when used as a plain identifier (without '(')."""
+    # In C, #define foo(x) ... is only expanded when followed by '('.
+    # Using 'foo' as a variable name must not trigger expansion.
+    state = parse("""
+    #define myfunc(a) ((a) + 1)
+    int f(int myfunc) { return myfunc; }
+    """)
+    assert not state._errors, "Unexpected errors: %r" % state._errors
+
+
+def test_function_like_macro_expanded_with_parens():
+    """A function-like macro MUST be expanded when followed by '('."""
+    state = parse("""
+    #define double_val(x) ((x) * 2)
+    int f() { return double_val(3); }
+    """)
+    assert not state._errors, "Unexpected errors: %r" % state._errors
+
+
 def test_parse_library_collision():
     """Declaring a library function without a body should not crash or overwrite the wrapper."""
     state = parse("""
@@ -497,6 +517,57 @@ def test_parse_library_collision():
     """, withGlobalIncludeWrappers=True)
     assert "strlen" in state.funcs
     assert isinstance(state.funcs["strlen"], CWrapValue)
+
+
+# ---------------------------------------------------------------------------
+# Ternary operator in variable assignment (listobject.c pattern)
+# ---------------------------------------------------------------------------
+
+def test_ternary_in_var_assignment():
+    """v = cond ? a : b must parse without 'goto-label' errors."""
+    parse("""
+    void f() {
+        int n = 0;
+        int v = n == 0 ? 0 : n;
+    }
+    """)
+
+
+def test_ternary_with_negated_paren_middle():
+    """cond ? -(expr) : expr must parse without 'goto-label' errors (Py_ABS pattern)."""
+    parse("""
+    void f() {
+        int x, y;
+        if (x && ((y) < 0 ? -(y) : (y)) > 1) {}
+    }
+    """)
+
+
+def test_ternary_macro_abs():
+    """Py_ABS(Py_SIZE(key)) in an if-condition must parse without errors."""
+    parse("""
+    #define Py_ABS(x) ((x) < 0 ? -(x) : (x))
+    #define Py_SIZE(ob) (((ob)->ob_size))
+    typedef struct { int ob_size; } PyVarObject;
+    void f() {
+        PyVarObject *key;
+        int x;
+        if (x && Py_ABS(Py_SIZE(key)) > 1) {}
+    }
+    """)
+
+
+def test_ternary_cast_in_var_assignment():
+    """v = cond ? 0 : (cast)expr must parse without errors (listobject.c pattern)."""
+    parse("""
+    typedef int sdigit;
+    typedef struct { int ob_digit[1]; int ob_size; } PyLongObject;
+    #define Py_SIZE(ob) (((PyLongObject*)(ob))->ob_size)
+    void f() {
+        PyLongObject *vl;
+        int v0 = Py_SIZE(vl) == 0 ? 0 : (sdigit)vl->ob_digit[0];
+    }
+    """)
 
 
 if __name__ == "__main__":

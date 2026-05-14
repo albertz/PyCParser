@@ -1353,6 +1353,27 @@ def astAndTypeForStatement(funcEnv, stmnt):
             s = ctypes.sizeof(t)
             sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), ast.Num(s))
             return sizeAst, CStdIntType("size_t")
+        elif isinstance(stmnt.base, COffsetofSymbol):
+            assert len(stmnt.args) == 2
+            struct_t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
+            assert struct_t is not None, "offsetof: unknown struct type %r" % stmnt.args[0]
+            # Second arg is an identifier (field name) stored as a CStatement wrapping a CUnknownType.
+            field_arg = stmnt.args[1]
+            if isinstance(field_arg, CStatement):
+                field_node = field_arg._leftexpr
+            else:
+                field_node = field_arg
+            if hasattr(field_node, "name"):
+                field_name = field_node.name
+            elif hasattr(field_node, "content"):
+                field_name = field_node.content
+            else:
+                field_name = str(field_node)
+            field_desc = getattr(struct_t, field_name, None)
+            assert field_desc is not None, "offsetof: field %r not found in %r" % (field_name, struct_t)
+            offset = field_desc.offset
+            offsetAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), ast.Num(offset))
+            return offsetAst, CStdIntType("size_t")
         elif isinstance(stmnt.base, CWrapValue):
             # expect that we just wrapped a callable function/object
             a = ast.Call(keywords=[], starargs=None, kwargs=None)
