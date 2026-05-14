@@ -1545,9 +1545,13 @@ class _Pre2ParseStream:
     def finalize_char(self, laststr):
         # Finalize buffer_stack here. Here because the macro_blacklist needs to be active
         # in the code above.
-        if not laststr and len(self.buffer_stack) > 1 and not self.buffer_stack[-1][1]:
-            self.macro_blacklist.remove(self.buffer_stack[-1][0])
-            self.buffer_stack = self.buffer_stack[:-1]
+        # Pop ALL exhausted macro buffers in one go.  When macros expand to other macros
+        # (e.g. SST → SIZEOF_SIZE_T → 8) both inner buffers may become empty before the
+        # next token is started, so a single-level pop is not enough.
+        if not laststr:
+            while len(self.buffer_stack) > 1 and not self.buffer_stack[-1][1]:
+                self.macro_blacklist.remove(self.buffer_stack[-1][0])
+                self.buffer_stack = self.buffer_stack[:-1]
 
 
 def cpre2_parse(stateStruct, input, brackets=None):
@@ -1697,17 +1701,24 @@ def cpre2_parse(stateStruct, input, brackets=None):
                         breakLoop = False
             elif state == 31: # after macro identifier
                 if c in SpaceChars + "\n": pass
-                elif c in OpeningBrackets:
-                    if c != "(":
-                        state = 32
+                elif c == "(":
+                    macroargs = _cpre2_parse_args(stateStruct, input, brackets=brackets + [c])
+                    state = 32
+                    # break loop, we consumed this char
+                else:
+                    # C standard: a function-like macro (one with args) is only expanded
+                    # when the name is followed by '('.  If we see any other character,
+                    # do NOT expand — emit the name as a plain identifier.
+                    if stateStruct.macros[macroname].args is not None:
+                        yield CIdentifier(macroname)
+                        macroname = ""
+                        macroargs = []
+                        state = 0
                         breakLoop = False
                     else:
-                        macroargs = _cpre2_parse_args(stateStruct, input, brackets=brackets + [c])
+                        # Object-like macro: expand immediately (no args needed).
                         state = 32
-                        # break loop, we consumed this char
-                else:
-                    state = 32
-                    breakLoop = False
+                        breakLoop = False
             elif state == 32: # finalize macro
                 try:
                     resolved = stateStruct.macros[macroname].eval(stateStruct, macroargs)
@@ -3120,7 +3131,7 @@ class CStatement(_CBaseWithOptBody):
 
         if self._state in (8,9): # right-to-left chain
             self._rightexpr._cpre3_parse_brackets(stateStruct, openingBracketToken, input_iter)
-            if self._rightexpr._state == 5:
+            if self._rightexpr._state in (5,7,9):
                 self._state = 9
             return
 

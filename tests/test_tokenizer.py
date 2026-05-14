@@ -134,5 +134,26 @@ def test_func_identifier_token():
         "expected one CFuncName token for __func__, got: %r" % tokens
 
 
+# ---------------------------------------------------------------------------
+# Macro appearing multiple times in the same expression (anti-recursion blacklist)
+# ---------------------------------------------------------------------------
+
+def test_macro_used_twice_in_same_expression():
+    """A macro appearing twice in the same expression must be expanded both times.
+
+    When a macro like SST expands to another macro (SIZEOF_SIZE_T → 8),
+    the anti-recursion blacklist must be cleared once the first expansion is
+    done, so the second occurrence is expanded correctly.
+    """
+    state = State()
+    state.autoSetupSystemMacros()
+    state.macros["SIZEOF_SIZE_T"] = cparser.Macro(rightside="8")
+    state.macros["SST"] = cparser.Macro(rightside="SIZEOF_SIZE_T")
+    tokens = list(cpre2_parse(state, "f(SST-1, SST-1)"))
+    nums = [t for t in tokens if isinstance(t, CNumber)]
+    assert len([n for n in nums if n.content == 8]) == 2, \
+        "expected two '8' tokens (one per SST), got: %r" % nums
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())
