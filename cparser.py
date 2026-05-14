@@ -1845,7 +1845,7 @@ def make_type_from_typetokens(stateStruct, curCObj, type_tokens):
     elif type_tokens == [".", ".", "."]:
         t = CVariadicArgsType()
     else:
-        stateStruct.error("type tokens not handled: %s" % type_tokens)
+        stateStruct.error("make_type_from_typetokens: type tokens not handled: %s. curCObj: %s" % (type_tokens, curCObj))
         t = None
     return t
 
@@ -2029,7 +2029,7 @@ class CTypedef(_CBaseWithOptBody):
         _CBaseWithOptBody.finalize(self, stateStruct)
 
         if self.type is None:
-            stateStruct.error("finalize typedef " + str(self) + ": type is unknown")
+            stateStruct.error("finalize typedef " + str(self) + ": type is unknown. type tokens: " + str(self._type_tokens))
             return
         if self.name is None:
             stateStruct.error("finalize typedef " + str(self) + ": name is unset")
@@ -2058,7 +2058,7 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
         _CBaseWithOptBody.finalize(self, stateStruct, addToContent)
 
         if self.type is None:
-            stateStruct.error("finalize " + str(self) + ": type is unknown")
+            stateStruct.error("finalize " + str(self) + ": type is unknown. type tokens: " + str(self._type_tokens))
         # Name can be unset. It depends where this is declared.
     def getCType(self, stateStruct, workaroundPtrReturn=True, wrap=True):
         if workaroundPtrReturn and isinstance(self.type, CPointerType):
