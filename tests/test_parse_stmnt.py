@@ -627,5 +627,62 @@ def test_ternary_cast_in_var_assignment():
     """)
 
 
+def test_compound_literal_in_braceless_if_body():
+    """Compound literal (Type){.field=val} in a brace-less if/while body must parse
+    correctly.  Previously the '{' was mistakenly consumed as the start of a new
+    block instead of being passed to the pending cast expression.
+    Pattern: _Py_INIT_ERR(msg) in CPython's pylifecycle.c.
+    """
+    state = parse("""
+    struct _PyInitError { const char *prefix; const char *msg; int user_err; };
+    typedef struct _PyInitError _PyInitError;
+    #define _Py_INIT_GET_FUNC() __func__
+    #define _Py_INIT_ERR(MSG) \
+        (_PyInitError){.prefix = _Py_INIT_GET_FUNC(), .msg = (MSG), .user_err = 0}
+
+    int some_check();
+    _PyInitError f() {
+        if (some_check())
+            return _Py_INIT_ERR("something failed");
+        _PyInitError ok = (_PyInitError){.prefix = 0, .msg = 0, .user_err = 0};
+        return ok;
+    }
+    """)
+    from cparser.cparser import CCurlyArrayArgs, CReturnStatement
+    func = state.funcs['f']
+
+    # The first statement in f's body is an if with a single return.
+    if_stmt = func.body.contentlist[0]
+    ret = if_stmt.body  # direct CReturnStatement (brace-less body)
+    assert isinstance(ret, CReturnStatement), \
+        "Expected CReturnStatement, got %r" % type(ret).__name__
+
+    # The returned expression should be a compound literal (CFuncCall with CCurlyArrayArgs).
+    def find_curly(obj, depth=0):
+        if depth > 10:
+            return None
+        if isinstance(obj, CCurlyArrayArgs):
+            return obj
+        for attr in ('_leftexpr', '_rightexpr', 'args'):
+            v = getattr(obj, attr, None)
+            if isinstance(v, list):
+                for item in v:
+                    r = find_curly(item, depth + 1)
+                    if r is not None:
+                        return r
+            elif v is not None and hasattr(v, '__dict__'):
+                r = find_curly(v, depth + 1)
+                if r is not None:
+                    return r
+        return None
+
+    curly = find_curly(ret.body)
+    assert curly is not None, "CCurlyArrayArgs not found in return expression"
+    assert len(curly.args) == 3, "Expected 3 designated initializers, got %d" % len(curly.args)
+    designator_names = [getattr(a, 'designators', [None])[0] for a in curly.args]
+    assert designator_names == ['prefix', 'msg', 'user_err'], \
+        "Wrong designators: %r" % designator_names
+
+
 if __name__ == "__main__":
     main(globals())

@@ -3924,7 +3924,8 @@ def cpre3_parse_single_next_statement(stateStruct, parentCObj, input_iter):
     curCObj = None
     for token in input_iter:
         if isinstance(token, COpeningBracket):
-            if token.content == "{":
+            if token.content == "{" and curCObj is None:
+                # No pending statement yet: '{' starts a block body.
                 parentCObj._bracketlevel = list(token.brackets)
                 cpre3_parse_body(stateStruct, parentCObj, input_iter)
                 return
