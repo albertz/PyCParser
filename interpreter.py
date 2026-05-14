@@ -206,7 +206,7 @@ class GlobalsWrapper:
 
     def __getattr__(self, name):
         decl = self.globalScope.findIdentifier(name)
-        if decl is None: raise KeyError
+        if decl is None: raise AttributeError(name)
         if isinstance(decl, CVarDecl):
             v = self.globalScope.getVar(name)
         elif isinstance(decl, CWrapValue):
@@ -411,7 +411,7 @@ def getAstNodeForVarType(funcEnv, t):
         assert stdtype is not None
         return getAstNodeForCTypesBasicType(State.StdIntTypes[stdtype])
     elif isinstance(t, CPointerType):
-        if t.pointerOf == CBuiltinType(("void",)):
+        if isinstance(t.pointerOf, CBuiltinType) and t.pointerOf.builtinType == ("void",):
             return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
         a = getAstNodeAttrib("ctypes", "POINTER")
         return makeAstNodeCall(a, getAstNodeForVarType(funcEnv, t.pointerOf))
@@ -446,8 +446,11 @@ def getAstNodeForVarType(funcEnv, t):
     elif isinstance(t, CArrayType):
         arrayOf = getAstNodeForVarType(funcEnv, t.arrayOf)
         v = getConstValue(interpreter.globalScope.stateStruct, t.arrayLen)
-        assert isinstance(v, (int,long))
-        arrayLen = ast.Num(n=v)
+        if isinstance(v, (int, long)):
+            arrayLen = ast.Num(n=v)
+        else:
+            arrayLen, _ = astAndTypeForStatement(funcEnv, t.arrayLen)
+            arrayLen = makeAstNodeCall(ast.Name(id="int", ctx=ast.Load()), arrayLen)
         return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
     elif isinstance(t, (CFuncPointerDecl, CFunc)):
         return makeAstNodeCall(
@@ -465,7 +468,7 @@ def getAstNodeForVarType(funcEnv, t):
     else:
         try: return getAstNodeForCTypesBasicType(t)
         except DidNotFindCTypesBasicType: pass
-    assert False, "cannot handle " + str(t)
+    assert False, "getAstNodeForVarType cannot handle " + str(t)
 
 
 def findHelperFunc(f):
@@ -1417,7 +1420,7 @@ def astAndTypeForStatement(funcEnv, stmnt):
             return a, pType.type
     elif isinstance(stmnt, CArrayIndexRef):
         aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
-        if isinstance(aType, (CPointerType, CArrayType)):
+        if isinstance(aType, (CPointerType, CArrayType)) and not isType(stmnt.base):
             assert len(stmnt.args) == 1
             # kind of a hack: create equivalent ptr arithmetic expression
             ptrStmnt = CStatement()
@@ -1428,16 +1431,12 @@ def astAndTypeForStatement(funcEnv, stmnt):
             derefStmnt._op = COp("*")
             derefStmnt._rightexpr = ptrStmnt
             return astAndTypeForCStatement(funcEnv, derefStmnt)
-        #elif isinstance(aType, CArrayType):
-        #	assert len(stmnt.args) == 1
-        #	indexAst, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
-        #	return getAstNodeArrayIndex(aAst, indexAst), aType.arrayOf
+        elif isType(aType):
+            assert len(stmnt.args) == 1
+            resType = CArrayType(arrayOf=aType, arrayLen=stmnt.args[0])
+            return getAstNodeForVarType(funcEnv, resType), resType
         else:
             assert False, "invalid array access to type %r" % aType
-        # the following code may be useful
-        #bAst, bType = astAndTypeForStatement(funcEnv, stmnt.args[0])
-        #bValueAst = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, bAst, bType)
-        #return getAstNodeArrayIndex(aAst, bValueAst), aType.pointerOf
     elif isinstance(stmnt, CWrapValue):
         v = getAstForWrapValue(funcEnv.globalScope.interpreter, stmnt)
         # Keep in sync with getAstNode_valueFromObj().
@@ -1447,6 +1446,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
         a = ast.Tuple(elts=tuple([e[0] for e in elts]), ctx=ast.Load())
         # Return a list of (designators, type)
         return a, [(getattr(s, "designators", []), e[1]) for s, e in zip(stmnt.args, elts)]
+    elif isinstance(stmnt, (CType, CTypedef)):
+        return getAstNodeForVarType(funcEnv, stmnt), stmnt
     else:
         assert False, "cannot handle " + str(stmnt)
 

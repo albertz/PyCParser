@@ -459,5 +459,61 @@ def test_pthread_cond_stub():
     assert r.value == 0, "pthread cond stubs returned %r" % r
 
 
+# ---------------------------------------------------------------------------
+# locale.h: setlocale
+# ---------------------------------------------------------------------------
+
+def test_setlocale():
+    """setlocale should be available and work."""
+    r = _run("""
+    #include <locale.h>
+    int f() {
+        char* loc = setlocale(LC_ALL, "");
+        return loc != 0;
+    }
+    """)
+    assert r.value == 1, "setlocale returned NULL"
+
+
+# ---------------------------------------------------------------------------
+# sys/stat.h: stat, fstat, macros
+# ---------------------------------------------------------------------------
+
+def test_sys_stat():
+    """sys/stat.h should provide struct stat and macros."""
+    _parse("""
+    #include <sys/stat.h>
+    void f() {
+        struct stat st;
+        st.st_mode = 0;
+        int isreg = S_ISREG(st.st_mode);
+        int isdir = S_ISDIR(st.st_mode);
+        stat("test", &st);
+        fstat(0, &st);
+    }
+    """)
+
+
+# ---------------------------------------------------------------------------
+# sys/types.h
+# ---------------------------------------------------------------------------
+
+def test_sys_types():
+    """sys/types.h should provide common typedefs."""
+    _parse("""
+    #include <sys/types.h>
+    void f() {
+        dev_t dev;
+        ino_t ino;
+        mode_t mode;
+        nlink_t nlink;
+        uid_t uid;
+        gid_t gid;
+        off_t off;
+        pid_t pid;
+    }
+    """)
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())

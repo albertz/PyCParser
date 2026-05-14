@@ -147,12 +147,6 @@ class Wrapper:
         wrapCFunc(state, "fileno", restype=ctypes.c_int, argtypes=(FileP,))
         wrapCFunc(state, "getc", restype=ctypes.c_int, argtypes=(FileP,))
         wrapCFunc(state, "ungetc", restype=ctypes.c_int, argtypes=(ctypes.c_int,FileP))
-        struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
-        struct_stat.body = CBody(parent=struct_stat)
-        CVarDecl(parent=struct_stat, name="st_mode", type=ctypes.c_int).finalize(state)
-        state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
-        state.macros["S_IFMT"] = Macro(rightside="0") # TODO
-        state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
 
     def handle_unistd_h(self, state):
         """POSIX <unistd.h>: pulls in sys/time types since Python.h includes this."""
@@ -356,9 +350,60 @@ class Wrapper:
         state.macros["LC_NUMERIC"] = Macro(rightside=str(_locale.LC_NUMERIC))
         state.macros["LC_TIME"] = Macro(rightside=str(_locale.LC_TIME))
         state.macros["LC_MESSAGES"] = Macro(rightside=str(getattr(_locale, "LC_MESSAGES", 6)))
-        wrapCFunc(state, "setlocale", restype=ctypes.c_char_p, argtypes=(ctypes.c_int, ctypes.c_char_p))
+
+        def _setlocale(category, locale):
+            # category is c_int, locale is c_char_p
+            cat = category.value
+            if isinstance(locale, (ctypes.c_int, ctypes.c_long, ctypes.c_longlong)):
+                loc_ptr = locale.value
+            else:
+                loc_ptr = ctypes.cast(locale, ctypes.c_void_p).value
+            if not loc_ptr:
+                loc = None
+            else:
+                loc = ctypes.cast(loc_ptr, ctypes.c_char_p).value
+            if loc is not None and not isinstance(loc, str): loc = loc.decode("utf8")
+            res = _locale.setlocale(cat, loc)
+            return self.interpreter._make_string(res)
+        state.funcs["setlocale"] = CWrapValue(_setlocale, name="setlocale", returnType=CPointerType(CBuiltinType(("char",))))
+
+    def handle_sys_stat_h(self, state):
+        self.handle_sys_types_h(state)
+        struct_stat = state.structs.get("stat")
+        if not struct_stat:
+            struct_stat = state.structs["stat"] = CStruct(name="stat") # TODO
+            struct_stat.body = CBody(parent=struct_stat)
+            CVarDecl(parent=struct_stat, name="st_dev", type=state.typedefs["dev_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_ino", type=state.typedefs["ino_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_mode", type=state.typedefs["mode_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_nlink", type=state.typedefs["nlink_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_uid", type=state.typedefs["uid_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_gid", type=state.typedefs["gid_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_rdev", type=state.typedefs["dev_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_size", type=state.typedefs["off_t"]).finalize(state)
+            # ... add more if needed
+        state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
+        state.funcs["stat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="stat") # TODO
+        state.macros["S_IFMT"] = Macro(rightside="0") # TODO
+        state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
+        state.macros["S_IFREG"] = Macro(rightside="0") # TODO
+        state.macros["S_ISDIR"] = Macro(args=("m",), rightside="(((m) & 0) == 0)") # TODO
+        state.macros["S_ISREG"] = Macro(args=("m",), rightside="(((m) & 0) == 0)") # TODO
+
     def handle_sys_types_h(self, state):
-        pass  # dummy
+        """Provide basic POSIX scalar typedefs from <sys/types.h>."""
+        for _name, _ctype_name in [
+            ("dev_t", ("unsigned", "long")),
+            ("ino_t", ("unsigned", "long")),
+            ("mode_t", ("unsigned", "int")),
+            ("nlink_t", ("unsigned", "long")),
+            ("uid_t", ("unsigned", "int")),
+            ("gid_t", ("unsigned", "int")),
+            ("off_t", ("long",)),
+            ("pid_t", ("int",)),
+        ]:
+            if _name not in state.typedefs:
+                state.typedefs[_name] = CTypedef(name=_name, type=CBuiltinType(_ctype_name))
     def handle_sys_time_h(self, state):
         """Provide struct timeval, struct timezone and gettimeofday."""
         if "timeval" not in state.structs:
