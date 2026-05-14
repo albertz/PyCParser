@@ -2984,6 +2984,14 @@ class CStatement(_CBaseWithOptBody):
             elif token == COp("->"):
                 self._state = 22
                 self._rightexpr = CPtrAccessRef(parent=self, base=self._rightexpr)
+            elif isinstance(token, COp) and token.content in OpPostfixFuncs:
+                # Postfix ++/-- on the right-hand expression, e.g. a + b++ or a = a++.
+                # Mirror the analogous handling in state 5 for the left-hand expression.
+                subStatement = CStatement(parent=self)
+                subStatement._leftexpr = self._rightexpr
+                subStatement._op = token
+                self._rightexpr = subStatement
+                # Stay in state 7 so the next token continues the outer expression.
             elif isinstance(token, COp):
                 if token == COp(":"):
                     if self._op != COp("?"):

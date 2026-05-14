@@ -144,6 +144,33 @@ def test_parse_aritmethic_1b():
     parse("if((0) * 0.5 == (0)) {}")
 
 
+def test_parse_postfix_incr_in_binary_expr():
+    """Postfix ++ on the right-hand operand of a binary op must parse correctly."""
+    from cparser.cparser import CStatement, CVarDecl, COp
+    state = parse("int f() { int a = 5; a = a++ + ++a; return a; }")
+    assert not state._errors, state._errors
+    func = state.funcs["f"]
+    # The assignment statement is contentlist[1]: a = a++ + ++a
+    assign = func.body.contentlist[1]
+    assert isinstance(assign, CStatement)
+    assert assign._op == COp("="), "outer op should be ="
+
+    rhs = assign._rightexpr  # should be (a++) + (++a)
+    assert isinstance(rhs, CStatement)
+    assert rhs._op == COp("+"), "rhs outer op should be + (binary add), got %r" % rhs._op
+
+    lhs_of_add = rhs._leftexpr  # should be a++ (postfix)
+    assert isinstance(lhs_of_add, CStatement)
+    assert lhs_of_add._op == COp("++"), "left of + should be postfix a++, got %r" % lhs_of_add._op
+    assert lhs_of_add._rightexpr is None, "postfix ++ must have no rightexpr"
+    assert isinstance(lhs_of_add._leftexpr, CVarDecl)
+
+    rhs_of_add = rhs._rightexpr  # should be ++a (prefix)
+    assert isinstance(rhs_of_add, CStatement)
+    assert rhs_of_add._leftexpr is None, "prefix ++ must have no leftexpr"
+    assert rhs_of_add._op == COp("++"), "right of + should be prefix ++a, got %r" % rhs_of_add._op
+
+
 def test_parse_macro_2a():
     state = cparser.State()
     preprocessed = state.preprocess_source_code("""

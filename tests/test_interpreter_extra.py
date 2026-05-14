@@ -5,6 +5,7 @@ from cparser.cparser import State, CArrayType, CBuiltinType, CStatement, CIdenti
 import ctypes
 import ast
 
+
 def test_globals_wrapper_getattr_attribute_error():
     state = parse("int x = 42;")
     interpreter = Interpreter()
@@ -24,6 +25,7 @@ def test_globals_wrapper_getattr_attribute_error():
     else:
         assert False, "Should have raised AttributeError"
 
+
 def test_interpret_type_array_index():
     # Tests CArrayIndexRef with type base, e.g. sizeof(int[10])
     state = parse("int f() { return sizeof(int[10]); }")
@@ -31,6 +33,7 @@ def test_interpret_type_array_index():
     interpreter.register(state)
     r = interpreter.runFunc("f")
     assert r.value == 10 * ctypes.sizeof(ctypes.c_int)
+
 
 def test_interpret_type_array_index_2():
     # Tests CArrayIndexRef with type base in a cast
@@ -43,6 +46,7 @@ def test_interpret_type_array_index_2():
     interpreter.register(state)
     r = interpreter.runFunc("f")
     assert r.value == 10 * ctypes.sizeof(ctypes.c_int)
+
 
 def test_getAstNodeForVarType_non_const_array():
     state = State()
@@ -66,6 +70,7 @@ def test_getAstNodeForVarType_non_const_array():
     assert isinstance(ast_node, ast.BinOp)
     assert isinstance(ast_node.op, ast.Mult)
 
+
 def test_getAstNodeForVarType_void_ptr():
     state = State()
     interp = Interpreter()
@@ -76,6 +81,7 @@ def test_getAstNodeForVarType_void_ptr():
     ast_node = getAstNodeForVarType(funcEnv, t)
     assert isinstance(ast_node, ast.Attribute)
     assert ast_node.attr == "c_void_p"
+
 
 def test_sizeof_computed_array_size():
     """sizeof(char[N]) where N is a non-constant expression must work.
@@ -93,6 +99,17 @@ def test_sizeof_computed_array_size():
     interpreter.register(state)
     r = interpreter.runFunc("f")
     assert r.value == 0, "expected 0, got %r" % r
+
+
+def test_ub_incr():
+    # https://gynvael.coldwind.pl/?id=372
+    state = parse("""
+    int f() { int a = 5; a = a++ + ++a; return a; }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert r.value in (11, 12, 13)
 
 
 if __name__ == "__main__":
