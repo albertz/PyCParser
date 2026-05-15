@@ -780,5 +780,38 @@ def test_for_init_pointer_decl():
     assert not state._errors, "unexpected errors: %r" % state._errors
 
 
+def test_preprocessor_if_wide_char_literal():
+    """#if with a wide-char literal (L'x') must not produce 'not expected' errors.
+
+    CPython's osdefs.h defines SEP as L'/' or L'\\\\', and pathconfig.c uses
+    `#if SEP == L'/'`.  Before the fix, the preprocessor evaluator saw 'L' as
+    an identifier token and then '\\'' as an unexpected character.
+    """
+    state = parse("""
+    #define SEP L'/'
+    #if SEP == L'/'
+    int on_unix = 1;
+    #else
+    int on_unix = 0;
+    #endif
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    assert "on_unix" in state.vars
+
+
+def test_preprocessor_if_char_literal_comparison():
+    """#if with regular char literals in comparisons must evaluate correctly."""
+    state = parse("""
+    #define MYCHAR '/'
+    #if MYCHAR == '/'
+    int is_slash = 1;
+    #else
+    int is_slash = 0;
+    #endif
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    assert "is_slash" in state.vars
+
+
 if __name__ == "__main__":
     main(globals())

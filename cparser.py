@@ -873,7 +873,11 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
                         stateStruct.error("preprocessor: '\"' not expected")
                         return
                 elif c == "'":
-                    if laststr == "":
+                    if laststr in ("", "L", "u", "U"):
+                        # Accept bare or wide/unicode-prefixed char literals:
+                        # L'x', u'x', U'x' — the prefix has no effect on the
+                        # integer value in a preprocessor #if context.
+                        laststr = ""
                         state = 22
                     else:
                         stateStruct.error("preprocessor: \"'\" not expected")
@@ -1107,7 +1111,10 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
                 if c == "\\": state = 23
                 elif c == "'":
                     state = 0
-                    neweval = laststr
+                    # Convert single-character content to its code point so that
+                    # comparisons like `SEP == '\\'` or `SEP == L'/'` work
+                    # correctly (comparing integers, not strings).
+                    neweval = ord(laststr) if len(laststr) == 1 else laststr
                     laststr = ""
                     if prefixOp is not None:
                         neweval = prefixOp(neweval)
