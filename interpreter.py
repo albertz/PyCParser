@@ -1023,6 +1023,8 @@ class Helpers:
         if isinstance(a, ctypes._Pointer):
             return ctypes.cast(a, a.__class__)
         if isinstance(a, ctypes.Array):
+            if len(a) == 0:
+                return ctypes.cast(a, ctypes.POINTER(a._type_))
             return ctypes.pointer(a[0])  # should keep _b_base_
             # This would not:
             # return ctypes.cast(a, ctypes.POINTER(a._type_))
@@ -1360,23 +1362,23 @@ def astAndTypeForStatement(funcEnv, stmnt):
             return sizeAst, CStdIntType("size_t")
         elif isinstance(stmnt.base, COffsetofSymbol):
             assert len(stmnt.args) == 2
-            struct_t = getCType(stmnt.args[0], funcEnv.globalScope.stateStruct)
-            assert struct_t is not None, "offsetof: unknown struct type %r" % stmnt.args[0]
-            # Second arg is an identifier (field name) stored as a CStatement wrapping a CUnknownType.
-            field_arg = stmnt.args[1]
-            if isinstance(field_arg, CStatement):
-                field_node = field_arg._leftexpr
-            else:
-                field_node = field_arg
-            if hasattr(field_node, "name"):
-                field_name = field_node.name
-            elif hasattr(field_node, "content"):
-                field_name = field_node.content
-            else:
-                field_name = str(field_node)
-            field_desc = getattr(struct_t, field_name, None)
-            assert field_desc is not None, "offsetof: field %r not found in %r" % (field_name, struct_t)
-            offset = field_desc.offset
+            base = stmnt.args[0]
+            if isinstance(base, CStatement):
+                assert base.isCType(), "offsetof: unknown struct type %r" % stmnt.args[0]
+                base = base.asType()
+            offset = 0
+            for field_name in _offsetofFieldChain(stmnt.args[1]):
+                while isinstance(base, CTypedef):
+                    base = base.type
+                assert isinstance(base, (CStruct, CUnion)), "offsetof: %r is not a struct/union" % base
+                struct_t = getCType(base, funcEnv.globalScope.stateStruct)
+                assert struct_t is not None, "offsetof: unknown struct type %r" % base
+                field_desc = getattr(struct_t, field_name, None)
+                assert field_desc is not None, "offsetof: field %r not found in %r" % (field_name, struct_t)
+                offset += field_desc.offset
+                sub = base.findAttrib(funcEnv.globalScope.stateStruct, field_name)
+                assert isinstance(sub, CVarDecl), "offsetof: field %r not found in %r" % (field_name, base)
+                base = sub.type
             offsetAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), ast.Num(offset))
             return offsetAst, CStdIntType("size_t")
         elif isinstance(stmnt.base, CWrapValue):
@@ -1395,6 +1397,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
                 aType = stmnt.base.asType()
             else:
                 aType = stmnt.base
+            if isinstance(resolveTypedef(aType), CFuncPointerDecl) and len(stmnt.args) == 1:
+                stmnt.args = [_stripFuncPtrCastArtifact(stmnt.args[0])]
             args = [astAndTypeForStatement(funcEnv, a) for a in stmnt.args]
             if len(args) == 0:
                 return getAstNode_newTypeInstance(funcEnv, aType), aType
@@ -1570,11 +1574,38 @@ def _resolveOffsetOf(stateStruct, stmnt):
         base = sub.type
     return offset
 
+def _offsetofFieldChain(field_node):
+    field_node = _resolveSingleStatement(field_node)
+    chain = []
+    while isinstance(field_node, CAttribAccessRef):
+        chain = [field_node.name] + chain
+        field_node = _resolveSingleStatement(field_node.base)
+    if hasattr(field_node, "name"):
+        chain = [field_node.name] + chain
+    elif hasattr(field_node, "content"):
+        chain = [field_node.content] + chain
+    else:
+        chain = [str(field_node)] + chain
+    return chain
+
 def makeFuncPtrValue(argAst, argType):
     assert isinstance(argType, CWrapFuncType)
     v = getAstNode_newTypeInstance(argType.funcEnv, CBuiltinType(("void", "*")), argAst, argType)
     astValue = getAstNodeAttrib(v, "value")
     return ast.BoolOp(op=ast.Or(), values=[astValue, ast.Num(0)])
+
+def _stripFuncPtrCastArtifact(stmnt):
+    """Unwrap parser artifacts from casts such as ``(wrapperfunc)(void(*)(void))f``."""
+    if isinstance(stmnt, CStatement):
+        stripped = _stripFuncPtrCastArtifact(stmnt._leftexpr)
+        if stripped is not stmnt._leftexpr:
+            s = CStatement()
+            s._leftexpr = stripped
+            return s
+        return stmnt
+    if isinstance(stmnt, CFuncCall) and len(stmnt.args) == 1:
+        return _stripFuncPtrCastArtifact(stmnt.args[0])
+    return stmnt
 
 def usePyRefForType(varType):
     t = resolveTypedef(varType)

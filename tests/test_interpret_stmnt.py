@@ -953,6 +953,24 @@ def test_interpreter_func_ptr():
     assert r.value == 42
 
 
+def test_interpret_nested_function_pointer_cast():
+    """Nested function-pointer casts should still initialize callable pointers."""
+    state = parse("""
+    typedef int PyObject;
+    typedef PyObject *(*wrapperfunc)(PyObject *, PyObject *, void *);
+    PyObject *wrap_call(PyObject *a, PyObject *b, void *c) { return 0; }
+    wrapperfunc x = (wrapperfunc)(void(*)(void))wrap_call;
+    int f() {
+        return x != 0;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 1
+
+
 def test_interpreter_func_ptr_return_ptr():
     state = parse("""
     typedef int* (*F) ();
@@ -1924,6 +1942,52 @@ def test_interpret_strlen_plus1():
     print("result:", r)
     assert isinstance(r, ctypes.c_size_t)
     assert r.value == 4
+
+
+def test_interpret_hex_escape_in_char_literal():
+    """\\xNN hex escape in a char literal must produce the correct character value."""
+    state = parse("""
+    int f() {
+        char c = '\x41';
+        return (int)c;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 0x41  # 'A'
+
+
+def test_interpret_hex_escape_in_string_literal():
+    """\\xNN escape sequences in a string literal must be resolved at parse time."""
+    state = parse("""
+    #include <string.h>
+    int f() {
+        const char *s = "\x41\x42\x43";
+        return (int)strlen(s);
+    }
+    """, withGlobalIncludeWrappers=True)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 3
+
+
+def test_interpret_octal_escape_in_char_literal():
+    """\\N single-digit octal escape in a char literal must produce the correct value."""
+    state = parse("""
+    int f() {
+        char c = '\7';
+        return (int)c;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 7
 
 
 def test_interpret_atoi():
