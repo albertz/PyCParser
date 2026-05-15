@@ -191,6 +191,16 @@ def escape_cstr(s):
     return s.replace('"', '\\"')
 
 
+def escape_cchar(c):
+    """Escape a single character for safe use inside a C char literal '...'."""
+    assert len(c) == 1
+    if c == "'":
+        return "\\'"
+    if c == "\\":
+        return "\\\\"
+    return c
+
+
 def parse_macro_def_rightside(stateStruct, argnames, input):
     assert input is not None
     if stateStruct is None:
@@ -1473,11 +1483,8 @@ class CChar(_CBase):
         _CBase.__init__(self, content, rawstr, **kwargs)
     def __repr__(self): return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
     def asCCode(self, indent=""):
-        if isinstance(self.content, str):
-            return indent + "'" + escape_cstr(self.content) + "'"
-        else:
-            assert isinstance(self.content, int)
-            return indent + "'" + escape_cstr(chr(self.content)) + "'"
+        assert isinstance(self.content, int)
+        return indent + "'" + escape_cchar(chr(self.content)) + "'"
 
 
 class CNumber(_CBase):

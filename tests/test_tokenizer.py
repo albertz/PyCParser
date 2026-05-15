@@ -186,5 +186,54 @@ def test_macro_used_twice_in_same_expression():
         "expected two '8' tokens (one per SST), got: %r" % nums
 
 
+def test_char_literal_ascode_single_quote():
+    """CChar containing a single-quote must round-trip through asCCode."""
+    state = State()
+    state.autoSetupSystemMacros()
+    # '\'' is the C char literal for the single-quote character (ASCII 39).
+    tokens = list(cpre2_parse(state, r"char c = '\''"))
+    chars = [t for t in tokens if isinstance(t, CChar)]
+    assert len(chars) == 1, "expected one CChar token, got: %r" % tokens
+    assert_equal(chars[0].content, ord("'"))
+    # Round-trip: asCCode() must produce valid C that re-tokenises to the same value.
+    roundtrip = list(cpre2_parse(state, chars[0].asCCode()))
+    rt_chars = [t for t in roundtrip if isinstance(t, CChar)]
+    assert len(rt_chars) == 1, "asCCode round-trip gave: %r" % roundtrip
+    assert_equal(rt_chars[0].content, ord("'"))
+
+
+def test_char_literal_ascode_backslash():
+    """CChar containing a backslash must round-trip through asCCode."""
+    state = State()
+    state.autoSetupSystemMacros()
+    tokens = list(cpre2_parse(state, r"char c = '\\'"))
+    chars = [t for t in tokens if isinstance(t, CChar)]
+    assert len(chars) == 1, "expected one CChar token, got: %r" % tokens
+    assert_equal(chars[0].content, ord("\\"))
+    roundtrip = list(cpre2_parse(state, chars[0].asCCode()))
+    rt_chars = [t for t in roundtrip if isinstance(t, CChar)]
+    assert len(rt_chars) == 1, "asCCode round-trip gave: %r" % roundtrip
+    assert_equal(rt_chars[0].content, ord("\\"))
+
+
+def test_macro_expansion_with_char_literal_arg():
+    """A macro called with a '\\'' or '\\\\' arg must expand and re-tokenise correctly.
+
+    Before the fix, CChar.asCCode() produced bare ''' for a single-quote arg,
+    which the tokeniser read as an empty char literal followed by a stray quote.
+    """
+    state = State()
+    state.autoSetupSystemMacros()
+    state.macros["IDENTITY"] = cparser.Macro(args=("x",), rightside="(x)")
+    for raw_arg, expected_ord in [(r"'\''", ord("'")), (r"'\\'", ord("\\"))]:
+        # The trailing ';' gives cpre2_parse the lookahead character it needs to
+        # trigger macro finalisation (state 32) before end-of-input.
+        tokens = list(cpre2_parse(state, "IDENTITY(%s);" % raw_arg))
+        chars = [t for t in tokens if isinstance(t, CChar)]
+        assert len(chars) == 1, \
+            "IDENTITY(%s) expanded to %r, expected one CChar" % (raw_arg, tokens)
+        assert_equal(chars[0].content, expected_ord)
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())

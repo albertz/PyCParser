@@ -711,5 +711,23 @@ def test_compound_literal_in_braceless_if_body():
         "Wrong designators: %r" % designator_names
 
 
+def test_macro_char_literal_arg_single_quote():
+    """A macro invoked with '\\'' must parse without error.
+
+    Before fixing CChar.asCCode(), '\\'\\'' was serialised back to ''' after
+    macro-argument collection, causing the re-tokeniser to read the next ''' in
+    the source as the closing delimiter of an empty char literal.
+    """
+    parse(r"""
+    #define WRITE_CHAR(ch) do { int x = (ch); } while(0)
+    void f(int c) {
+        switch (c) {
+            case '\\': WRITE_CHAR('\\'); break;
+            case '\'': WRITE_CHAR('\''); break;
+        }
+    }
+    """)
+
+
 if __name__ == "__main__":
     main(globals())
