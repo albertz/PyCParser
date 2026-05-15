@@ -4918,5 +4918,26 @@ def test_interpret_debug_log_assign_local():
     assert res.value == 42
 
 
+def test_interpret_typedef_anonymous_union():
+    """typedef union { ... } Name; must not hit assert t.name is not None."""
+    code = """
+    typedef union {
+        int i;
+        long l;
+    } MyUnion;
+
+    int f() {
+        MyUnion u;
+        u.i = 42;
+        return u.i;
+    }
+    """
+    state = parse(code)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 42
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

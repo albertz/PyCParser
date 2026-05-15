@@ -441,7 +441,12 @@ def getAstNodeForVarType(funcEnv, t):
             return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
         if (CUnion, t.name) in funcEnv.localTypeNames:
             return ast.Name(id=funcEnv.localTypeNames[(CUnion, t.name)], ctx=ast.Load())
-        assert t.name is not None
+        if t.name is None:
+            # This is an anonymous union. E.g. like in:
+            # `typedef union { int x; long y; } MyUnion;`
+            # Wrap it via CWrapValue (same as anonymous struct handling).
+            v = getAstForWrapValue(interpreter, CWrapValue(getCType(t, interpreter.globalScope.stateStruct)))
+            return getAstNodeAttrib(v, "value")
         return getAstNodeAttrib("unions", t.name)
     elif isinstance(t, CArrayType):
         arrayOf = getAstNodeForVarType(funcEnv, t.arrayOf)
