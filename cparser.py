@@ -2293,7 +2293,14 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
                     # C flexible array member. It contributes no size to the
                     # struct header but its address is the start of trailing
                     # allocation bytes.
-                    t = getCType(c.type.arrayOf, stateStruct) * 0
+                    inner = getCType(c.type.arrayOf, stateStruct)
+                    # ctypes converts (c_char * N) fields to Python bytes objects when
+                    # accessed through a structure, which loses the struct-backed address
+                    # needed for pointer arithmetic. Use c_ubyte instead so the field
+                    # is returned as a ctypes Array with the correct in-struct address.
+                    if inner is ctypes.c_char:
+                        inner = ctypes.c_ubyte
+                    t = inner * 0
                 else:
                     t = getCType(c.type, stateStruct)
             finally:
@@ -2353,10 +2360,41 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
     return ctype
 
 
+def _resolveForwardDecl(obj, dictName, stateStruct):
+    """If *obj* is a forward declaration (body=None), try to find the real definition
+    in *stateStruct*.  Returns the resolved object (or *obj* unchanged if none found).
+    Also caches the result on *obj* so repeated lookups are O(1).
+    """
+    if obj.body is not None:
+        return obj
+    if not obj.name:
+        return obj
+    # Search the global (and parent-scope) structs/unions dict for a definition
+    # with the same name that has a body.
+    real = getattr(stateStruct, dictName, {}).get(obj.name)
+    if real is not None and real.body is not None:
+        return real
+    # Also walk up through parent scopes (nested struct definitions).
+    p = obj.parent
+    while p:
+        if hasattr(p, "body") and isinstance(p.body, CBody):
+            real = getattr(p.body, dictName, {}).get(obj.name)
+            if real is not None and real.body is not None:
+                return real
+        p = getattr(p, "parent", None)
+    return obj
+
+
 class CStruct(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
     def getCType(self, stateStruct):
-        return _getCTypeStruct(ctypes.Structure, self, stateStruct)
+        obj = _resolveForwardDecl(self, "structs", stateStruct)
+        result = _getCTypeStruct(ctypes.Structure, obj, stateStruct)
+        if obj is not self and not hasattr(self, "_ctype"):
+            # Cache the resolved ctype on the forward-declaration object too,
+            # so that future getCType calls on it are fast (O(1)).
+            self._ctype = result
+        return result
     def asCCode(self, indent=""):
         s = indent + "struct " + self.name
         if self.body is None: return s
@@ -2366,7 +2404,11 @@ class CStruct(_CBaseWithOptBody):
 class CUnion(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="unions", **kwargs)
     def getCType(self, stateStruct):
-        return _getCTypeStruct(ctypes.Union, self, stateStruct)
+        obj = _resolveForwardDecl(self, "unions", stateStruct)
+        result = _getCTypeStruct(ctypes.Union, obj, stateStruct)
+        if obj is not self and not hasattr(self, "_ctype"):
+            self._ctype = result
+        return result
     def asCCode(self, indent=""):
         s = indent + "union " + self.name
         if self.body is None: return s

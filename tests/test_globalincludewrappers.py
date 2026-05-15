@@ -534,5 +534,62 @@ def test_sys_types():
     """)
 
 
+# ---------------------------------------------------------------------------
+# stdint.h: exact-width integer type sizes
+# ---------------------------------------------------------------------------
+
+def test_int8_t_is_one_byte():
+    """int8_t must be exactly 1 byte wide, not 4 (old heuristic bug)."""
+    r = _run("""
+    #include <stdint.h>
+    int f() { return (int)sizeof(int8_t); }
+    """)
+    assert r.value == 1, "sizeof(int8_t) expected 1, got %r" % r
+
+
+def test_int16_t_is_two_bytes():
+    """int16_t must be exactly 2 bytes wide."""
+    r = _run("""
+    #include <stdint.h>
+    int f() { return (int)sizeof(int16_t); }
+    """)
+    assert r.value == 2, "sizeof(int16_t) expected 2, got %r" % r
+
+
+def test_uint8_t_is_one_byte():
+    """uint8_t must be exactly 1 byte wide."""
+    r = _run("""
+    #include <stdint.h>
+    int f() { return (int)sizeof(uint8_t); }
+    """)
+    assert r.value == 1, "sizeof(uint8_t) expected 1, got %r" % r
+
+
+def test_uint16_t_is_two_bytes():
+    """uint16_t must be exactly 2 bytes wide."""
+    r = _run("""
+    #include <stdint.h>
+    int f() { return (int)sizeof(uint16_t); }
+    """)
+    assert r.value == 2, "sizeof(uint16_t) expected 2, got %r" % r
+
+
+def test_int8_t_pointer_arithmetic():
+    """Pointer arithmetic on int8_t* must advance by 1 byte, not 4."""
+    r = _run("""
+    #include <stdint.h>
+    int f() {
+        int8_t arr[4];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        int8_t *p = arr;
+        return (int)(*(p + 2));
+    }
+    """)
+    assert r.value == 30, "int8_t pointer arithmetic: expected 30, got %r" % r
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())

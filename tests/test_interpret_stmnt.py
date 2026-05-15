@@ -4970,5 +4970,70 @@ def test_interpret_interior_pointer_range_lookup():
     assert res.value == 1
 
 
+def test_struct_forward_decl_resolved():
+    """getCType on a forward-declared struct must resolve to the full definition.
+    Bug: typedef struct _foo Foo; before the full struct _foo { ... }; definition
+    left the typedef's CStruct object with body=None, causing a fallback to void*.
+    """
+    state = parse("""
+    typedef struct _point Point;
+    struct _point { int x; int y; };
+    int f() {
+        Point p;
+        p.x = 3;
+        p.y = 4;
+        return p.x + p.y;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 7, "forward decl resolve: expected 7, got %r" % res
+
+
+def test_struct_forward_decl_size():
+    """sizeof a typedef-ed forward-declared struct must match actual struct size."""
+    state = parse("""
+    typedef struct _pair Pair;
+    struct _pair { int a; int b; };
+    int f() { return (int)sizeof(Pair); }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    import ctypes as _ct
+    res = interp.runFunc("f")
+    assert res.value == 2 * _ct.sizeof(_ct.c_int), (
+        "sizeof(Pair) expected %d, got %r" % (2 * _ct.sizeof(_ct.c_int), res))
+
+
+def test_flexible_array_member_address():
+    """A struct with a flexible array member char arr[] must expose arr as a
+    byte-addressable array (not a Python bytes object).  Reading arr[0] through
+    pointer arithmetic must return the correct value written into it.
+    Bug: c_char * 0 fields in ctypes structs convert to bytes, losing the
+    struct-backed address; fix uses c_ubyte * 0 instead.
+    """
+    state = parse("""
+    #include <stdlib.h>
+    struct Buf { int len; char data[]; };
+    int f() {
+        struct Buf *b = (struct Buf *)malloc(sizeof(struct Buf) + 4);
+        b->len = 4;
+        /* write via char pointer arithmetic past the header */
+        char *p = (char *)b + sizeof(struct Buf);
+        p[0] = 42;
+        p[1] = 43;
+        /* read back through the flexible array field */
+        int v = (unsigned char)b->data[0];
+        free(b);
+        return v;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 42, "flexible array member read: expected 42, got %r" % res
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

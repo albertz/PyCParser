@@ -329,6 +329,35 @@ class Wrapper:
         wrapCFunc(state, "wcsftime", restype=ctypes.c_size_t, argtypes=(wchar_p, ctypes.c_size_t, wchar_p, ctypes.c_void_p))
     def handle_stdint_h(self, state):
         """Provide standard integer types from <stdint.h>."""
+        # Map each ctypes type to the CBuiltinType tuple that best matches its
+        # actual byte-width.  The old heuristic only distinguished "int" (≤4 B)
+        # from "long" (8 B), so int8_t / int16_t / uint8_t / uint16_t were all
+        # silently promoted to 4-byte types, corrupting pointer arithmetic that
+        # multiplies by sizeof(element_type).
+        def _builtin_for(name, ctype):
+            size = ctypes.sizeof(ctype)
+            if name.startswith("u"):
+                if size == 1:
+                    return ("unsigned", "char")
+                elif size == 2:
+                    return ("unsigned", "short")
+                elif size == 4:
+                    return ("unsigned", "int")
+                elif size == ctypes.sizeof(ctypes.c_ulong):
+                    return ("unsigned", "long")
+                else:
+                    return ("unsigned", "long", "long")
+            else:
+                if size == 1:
+                    return ("char",)   # c_byte = signed 1-byte int
+                elif size == 2:
+                    return ("short",)
+                elif size == 4:
+                    return ("int",)
+                elif size == ctypes.sizeof(ctypes.c_long):
+                    return ("long",)
+                else:
+                    return ("long", "long")
         for _name, _ctype in [
             ("int8_t", ctypes.c_int8),
             ("int16_t", ctypes.c_int16),
@@ -344,12 +373,7 @@ class Wrapper:
             ("uintmax_t", ctypes.c_uint64),
         ]:
             if _name not in state.typedefs:
-                _bits = ctypes.sizeof(_ctype) * 8
-                if _name.startswith("u"):
-                    _builtin = ("unsigned", "long") if ctypes.sizeof(_ctype) == ctypes.sizeof(ctypes.c_ulong) else ("unsigned", "int")
-                else:
-                    _builtin = ("long",) if ctypes.sizeof(_ctype) == ctypes.sizeof(ctypes.c_long) else ("int",)
-                state.typedefs[_name] = CTypedef(name=_name, type=CBuiltinType(_builtin))
+                state.typedefs[_name] = CTypedef(name=_name, type=CBuiltinType(_builtin_for(_name, _ctype)))
 
     def handle_inttypes_h(self, state):
         self.handle_stdint_h(state)

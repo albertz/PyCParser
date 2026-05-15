@@ -1158,6 +1158,13 @@ class Helpers:
     def checkedFuncPtrCall(self, f, *args):
         if _ctype_ptr_get_value(f) == 0:
             raise Exception("checkedFuncPtrCall: tried to call NULL ptr")
+        # Normalize args: wrap plain Python ints/None as c_void_p so that
+        # ctypes.cast() inside the callee doesn't receive a non-ctypes object.
+        def _normalize_arg(arg):
+            if arg is None or isinstance(arg, int):
+                return ctypes.c_void_p(arg or 0)
+            return arg
+        args = tuple(_normalize_arg(a) for a in args)
         for arg in args:
             # We might need to store some pointers to local vars here.
             if isinstance(arg, (ctypes.c_void_p, ctypes._Pointer)):
