@@ -2030,6 +2030,9 @@ class _CBaseWithOptBody(object):
             return tuple([self._copy(v, parent=parent) for v in value])
         elif isinstance(value, dict):
             return {k: self._copy(v, parent=parent) for (k, v) in value.items()}
+        elif isinstance(value, (CSizeofSymbol, COffsetofSymbol)):
+            # These are simple marker sentinels with no attributes; a fresh instance suffices.
+            return value.__class__()
         elif isinstance(value, (_CBase, _CBaseWithOptBody, CType, CBody)):
             new = value.__class__.__new__(value.__class__)
             for k, v in vars(value).items():
@@ -2760,7 +2763,10 @@ def getCommonValueType(stateStruct, t1, t2):
         t2_name = base_wrap(t2.name)
         BuiltinWraps = {"size_t": ("unsigned", "long"),
                         "ptrdiff_t": ("long",),
-                        "intptr_t": ("long",)}
+                        "intptr_t": ("long",),
+                        "uintptr_t": ("unsigned", "long"),
+                        "intmax_t": ("long", "long"),
+                        "uintmax_t": ("unsigned", "long", "long")}
         if t1_name in BuiltinWraps:
             t1 = CBuiltinType(BuiltinWraps[t1_name])
             return getCommonValueType(stateStruct, t1, t2)
