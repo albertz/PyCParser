@@ -900,6 +900,32 @@ def test_interpreter_num_cast():
     assert r.value == ord('A')
 
 
+def test_interpret_flexible_array_member():
+    """A trailing unsized array in a struct is inline trailing storage."""
+    state = parse("""
+    #include <stdlib.h>
+    #include <string.h>
+    typedef struct {
+        int n;
+        char data[];
+    } Flex;
+    int f() {
+        Flex *p = (Flex *)malloc(sizeof(Flex) + 4);
+        p->n = 7;
+        memset(&p->data[0], 0, 4);
+        p->data[0] = 3;
+        int r = p->n + p->data[0];
+        free(p);
+        return r;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert isinstance(r, ctypes.c_int)
+    assert r.value == 10
+
+
 def test_interpreter_func_ptr():
     state = parse("""
     typedef int (*F) ();

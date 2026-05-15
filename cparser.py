@@ -2272,7 +2272,13 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
             if not isinstance(c, CVarDecl): continue
             try:
                 obj._construct_struct_attrib = c.type
-                t = getCType(c.type, stateStruct)
+                if isinstance(c.type, CArrayType) and not c.type.arrayLen and c is obj.body.contentlist[-1]:
+                    # C flexible array member. It contributes no size to the
+                    # struct header but its address is the start of trailing
+                    # allocation bytes.
+                    t = getCType(c.type.arrayOf, stateStruct) * 0
+                else:
+                    t = getCType(c.type, stateStruct)
             finally:
                 obj._construct_struct_attrib = None
             if c.arrayargs:
