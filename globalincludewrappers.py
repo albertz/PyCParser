@@ -166,19 +166,24 @@ class Wrapper:
     def handle_unistd_h(self, state):
         """POSIX <unistd.h>: pulls in sys/time types since Python.h includes this."""
         self.handle_sys_time_h(state)
-        wrapCFunc(state, "write", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))
-        wrapCFunc(state, "read", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t))
-        wrapCFunc(state, "close", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
-        wrapCFunc(state, "dup", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
-        wrapCFunc(state, "dup2", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_int))
-        wrapCFunc(state, "getcwd", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p, ctypes.c_size_t))
-        wrapCFunc(state, "getpid", restype=ctypes.c_int, argtypes=())
-        wrapCFunc(state, "lseek", restype=ctypes.c_long, argtypes=(ctypes.c_int, ctypes.c_long, ctypes.c_int))
-        state.funcs["_exit"] = CWrapValue(
-            lambda code: self.interpreter._exit(code.value),
-            returnType=CVoidType,
-            name="_exit"
-        )
+        for _fname, _res, _args in [
+            ("write",  ctypes.c_long,    (ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t)),
+            ("read",   ctypes.c_long,    (ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t)),
+            ("close",  ctypes.c_int,     (ctypes.c_int,)),
+            ("dup",    ctypes.c_int,     (ctypes.c_int,)),
+            ("dup2",   ctypes.c_int,     (ctypes.c_int, ctypes.c_int)),
+            ("getcwd", ctypes.c_char_p,  (ctypes.c_char_p, ctypes.c_size_t)),
+            ("getpid", ctypes.c_int,     ()),
+            ("lseek",  ctypes.c_long,    (ctypes.c_int, ctypes.c_long, ctypes.c_int)),
+        ]:
+            if _fname not in state.funcs:
+                wrapCFunc(state, _fname, restype=_res, argtypes=_args)
+        if "_exit" not in state.funcs:
+            state.funcs["_exit"] = CWrapValue(
+                lambda code: self.interpreter._exit(code.value),
+                returnType=CVoidType,
+                name="_exit"
+            )
 
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
@@ -322,6 +327,33 @@ class Wrapper:
         wrapCFunc(state, "wcstoul", restype=ctypes.c_ulong, argtypes=(wchar_p, CPointerType(wchar_p), ctypes.c_int))
         wrapCFunc(state, "wcstod", restype=ctypes.c_double, argtypes=(wchar_p, CPointerType(wchar_p)))
         wrapCFunc(state, "wcsftime", restype=ctypes.c_size_t, argtypes=(wchar_p, ctypes.c_size_t, wchar_p, ctypes.c_void_p))
+    def handle_stdint_h(self, state):
+        """Provide standard integer types from <stdint.h>."""
+        for _name, _ctype in [
+            ("int8_t", ctypes.c_int8),
+            ("int16_t", ctypes.c_int16),
+            ("int32_t", ctypes.c_int32),
+            ("int64_t", ctypes.c_int64),
+            ("uint8_t", ctypes.c_uint8),
+            ("uint16_t", ctypes.c_uint16),
+            ("uint32_t", ctypes.c_uint32),
+            ("uint64_t", ctypes.c_uint64),
+            ("intptr_t", ctypes.c_ssize_t),
+            ("uintptr_t", ctypes.c_size_t),
+            ("intmax_t", ctypes.c_int64),
+            ("uintmax_t", ctypes.c_uint64),
+        ]:
+            if _name not in state.typedefs:
+                _bits = ctypes.sizeof(_ctype) * 8
+                if _name.startswith("u"):
+                    _builtin = ("unsigned", "long") if ctypes.sizeof(_ctype) == ctypes.sizeof(ctypes.c_ulong) else ("unsigned", "int")
+                else:
+                    _builtin = ("long",) if ctypes.sizeof(_ctype) == ctypes.sizeof(ctypes.c_long) else ("int",)
+                state.typedefs[_name] = CTypedef(name=_name, type=CBuiltinType(_builtin))
+
+    def handle_inttypes_h(self, state):
+        self.handle_stdint_h(state)
+
     def handle_assert_h(self, state):
         def assert_wrap(x):
             if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
@@ -344,7 +376,25 @@ class Wrapper:
         state.macros["F_SETFL"] = Macro(rightside="4")
         state.macros["FD_CLOEXEC"] = Macro(rightside="1")
         wrapCFunc(state, "open", restype=ctypes.c_int, argtypes=(ctypes.c_char_p, ctypes.c_int))
-        wrapCFunc(state, "fcntl", restype=ctypes.c_int, argtypes=(ctypes.c_int, ctypes.c_int, ctypes.c_int))
+        # <fcntl.h> implicitly includes <unistd.h> on most POSIX systems, so
+        # we also make the core file-descriptor functions available here.
+        self.handle_unistd_h(state)
+        # fcntl is variadic: int fcntl(int fd, int cmd[, int arg]).
+        # We provide a Python wrapper that accepts 2 or 3 int args so that
+        # both F_GETFD/F_GETFL (no arg) and F_SETFD/F_SETFL (with arg) work.
+        _libc_fcntl = libc.fcntl
+        _libc_fcntl.restype = ctypes.c_int
+        def _fcntl_wrapper(fd, cmd, *extra):
+            fd_v = fd.value if hasattr(fd, 'value') else int(fd)
+            cmd_v = cmd.value if hasattr(cmd, 'value') else int(cmd)
+            if extra:
+                arg = extra[0]
+                arg_v = arg.value if hasattr(arg, 'value') else int(arg)
+                return ctypes.c_int(_libc_fcntl(fd_v, cmd_v, arg_v))
+            return ctypes.c_int(_libc_fcntl(fd_v, cmd_v))
+        state.funcs["fcntl"] = CWrapValue(
+            _fcntl_wrapper, name="fcntl", funcname="fcntl",
+            returnType=ctypes.c_int, argTypes=[ctypes.c_int, ctypes.c_int])
         # TODO: these are on OSX. cross-platform? probably not...
         state.macros["EINTR"] = Macro(rightside="4")  # via <sys/errno.h>
         state.macros["ERANGE"] = Macro(rightside="34")  # via <sys/errno.h>
