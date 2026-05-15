@@ -339,6 +339,25 @@ def test_atomic_store_explicit_and_load_explicit():
     assert r.value == 7, "atomic_explicit round-trip returned %r" % r
 
 
+def test_atomic_uintptr_t_is_pointer_sized():
+    """atomic_uintptr_t must preserve full pointer values."""
+    r = _run("""
+    #include <stdint.h>
+    #include <stdlib.h>
+    #include <stdatomic.h>
+    int f() {
+        char *p = (char *)malloc(1);
+        atomic_uintptr_t addr = 0;
+        int ok;
+        atomic_store(&addr, (uintptr_t)p);
+        ok = (char *)atomic_load(&addr) == p;
+        free(p);
+        return ok;
+    }
+    """)
+    assert r.value == 1, "atomic_uintptr_t truncated a pointer"
+
+
 # ---------------------------------------------------------------------------
 # stdbool.h: bool / true / false macros
 # ---------------------------------------------------------------------------
