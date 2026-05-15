@@ -145,9 +145,46 @@ def simple_escape_char(c):
     elif c == '"': return '"'
     elif c == "'": return "'"
     elif c == "\\": return "\\"
+    elif c in "1234567":  # octal escape (partial: only single-digit here)
+        return chr(int(c, 8))
     else:
         # Just to be sure so that users don't run into trouble.
         assert False, "simple_escape_char: cannot handle " + repr(c) + " yet"
+
+
+_HexChars = frozenset("0123456789abcdefABCDEF")
+
+
+def _read_hex_escape(input_stream):
+    """Read hex digits from *input_stream* (a _Pre2ParseStream) and return the character.
+
+    Called after ``\\x`` has been consumed.  Reads as many hex digits as
+    available, puts the first non-hex character back into the stream, and
+    returns the decoded character (or '\\x00' if no digits were found).
+    """
+    hexstr = ""
+    while True:
+        nc = input_stream.next_char()
+        if nc is None or nc not in _HexChars:
+            # Put the non-hex character back so the outer loop sees it next.
+            if nc is not None:
+                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+            break
+        hexstr += nc
+    return chr(int(hexstr, 16)) if hexstr else "\x00"
+
+
+def _read_fixed_hex_escape(input_stream, n_digits):
+    """Read exactly *n_digits* hex digits for a ``\\uXXXX`` or ``\\UXXXXXXXX`` escape."""
+    hexstr = ""
+    for _ in range(n_digits):
+        nc = input_stream.next_char()
+        if nc is None or nc not in _HexChars:
+            if nc is not None:
+                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+            break
+        hexstr += nc
+    return chr(int(hexstr, 16)) if hexstr else "\x00"
 
 
 def escape_cstr(s):
@@ -1635,7 +1672,14 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 elif c == "\\": state = 21
                 else: laststr += c
             elif state == 21: # escape in "str
-                laststr += simple_escape_char(c)
+                if c == "x":
+                    laststr += _read_hex_escape(input)
+                elif c == "u":
+                    laststr += _read_fixed_hex_escape(input, 4)
+                elif c == "U":
+                    laststr += _read_fixed_hex_escape(input, 8)
+                else:
+                    laststr += simple_escape_char(c)
                 state = 20
             elif state == 25: # 'str
                 if c == "'":
@@ -1648,7 +1692,14 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 elif c == "\\": state = 26
                 else: laststr += c
             elif state == 26: # escape in 'str
-                laststr += simple_escape_char(c)
+                if c == "x":
+                    laststr += _read_hex_escape(input)
+                elif c == "u":
+                    laststr += _read_fixed_hex_escape(input, 4)
+                elif c == "U":
+                    laststr += _read_fixed_hex_escape(input, 8)
+                else:
+                    laststr += simple_escape_char(c)
                 state = 25
             elif state == 22: # wchar "str (L"...")
                 if c == '"':
@@ -1658,7 +1709,14 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 elif c == "\\": state = 23
                 else: laststr += c
             elif state == 23: # escape in wchar "str
-                laststr += simple_escape_char(c)
+                if c == "x":
+                    laststr += _read_hex_escape(input)
+                elif c == "u":
+                    laststr += _read_fixed_hex_escape(input, 4)
+                elif c == "U":
+                    laststr += _read_fixed_hex_escape(input, 8)
+                else:
+                    laststr += simple_escape_char(c)
                 state = 22
             elif state == 27: # wchar 'char' (L'...')
                 if c == "'":
@@ -1671,7 +1729,14 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 elif c == "\\": state = 28
                 else: laststr += c
             elif state == 28: # escape in wchar 'char'
-                laststr += simple_escape_char(c)
+                if c == "x":
+                    laststr += _read_hex_escape(input)
+                elif c == "u":
+                    laststr += _read_fixed_hex_escape(input, 4)
+                elif c == "U":
+                    laststr += _read_fixed_hex_escape(input, 8)
+                else:
+                    laststr += simple_escape_char(c)
                 state = 27
             elif state == 30: # identifier
                 if c in NumberChars + LetterChars + "_": laststr += c

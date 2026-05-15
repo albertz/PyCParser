@@ -34,6 +34,16 @@ def test_wchar_string_literal_escape():
     assert "\n" in wide[0].content
 
 
+def test_string_literal_hex_and_unicode_escapes():
+    """Hex and unicode escapes inside string literals should be decoded."""
+    state = State()
+    state.autoSetupSystemMacros()
+    tokens = list(cpre2_parse(state, r'"A\x42\u0043\U00000044"'))
+    strs = [t for t in tokens if isinstance(t, CStr)]
+    assert len(strs) == 1, "expected one CStr token, got: %r" % tokens
+    assert_equal(strs[0].content, "ABCD")
+
+
 def test_wchar_string_literal_not_regular_str():
     """L"..." must produce CWideStr, not the plain CStr."""
     state = State()
@@ -82,6 +92,16 @@ def test_wchar_char_literal_escape():
     chars = [t for t in tokens if isinstance(t, CChar)]
     assert len(chars) == 1, "expected one CChar token, got: %r" % tokens
     assert_equal(chars[0].content, ord('\n'))
+
+
+def test_char_literal_octal_and_hex_escapes():
+    """Octal and hex escapes inside char literals should be decoded."""
+    state = State()
+    state.autoSetupSystemMacros()
+    tokens = list(cpre2_parse(state, r"'\7' '\x7f'"))
+    chars = [t for t in tokens if isinstance(t, CChar)]
+    assert len(chars) == 2, "expected two CChar tokens, got: %r" % tokens
+    assert_equal([c.content for c in chars], [7, 127])
 
 
 # ---------------------------------------------------------------------------
