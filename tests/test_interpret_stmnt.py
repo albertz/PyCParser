@@ -1787,6 +1787,22 @@ def test_interpret_ternary_second():
     assert r.value == 256 ** ctypes.sizeof(ctypes.c_short)
 
 
+def test_interpret_nested_ternary_is_right_associative():
+    state = parse("""
+    long f(long size) {
+        return size <= 0xff ? 1 :
+            size <= 0xffff ? 2 :
+            size <= 0xffffffff ? 4 : 8;
+    }
+    """)
+
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert interpreter.runFunc("f", 8).value == 1
+    assert interpreter.runFunc("f", 0x100).value == 2
+    assert interpreter.runFunc("f", 0x10000).value == 4
+
+
 def test_interpret_double_cast():
     state = parse("""
     long f() {
