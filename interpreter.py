@@ -2316,10 +2316,27 @@ class Interpreter:
         if addr == 0:
             assert ptr_type
             return ptr_type()
-        try:
+        if addr in self.pointerStorage:
             obj = self.pointerStorage[addr]
-        except KeyError:
-            raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
+        else:
+            # Not found directly; try range-based lookup for interior pointers
+            # (e.g. alignment-derived addresses like _Py_ALIGN_DOWN results).
+            obj = None
+            for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
+                    reverse=True, maximum=(addr + 1, 0), inclusive=(True, False)
+            ):
+                if obj_ptr_addr + obj_size <= addr:
+                    break
+                candidate = self.pointerStorage.get(obj_ptr_addr, None)
+                if candidate is None:  # not alive anymore
+                    self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
+                    continue
+                if obj_ptr_addr <= addr:
+                    obj = candidate
+                    self.pointerStorage[addr] = obj  # cache for future lookups
+                    break
+            if obj is None:
+                raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
         if isinstance(obj, PointerStorage):
             return obj.ptr
         ptr = ctypes.pointer(obj)

@@ -4939,5 +4939,36 @@ def test_interpret_typedef_anonymous_union():
     assert res.value == 42
 
 
+def test_interpret_interior_pointer_range_lookup():
+    """
+    Pointer arithmetic that derives an interior (aligned-down) address from an existing
+    allocation must succeed in _getPtr even if only the base address is in pointerStorage.
+    This covers the _Py_ALIGN_DOWN / bitwise-AND pattern from ascii_decode in CPython.
+    """
+    state = parse("""
+    #include <stdlib.h>
+
+    /* Simplified _Py_ALIGN_DOWN: align ptr down to alignment a. */
+    #define ALIGN_DOWN(p, a) ((unsigned char *)((size_t)(p) & ~((size_t)(a) - 1)))
+
+    int f() {
+        /* Allocate a 64-byte buffer so we can align within it. */
+        unsigned char *buf = (unsigned char *)malloc(64);
+        if (!buf) return -1;
+        unsigned char *end = buf + 64;
+        /* Align end down to 8-byte boundary -- may be an interior address. */
+        unsigned char *aligned = ALIGN_DOWN(end, 8);
+        /* aligned must be <= end and point inside (or at start of) buf. */
+        int ok = (aligned <= end) && (aligned >= buf);
+        free(buf);
+        return ok;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 1
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())
