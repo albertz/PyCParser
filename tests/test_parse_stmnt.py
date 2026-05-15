@@ -729,5 +729,56 @@ def test_macro_char_literal_arg_single_quote():
     """)
 
 
+def test_preprocessor_if_hex_with_suffix():
+    """#if expressions with hex literals carrying u/U/L suffixes (e.g. 0xFFu) must
+    not produce 'not a valid macro name' errors.
+
+    CPython's stringlib/codecs.h uses #if STRINGLIB_MAX_CHAR >= 0x80 where
+    STRINGLIB_MAX_CHAR expands to 0xFFu, 0xFFFFu, or 0x10FFFFu depending on
+    which ucsXlib.h was included.
+    """
+    state = parse("""
+    #define MAX_CHAR 0xFFu
+    #if MAX_CHAR >= 0x80
+    int selected = 1;
+    #else
+    int selected = 0;
+    #endif
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    assert "selected" in state.vars
+
+
+def test_preprocessor_if_decimal_with_suffix():
+    """#if expressions with decimal literals carrying UL suffixes must parse cleanly."""
+    state = parse("""
+    #define LIMIT 100UL
+    #if LIMIT > 50
+    int big = 1;
+    #else
+    int big = 0;
+    #endif
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+
+
+def test_for_init_pointer_decl():
+    """C99 for-init with a pointer declaration must not produce 'identifier unknown' errors.
+
+    `for (const char *p = str; *p; p++)` declares `p` in the for-init and uses
+    it in the condition and increment.  Before the fix, the `*` in `const char *`
+    inside `cpre3_parse_statements_in_brackets` converted the partial type into a
+    CStatement expression, making `p` unrecognised in the condition/increment parts.
+    """
+    state = parse("""
+    void f(const char *str) {
+        for (const char *p = str; *p; p++) {
+            int x = *p;
+        }
+    }
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+
+
 if __name__ == "__main__":
     main(globals())

@@ -805,11 +805,14 @@ def cpreprocess_evaluate_ifdef(state, arg):
 
 def cpreprocess_evaluate_single(state, arg):
     if arg == "": return None
-    try: return int(arg) # is integer?
+    # Strip trailing integer-type suffixes (u, U, l, L and combinations like UL, LU, ULL …)
+    # before trying numeric conversion so that e.g. `0xFFu` or `100UL` parse correctly.
+    stripped = arg.rstrip("uUlL")
+    try: return int(stripped) # is integer?
     except ValueError: pass
-    try: return long(arg) # is long?
+    try: return long(stripped) # is long?
     except ValueError: pass
-    try: return int(arg, 16) # is hex?
+    try: return int(stripped, 16) # is hex (0x…)?
     except ValueError: pass
     if len(arg) >= 2 and arg[0] == '"' and arg[-1] == '"': return arg[1:-1] # is string?
 
@@ -3968,6 +3971,30 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
             curCObj = _CBaseWithOptBody(parent=parentCObj)
         elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
             stateStruct.error("cpre3 parse statements in brackets: ';' not expected, separator should be " + str(sepToken))
+        elif (token == COp("*") and isinstance(sepToken, CSemicolon)
+              and not curCObj.isDerived()
+              and (curCObj._type_tokens or curCObj.attribs)
+              and (
+                  # Type qualifiers (const, volatile, …) are present — unambiguously a
+                  # declaration, not multiplication.  E.g. `for (const char *p = …)`.
+                  curCObj.attribs
+                  # OR every type token so far is a built-in / stdint type (not a typedef
+                  # alias), so `*` cannot be multiplication.
+                  # E.g. `for (int *p = …)` or `for (char *p = …)`.
+                  or all(
+                      (isinstance(t, str) and (
+                          (t,) in stateStruct.CBuiltinTypes
+                          or t in stateStruct.StdIntTypes
+                          or t == "*"
+                      ))
+                      for t in curCObj._type_tokens
+                  )
+              )):
+            # Pointer type modifier in a C99 for-init declaration context.  Only applied
+            # when the separator is `;` (for-init), not `,` (function-call args, where
+            # `void *` is a plain type argument).  Mirror the `_cpre3_parse_body` handling.
+            CVarDecl.overtake(curCObj)
+            curCObj._type_tokens += [token.content]
         elif isinstance(curCObj, CVarDecl) and token == COp("="):
             curCObj.body = CStatement(parent=curCObj)
         else:
