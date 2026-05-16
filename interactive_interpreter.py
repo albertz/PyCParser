@@ -1,22 +1,31 @@
 
+from typing import Optional
 import sys
 import better_exchook
 import cparser
-from . import interpreter
+from . import interpreter as _interpreter
 
 
 class InteractiveInterpreter:
-    def __init__(self, debug=False):
-        """
-        :param bool debug:
-        """
+    def __init__(
+        self, *,
+        debug: bool = False,
+        state: Optional[cparser.State] = None,
+        interpreter: Optional[_interpreter.Interpreter] = None,
+    ):
         self.debug = debug
-        self.state = cparser.State()
-        self.state.autoSetupSystemMacros()
-        self.state.autoSetupGlobalIncludeWrappers()
+        if state is not None:
+            self.state = state
+        else:
+            self.state = cparser.State()
+            self.state.autoSetupSystemMacros()
+            self.state.autoSetupGlobalIncludeWrappers()
         self.state.readLocalInclude = self._read_local_include_handler
-        self.interp = interpreter.Interpreter()
-        self.interp.register(self.state)
+        if interpreter is not None:
+            self.interp = interpreter
+        else:
+            self.interp = _interpreter.Interpreter()
+            self.interp.register(self.state)
 
     def _read_local_include_handler(self, fn):
         """
