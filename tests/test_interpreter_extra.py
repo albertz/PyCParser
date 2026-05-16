@@ -201,6 +201,28 @@ def test_bitfield_postfix_inc():
     assert s.a == 2, "expected 0, got %r" % r
 
 
+def test_bitfield_logic_or():
+    state = parse("""
+    typedef struct {
+        unsigned int a:1;
+        unsigned int b:1;
+    } S;
+
+    int f(S *s) {
+        return (!s->a) || (!s->b);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'] or state.structs['S'])
+    s = S()
+    s.a = 1
+    s.b = 0
+    # (!1) || (!0)  =>  0 || 1  => 1
+    r = interp.getFunc("f")(ctypes.pointer(s))
+    assert r == 1
+
+
 def test_ub_incr():
     # https://gynvael.coldwind.pl/?id=372
     state = parse("""

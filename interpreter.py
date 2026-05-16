@@ -1732,7 +1732,11 @@ def astAndTypeForCStatement(funcEnv, stmnt):
                 rightType = ctypes.c_int
             else:
                 a.operand = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType)
-            return getAstNode_newTypeInstance(funcEnv, rightType, a), rightType
+            if stmnt._op.content == "!":
+                resType = ctypes.c_int
+            else:
+                resType = rightType
+            return getAstNode_newTypeInstance(funcEnv, resType, a), resType
         else:
             assert False, "unary prefix op " + str(stmnt._op) + " is unknown"
     if stmnt._op is None:
