@@ -516,6 +516,9 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
     if isinstance(objType, CFuncPointerDecl):
         # It's already the value. See also CWrapFuncType below.
         return objAst
+    elif isinstance(objType, CBitfieldType):
+        # bitfields are returned as plain ints by ctypes
+        return objAst
     elif isPointerType(objType):
         from inspect import isclass
         if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
@@ -1300,6 +1303,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
         assert isinstance(t, (CStruct,CUnion))
         attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, a.attr)
         assert attrDecl is not None, "attrib %r not found in %r" % (a.attr, t)
+        if hasattr(attrDecl, "bitsize"):
+            return a, CBitfieldType(attrDecl.type)
         return a, attrDecl.type
     elif isinstance(stmnt, CPtrAccessRef):
         # build equivalent AttribAccess statement
@@ -1473,6 +1478,10 @@ def getAstNode_assign(stateStruct, aAst, aType, bAst, bType):
     if isPointerType(bType):
         bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
     bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
+    if isinstance(aType, CBitfieldType):
+        # Bitfields must use direct Python assignment because ctypes does not
+        # support taking a pointer to a bitfield (which helpers.assign needs).
+        return ast.Assign(targets=[aAst], value=bValueAst, ctx=ast.Store())
     if isPointerType(aType, alsoFuncPtr=True):
         return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
     return makeAstNodeCall(Helpers.assign, aAst, bValueAst)
@@ -2198,12 +2207,12 @@ class Interpreter:
         :param str s:
         :rtype: ctypes.Array
         """
-        if s in self.constStrings:
-            return self.constStrings[s]
         if s is None:
             return self._getPtr(0, ctypes.POINTER(ctypes.c_byte))
-        if PY3:
+        if PY3 and isinstance(s, str):
             s = s.encode("utf8")
+        if s in self.constStrings:
+            return self.constStrings[s]
         # Array so that we have the len info.
         # c_byte because we always treat `char` as c_byte to avoid problems.
         t = self.ctypes_wrapped.c_byte * (len(s) + 1)
@@ -2345,12 +2354,16 @@ class Interpreter:
             if obj is None:
                 raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
         if isinstance(obj, PointerStorage):
-            return obj.ptr
-        ptr = ctypes.pointer(obj)
-        ptr_addr = _ctype_ptr_get_value(ptr)
-        if ptr_addr != addr:  # might be different if we had an offset in _setPtr
-            _ctype_ptr_set_value(ptr, addr)
-        return ptr
+            res = obj.ptr
+        else:
+            ptr = ctypes.pointer(obj)
+            ptr_addr = _ctype_ptr_get_value(ptr)
+            if ptr_addr != addr:  # might be different if we had an offset in _setPtr
+                _ctype_ptr_set_value(ptr, addr)
+            res = ptr
+        if ptr_type:
+            return ctypes.cast(res, ptr_type)
+        return res
 
     def _translateFuncToPyAst(self, func, noBodyMode="warn-empty"):
         assert isinstance(func, CFunc)

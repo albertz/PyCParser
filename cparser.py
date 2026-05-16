@@ -454,6 +454,15 @@ class CStdIntType(CType):
     def asCCode(self, indent=""): return indent + self.name
 
 
+class CBitfieldType(CType):
+    def __init__(self, type):
+        super(CBitfieldType, self).__init__()
+        self.type = type
+    def getCType(self, stateStruct):
+        return getCType(self.type, stateStruct)
+    def asCCode(self, indent=""): return self.type.asCCode(indent)
+
+
 class CArrayType(CType):
     def __init__(self, arrayOf, arrayLen):
         super(CArrayType, self).__init__()
@@ -486,6 +495,10 @@ def getCType(t, stateStruct):
         if issubclass(t, (_ctypes._SimpleCData,ctypes._Pointer,ctypes._CFuncPtr)):
             if stateStruct.IndirectSimpleCTypes:
                 return wrapCTypeClassIfNeeded(t)
+            return t
+        if issubclass(t, ctypes.Array):
+            if t.__name__.startswith("wrapCTypeClass_"):
+                return t.__bases__[0]
             return t
     except Exception: pass # e.g. typeerror or so
     if isinstance(t, (CStruct,CUnion,CEnum)):
@@ -2313,6 +2326,9 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
                 # See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
                 t = wrapCTypeClassIfNeeded(t)
             if hasattr(c, "bitsize"):
+                # Bitfields must use unwrapped types, otherwise ctypes ignores bitsize.
+                if t.__name__.startswith("wrapCTypeClass_"):
+                    t = t.__bases__[0]
                 fields += [(str(c.name), t, c.bitsize)]
             else:
                 fields += [(str(c.name), t)]
@@ -4662,7 +4678,7 @@ def isVoidPtrType(t):
 
 
 def isValueType(t):
-    if isinstance(t, (CBuiltinType,CStdIntType)): return True
+    if isinstance(t, (CBuiltinType, CStdIntType, CBitfieldType)): return True
     from inspect import isclass
     if isclass(t):
         for c in State.StdIntTypes.values():

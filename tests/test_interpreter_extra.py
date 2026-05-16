@@ -98,7 +98,50 @@ def test_sizeof_computed_array_size():
     interpreter = Interpreter()
     interpreter.register(state)
     r = interpreter.runFunc("f")
-    assert r.value == 0, "expected 0, got %r" % r
+    assert r.value == 0
+
+
+def test_bitfields():
+    state = parse("""
+    typedef struct {
+        unsigned int a:2;
+        unsigned int b:3;
+        unsigned int c:1;
+    } S;
+
+    int get_a(S *s) { return s->a; }
+    int get_b(S *s) { return s->b; }
+    void set_b(S *s, int val) { s->b = val; }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'])
+    s = S()
+    # bitfields are checked by direct access as well as JITed code
+    s.b = 7
+    assert interp.getFunc("get_a")(ctypes.pointer(s)) == 0
+    assert interp.getFunc("get_b")(ctypes.pointer(s)) == 7
+    s.b = 8 # 1000 binary, should be 0 in 3 bits
+    assert interp.getFunc("get_b")(ctypes.pointer(s)) == 0
+
+
+def test_pointer_cast_to_struct():
+    state = parse("""
+    typedef struct { int x; int y; } S;
+    #include <stdlib.h>
+    int f() {
+        S *s = (S*)malloc(sizeof(S));
+        if(!s) return -1;
+        s->x = 42; s->y = 123;
+        int res = s->x + s->y;
+        free(s);
+        return res;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 165, "expected 0, got %r" % r
 
 
 def test_ub_incr():

@@ -380,9 +380,13 @@ class Wrapper:
 
     def handle_assert_h(self, state):
         def assert_wrap(x):
-            if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
-                x = ctypes.cast(x, ctypes.c_void_p)
-            assert x.value
+            if isinstance(x, (int, long)):
+                val = x
+            else:
+                if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
+                    x = ctypes.cast(x, ctypes.c_void_p)
+                val = x.value
+            assert val, "assert failed: %r (type %r)" % (x, type(x))
         state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType, name="assert")
     def handle_fcntl_h(self, state):
         state.macros["O_RDONLY"] = Macro(rightside="0x0000")
