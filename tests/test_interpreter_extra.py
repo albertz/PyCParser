@@ -141,7 +141,64 @@ def test_pointer_cast_to_struct():
     interp = Interpreter()
     interp.register(state)
     r = interp.runFunc("f")
-    assert r.value == 165, "expected 0, got %r" % r
+    assert r.value == 165
+
+
+def test_bitfield_cast():
+    state = parse("""
+    typedef struct {
+        unsigned int a:2;
+    } S;
+
+    int f(S *s) {
+        return (int)s->a;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'] or state.structs['S'])
+    s = S()
+    s.a = 3
+    assert interp.getFunc("f")(ctypes.pointer(s)) == 3
+
+
+def test_bitfield_aug_assign():
+    state = parse("""
+    typedef struct {
+        unsigned int a:2;
+    } S;
+
+    void f(S *s) {
+        s->a += 1;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'] or state.structs['S'])
+    s = S()
+    s.a = 1
+    interp.getFunc("f")(ctypes.pointer(s))
+    assert s.a == 2
+
+
+def test_bitfield_postfix_inc():
+    state = parse("""
+    typedef struct {
+        unsigned int a:2;
+    } S;
+
+    int f(S *s) {
+        return s->a++;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'] or state.structs['S'])
+    s = S()
+    s.a = 1
+    r = interp.getFunc("f")(ctypes.pointer(s))
+    assert r == 1
+    assert s.a == 2, "expected 0, got %r" % r
 
 
 def test_ub_incr():

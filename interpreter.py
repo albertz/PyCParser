@@ -410,6 +410,8 @@ def getAstNodeForVarType(funcEnv, t):
         stdtype = t.getMinCIntType()
         assert stdtype is not None
         return getAstNodeForCTypesBasicType(State.StdIntTypes[stdtype])
+    elif isinstance(t, CBitfieldType):
+        return getAstNodeForVarType(funcEnv, t.type)
     elif isinstance(t, CPointerType):
         if isinstance(t.pointerOf, CBuiltinType) and t.pointerOf.builtinType == ("void",):
             return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
@@ -1024,6 +1026,37 @@ class Helpers:
         aPtr.contents.value -= ctypes.sizeof(a._type_)
         return b
 
+    def postfixIncBitfield(self, obj, attr):
+        self._checkAborted()
+        old = getattr(obj, attr)
+        setattr(obj, attr, old + 1)
+        return old
+
+    def postfixDecBitfield(self, obj, attr):
+        self._checkAborted()
+        old = getattr(obj, attr)
+        setattr(obj, attr, old - 1)
+        return old
+
+    def prefixIncBitfield(self, obj, attr):
+        self._checkAborted()
+        val = getattr(obj, attr) + 1
+        setattr(obj, attr, val)
+        return val
+
+    def prefixDecBitfield(self, obj, attr):
+        self._checkAborted()
+        val = getattr(obj, attr) - 1
+        setattr(obj, attr, val)
+        return val
+
+    def augAssignBitfield(self, obj, attr, opStr, bValue):
+        self._checkAborted()
+        val = getattr(obj, attr)
+        val = OpBinFuncs[opStr[:-1]](val, bValue)
+        setattr(obj, attr, val)
+        return val
+
     def copy(self, a):
         self._checkAborted()
         if isinstance(a, ctypes.c_void_p):
@@ -1491,26 +1524,45 @@ def getAstNode_augAssign(stateStruct, aAst, aType, opStr, bAst, bType):
     if isPointerType(bType):
         bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
     bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType)
+    if isinstance(aType, CBitfieldType):
+        assert isinstance(aAst, ast.Attribute)
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "augAssignBitfield"), aAst.value, ast.Str(s=aAst.attr), opAst, bValueAst)
     if isPointerType(aType):
         return makeAstNodeCall(Helpers.augAssignPtr, aAst, opAst, bValueAst)
     return makeAstNodeCall(Helpers.augAssign, aAst, opAst, bValueAst)
 
 def getAstNode_prefixInc(aAst, aType):
+    if isinstance(aType, CBitfieldType):
+        assert isinstance(aAst, ast.Attribute)
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "prefixIncBitfield"), aAst.value, ast.Str(s=aAst.attr))
     if isPointerType(aType):
         return makeAstNodeCall(Helpers.prefixIncPtr, aAst)
     return makeAstNodeCall(Helpers.prefixInc, aAst)
 
 def getAstNode_prefixDec(aAst, aType):
+    if isinstance(aType, CBitfieldType):
+        assert isinstance(aAst, ast.Attribute)
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "prefixDecBitfield"), aAst.value, ast.Str(s=aAst.attr))
     if isPointerType(aType):
         return makeAstNodeCall(Helpers.prefixDecPtr, aAst)
     return makeAstNodeCall(Helpers.prefixDec, aAst)
 
 def getAstNode_postfixInc(aAst, aType):
+    if isinstance(aType, CBitfieldType):
+        # Tricky in AST, but usually s->a++ is rare.
+        # We'll use a lambda wrapper if needed, but for now let's just support it via a helper
+        # that takes the object and the attribute name.
+        # But aAst is already an Attribute node.
+        assert isinstance(aAst, ast.Attribute)
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "postfixIncBitfield"), aAst.value, ast.Str(s=aAst.attr))
     if isPointerType(aType):
         return makeAstNodeCall(Helpers.postfixIncPtr, aAst)
     return makeAstNodeCall(Helpers.postfixInc, aAst)
 
 def getAstNode_postfixDec(aAst, aType):
+    if isinstance(aType, CBitfieldType):
+        assert isinstance(aAst, ast.Attribute)
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "postfixDecBitfield"), aAst.value, ast.Str(s=aAst.attr))
     if isPointerType(aType):
         return makeAstNodeCall(Helpers.postfixDecPtr, aAst)
     return makeAstNodeCall(Helpers.postfixDec, aAst)
