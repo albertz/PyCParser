@@ -813,5 +813,22 @@ def test_preprocessor_if_char_literal_comparison():
     assert "is_slash" in state.vars
 
 
+def test_parse_prefix_and_binary_precedence():
+    """Testing that `*(int*)p = 42` is parsed correctly as `(*(int*)p) = 42` and not `*((int*)p = 42)`."""
+    state = parse("""
+    void f() {
+        void *p = 0;
+        *(int*)p = 42;
+    }
+    """)
+    f = state.funcs["f"]
+    assert len(f.body.contentlist) == 2
+    stmnt = f.body.contentlist[1]
+    # stmnt is an expression statement.
+    assert stmnt._op.content == "="
+    assert stmnt._rightexpr.content == 42
+    assert stmnt._leftexpr._op.content == "*"
+
+
 if __name__ == "__main__":
     main(globals())
