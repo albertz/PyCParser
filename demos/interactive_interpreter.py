@@ -4,8 +4,6 @@
 Interactive C parser & interpreter.
 """
 
-from __future__ import print_function
-
 import sys
 import os
 import typing
@@ -18,12 +16,6 @@ sys.path.append(os.path.dirname(MyDir))
 
 import cparser
 from cparser import interpreter
-
-PY2 = sys.version_info[0] == 2
-
-if PY2:
-    # noinspection PyUnresolvedReferences
-    input = raw_input
 
 
 class InteractiveInterpreter:
