@@ -104,6 +104,45 @@ class Wrapper:
         if "errno" not in state.vars:
             state.vars["errno"] = CWrapValue(0, name="errno")
 
+    def handle_float_h(self, state):
+        """Define the <float.h> macros for IEEE-754 double-precision doubles
+        and single-precision floats, using the host's sys.float_info as the
+        source of truth.  CPython source (e.g. Objects/longobject.c) needs
+        DBL_MANT_DIG / DBL_MAX etc. at compile time."""
+        fi = sys.float_info
+        # IEEE-754 binary -- FLT_RADIX is 2 on every platform we care about.
+        state.macros["FLT_RADIX"] = Macro(rightside=str(fi.radix))
+        state.macros["FLT_ROUNDS"] = Macro(rightside=str(fi.rounds))
+        # double (c_double, 64-bit IEEE on every platform Python supports)
+        state.macros["DBL_MANT_DIG"] = Macro(rightside=str(fi.mant_dig))
+        state.macros["DBL_DIG"] = Macro(rightside=str(fi.dig))
+        state.macros["DBL_MIN_EXP"] = Macro(rightside=str(fi.min_exp))
+        state.macros["DBL_MIN_10_EXP"] = Macro(rightside=str(fi.min_10_exp))
+        state.macros["DBL_MAX_EXP"] = Macro(rightside=str(fi.max_exp))
+        state.macros["DBL_MAX_10_EXP"] = Macro(rightside=str(fi.max_10_exp))
+        state.macros["DBL_MAX"] = Macro(rightside=repr(fi.max))
+        state.macros["DBL_MIN"] = Macro(rightside=repr(fi.min))
+        state.macros["DBL_EPSILON"] = Macro(rightside=repr(fi.epsilon))
+        # float (c_float, 32-bit IEEE-754 single precision).  sys.float_info
+        # only exposes the double values, so we hard-code the well-known
+        # single-precision constants.
+        state.macros["FLT_MANT_DIG"] = Macro(rightside="24")
+        state.macros["FLT_DIG"] = Macro(rightside="6")
+        state.macros["FLT_MIN_EXP"] = Macro(rightside="-125")
+        state.macros["FLT_MIN_10_EXP"] = Macro(rightside="-37")
+        state.macros["FLT_MAX_EXP"] = Macro(rightside="128")
+        state.macros["FLT_MAX_10_EXP"] = Macro(rightside="38")
+        state.macros["FLT_MAX"] = Macro(rightside="3.402823466e+38F")
+        state.macros["FLT_MIN"] = Macro(rightside="1.175494351e-38F")
+        state.macros["FLT_EPSILON"] = Macro(rightside="1.192092896e-07F")
+        # long double -- treat as double on all platforms (this is the case
+        # on MSVC and many ARM toolchains; on glibc/x86-64 it's 80-bit, but
+        # CPython only uses LDBL_* in a handful of corner cases).
+        for _suffix in ("MANT_DIG", "DIG", "MIN_EXP", "MIN_10_EXP",
+                        "MAX_EXP", "MAX_10_EXP", "MAX", "MIN", "EPSILON"):
+            state.macros["LDBL_" + _suffix] = Macro(
+                rightside=state.macros["DBL_" + _suffix].rightside)
+
     def handle_limits_h(self, state):
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
         state.macros["CHAR_MAX"] = Macro(rightside="127")
