@@ -154,30 +154,32 @@ def test_sizeof_constant_evaluation():
 def test_makeFuncPtr_casting():
     # Tests that a function can be cast to a different pointer type.
     # This verifies the casting logic added to makeFuncPtr.
-    # The casting is necessary to avoid "incompatible types" TypeError
-    # when the same function is used with different signatures.
+    # This pattern is used extensively in CPython (e.g. METH_O functions
+    # being cast to PyCFunction for storage in PyMethodDef).
     testcode = """
-        typedef int (*func1_t)(int);
-        typedef int (*func2_t)(int, int);
+        typedef struct _object { int x; } PyObject;
+        typedef PyObject* (*PyCFunction)(PyObject*, PyObject*);
+        typedef PyObject* (*PyCFunction_WithOneArg)(PyObject*);
         
-        int my_func(int x) { return x + 10; }
+        struct PyMethodDef {
+            const char* name;
+            PyCFunction ml_meth;
+        };
         
-        struct S1 { func1_t f; };
-        struct S2 { func2_t f; };
+        PyObject* my_method_one_arg(PyObject* self) { return self; }
         
         int test() {
-            struct S1 s1;
-            struct S2 s2;
+            PyObject obj;
+            struct PyMethodDef m;
+            m.name = "meth";
+            // Cast my_method_one_arg to the more generic PyCFunction.
+            // This is valid C for storage, as long as it's called correctly.
+            m.ml_meth = (PyCFunction)my_method_one_arg;
             
-            // 1. First use as func1_t
-            s1.f = my_func;
-            
-            // 2. Second use as func2_t (with cast)
-            // This would fail without the casting logic in makeFuncPtr
-            // because my_func already has a func1_t instance attached.
-            s2.f = (func2_t)my_func;
-            
-            return s1.f(5);
+            // Cast it back and call it.
+            PyCFunction_WithOneArg f = (PyCFunction_WithOneArg)m.ml_meth;
+            PyObject* res = f(&obj);
+            return (res == &obj);
         }
     """
     state = parse(testcode)
@@ -185,7 +187,7 @@ def test_makeFuncPtr_casting():
     interpreter.register(state)
     
     r = interpreter.runFunc("test")
-    assert r.value == 15
+    assert r.value == 1
 
 
 def test_sizeof_constant_evaluation_2():
