@@ -591,7 +591,12 @@ class State(object):
         "int16_t": ctypes.c_int16,
         "int32_t": ctypes.c_int32,
         "int64_t": ctypes.c_int64,
-        "byte": ctypes.c_byte,
+        # Note: we intentionally do not register "byte" as a built-in type
+        # name -- it is not a C standard type, and treating it as one means
+        # any function that has a `char *byte` parameter (and CPython's
+        # Objects/bytes_methods.c does) fails to parse with `type tokens
+        # not handled: ['char', '*', 'byte']`.  Code that wants the alias
+        # can still do `typedef unsigned char byte;` explicitly.
         "wchar_t": ctypes.c_wchar,
         "wint_t": ctypes.c_int,
         "size_t": ctypes.c_size_t,
