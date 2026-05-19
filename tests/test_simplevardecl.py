@@ -41,3 +41,25 @@ def test_simplevardecl():
     assert h.type == CPointerType(f.type)
     assert f.body.getConstValue(state) == "abc"
     #pprint(h.body)
+
+def test_array_pointer_decl_reset():
+    # Fix: self.type = None in clearDeclForNextVar
+    testcode = """
+        void _Py_DumpHexadecimal() {
+            char buffer[17], *ptr, *end;
+        }
+    """
+    state = helpers_test.parse(testcode)
+    func = state.funcs["_Py_DumpHexadecimal"]
+    vars = {v.name: v for v in func.body.contentlist if isinstance(v, CVarDecl)}
+
+    assert "buffer" in vars
+    assert "ptr" in vars
+    assert "end" in vars
+
+    assert isinstance(vars["buffer"].type, CArrayType)
+    assert isinstance(vars["ptr"].type, CPointerType)
+    assert isinstance(vars["end"].type, CPointerType)
+
+    assert vars["ptr"].type.pointerOf == CBuiltinType(("char",))
+    assert vars["end"].type.pointerOf == CBuiltinType(("char",))

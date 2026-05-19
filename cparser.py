@@ -2287,6 +2287,7 @@ class CVarDecl(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="vars", allowPredec=False, **kwargs)
     def clearDeclForNextVar(self):
         if hasattr(self, "bitsize"): delattr(self, "bitsize")
+        self.type = None
         while self._type_tokens and self._type_tokens[-1] in ("*",):
             self._type_tokens.pop()
     def asCCode(self, indent=""):
