@@ -2237,7 +2237,7 @@ class Interpreter:
 
     def _abort(self):
         print("C abort() call.")
-        raise Exception("C abort()")
+        raise CAbortException("C abort()")
 
     def _exit(self, i):
         print("C exit(%i) call." % i)
@@ -2602,3 +2602,7 @@ class Interpreter:
                 else:
                     res = res_ctype(res)
         return res
+
+
+class CAbortException(Exception):
+    pass

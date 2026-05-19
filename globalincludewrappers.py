@@ -3,7 +3,7 @@
 # code under BSD 2-Clause License
 
 from .cparser import *
-from .interpreter import CWrapValue, _ctype_ptr_get_value, Helpers
+from .interpreter import CWrapValue, _ctype_ptr_get_value, Helpers, CAbortException
 import ctypes
 import _ctypes
 import os
@@ -425,7 +425,9 @@ class Wrapper:
                 if isinstance(x, (ctypes._Pointer, ctypes.Array, ctypes._CFuncPtr)):
                     x = ctypes.cast(x, ctypes.c_void_p)
                 val = x.value
-            assert val, "assert failed: %r (type %r)" % (x, type(x))
+            if not val:
+                print("assert failed: %r (type %r)" % (x, type(x)))
+                raise CAbortException("assert failed: %r (type %r)" % (x, type(x)))
         state.funcs["assert"] = CWrapValue(assert_wrap, returnType=CVoidType, name="assert")
     def handle_fcntl_h(self, state):
         state.macros["O_RDONLY"] = Macro(rightside="0x0000")
