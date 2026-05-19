@@ -12,18 +12,20 @@ import cparser
 from pprint import pprint
 
 
-def parse(testcode, withSystemMacros=True, withGlobalIncludeWrappers=False):
+def parse(testcode, withSystemMacros=True, withGlobalIncludeWrappers=False, state=None):
     """
     :param str testcode:
     :param bool withSystemMacros:
     :param bool withGlobalIncludeWrappers:
+    :param cparser.State|None state:
     :rtype: cparser.State
     """
-    state = cparser.State()
-    if withSystemMacros:
-        state.autoSetupSystemMacros()
-    if withGlobalIncludeWrappers:
-        state.autoSetupGlobalIncludeWrappers()
+    if state is None:
+        state = cparser.State()
+        if withSystemMacros:
+            state.autoSetupSystemMacros()
+        if withGlobalIncludeWrappers:
+            state.autoSetupGlobalIncludeWrappers()
     cparser.parse_code(testcode, state)
     if state._errors:
         print("parsing errors:")
