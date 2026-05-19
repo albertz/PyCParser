@@ -163,9 +163,6 @@ def main(argv=None):
                                    _run_one_captured.last_captured))
                     progress.write("T")
                 except BaseException as e:
-                    # Build a traceback string manually -- traceback.format_exc()
-                    # can hit incompatibility issues when better_exchook is
-                    # imported indirectly by some test module.
                     tb = "".join(traceback.format_exception(
                         type(e), e, e.__traceback__))
                     failed.append((mod_name, name,
