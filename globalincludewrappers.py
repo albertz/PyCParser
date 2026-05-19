@@ -262,6 +262,7 @@ class Wrapper:
         wrapCFunc(state, "strtod", restype=ctypes.c_double, argtypes=(ctypes.c_char_p, ctypes.POINTER(ctypes.c_char_p)))
         wrapCFunc(state, "qsort", restype=CVoidType, argtypes=(ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p))
         wrapCFunc(state, "bsearch", restype=ctypes.c_void_p, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_void_p))
+        wrapCFunc(state, "abs", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         state.funcs["atoi"] = CWrapValue(
             lambda x: ctypes.c_int(int(ctypes.cast(x, ctypes.c_char_p).value)),
             returnType=ctypes.c_int,
@@ -309,7 +310,8 @@ class Wrapper:
         state.macros["true"] = Macro(rightside="1")
         state.macros["false"] = Macro(rightside="0")
     def handle_stddef_h(self, state): pass  # offsetof is handled as a cparser builtin keyword
-    def handle_math_h(self, state): pass
+    def handle_math_h(self, state):
+        wrapCFunc(state, "log", restype=ctypes.c_double, argtypes=(ctypes.c_double,))
     def handle_string_h(self, state):
         wrapCFunc(state, "strlen", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p,))
         wrapCFunc(state, "strcpy", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
