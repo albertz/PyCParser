@@ -1531,6 +1531,31 @@ class COpeningBracket(_CBase): pass
 class CClosingBracket(_CBase): pass
 
 
+_C_NUM_SUFFIX_CHARS = "uUlLfF"
+
+
+def _combine_float_parts(left, right):
+    """Combine `<int> . <int-or-float>` into a single C float literal.
+
+    The cpre2 tokenizer deliberately doesn't assemble float literals -- it
+    emits `0.0e0` as the token sequence [CNumber(0,"0"), COp("."),
+    CNumber(0.0,"0e0")] -- and leaves it to the expression parser to glue
+    the pieces back together.  Returns a (value, rawstr) pair suitable for
+    constructing a new CNumber.  C numeric suffixes (f/F/l/L/u/U) on the
+    right-hand lexeme are stripped before float conversion but preserved in
+    the returned rawstr so round-tripping back to C source still works.
+
+    :param CNumber left: token representing the integer part before the "."
+    :param CNumber right: token representing the fractional/exponent part
+    :rtype: tuple[float, str]
+    """
+    def _lexeme(num):
+        return num.rawstr if num.rawstr is not None else str(num.content)
+    raw = "%s.%s" % (_lexeme(left), _lexeme(right))
+    raw_for_float = raw.rstrip(_C_NUM_SUFFIX_CHARS)
+    return float(raw_for_float), raw
+
+
 def cpre2_parse_number(stateStruct, s):
     if len(s) > 1 and s[0] == "0" and s[1] in NumberChars:
         try:
@@ -3203,13 +3228,19 @@ class CStatement(_CBaseWithOptBody):
                     self._state = 8
         elif self._state == 10: # after number + "."
             if isinstance(token, CNumber):
-                self._leftexpr = CNumber(float("%s.%s" % (self._leftexpr.content, token.content)))
+                # Reassemble the float from the original lexemes, not from the
+                # parsed values: the tokenizer splits `0.0e0` into 3 tokens
+                # [0, ., 0e0] and the right side may already be a float (with
+                # exponent), so str(content) would give us "0.0.0" and choke.
+                # Using rawstr ("0" + "0e0" -> "0.0e0") handles both plain
+                # `3.14` and scientific cases like `0.0e0`, `1.5e-3`.
+                self._leftexpr = CNumber(*_combine_float_parts(self._leftexpr, token))
             else:
                 stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
             self._state = 5
         elif self._state == 11: # after expr + op + number + "."
             if isinstance(token, CNumber):
-                self._rightexpr = CNumber(float("%s.%s" % (self._rightexpr.content, token.content)))
+                self._rightexpr = CNumber(*_combine_float_parts(self._rightexpr, token))
             else:
                 stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
             self._state = 7

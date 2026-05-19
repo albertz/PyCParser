@@ -151,6 +151,39 @@ def test_number_integer_with_UL_suffix():
     assert any(t.content == 42 for t in nums), "expected 42, got: %r" % nums
 
 
+def test_float_literal_with_exponent_in_initializer():
+    """`{0.0e0,}` must parse correctly as a single float 0.0.
+
+    The cpre2 tokenizer splits float-with-fraction-and-exponent literals
+    into a 3-token sequence [int, ".", int-or-float], and the expression
+    parser must glue them back together using the original lexemes (not
+    the parsed values), otherwise a right-hand side like "0e0" gets
+    string-concatenated as "0.0.0" and the parse blows up.  This is the
+    pattern used in CPython's Objects/longobject.c (`log_base_BASE[37] =
+    {0.0e0,};`).
+    """
+    import cparser as _cparser
+    state = State()
+    state.autoSetupSystemMacros()
+    _cparser.parse_code(
+        "double v[1] = {0.0e0,};\n"
+        "double w[1] = {1.5e-3,};\n",
+        state)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+
+
+def test_float_literal_with_f_suffix():
+    """`1.0f` (C float-suffix) must parse without choking."""
+    import cparser as _cparser
+    state = State()
+    state.autoSetupSystemMacros()
+    _cparser.parse_code(
+        "float v = 1.0f;\n"
+        "float w = 2.5e1f;\n",
+        state)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+
+
 # ---------------------------------------------------------------------------
 # __func__: CFuncName sentinel token
 # ---------------------------------------------------------------------------
