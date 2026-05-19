@@ -1185,7 +1185,9 @@ class Helpers:
     def makeFuncPtr(self, funcCType, func):
         assert inspect.isfunction(func)
         if getattr(func, "C_funcPtr", None):
-            return func.C_funcPtr
+            if isinstance(func.C_funcPtr, funcCType):
+                return func.C_funcPtr
+            return ctypes.cast(func.C_funcPtr, funcCType)
         # We store the pointer in the func itself
         # so that it don't get out of scope (because of casts).
         func.C_funcPtr = funcCType(func)

@@ -2735,6 +2735,16 @@ def opsDoLeftToRight(stateStruct, op1, op2, prefix1=False):
     return True
 
 
+def isCompleteType(t):
+    while isinstance(t, CTypedef):
+        t = t.type
+    if isinstance(t, (CStruct, CUnion, CEnum)):
+        return t.body is not None
+    if isinstance(t, CArrayType):
+        return t.arrayLen is not None
+    return True
+
+
 def getConstValue(stateStruct, obj):
     """
     Evaluates the obj, in case it is a expression which can be evaluated at compile time.
@@ -2742,7 +2752,15 @@ def getConstValue(stateStruct, obj):
     if hasattr(obj, "getConstValue"): return obj.getConstValue(stateStruct)
     if isinstance(obj, (CNumber,CStr,CChar)):
         return obj.content
-    if isinstance(obj, CFuncCall):  # maybe a cast
+    if isinstance(obj, CFuncCall):  # maybe a cast or sizeof
+        if isinstance(obj.base, CSizeofSymbol):
+            assert len(obj.args) == 1
+            t = getValueType(stateStruct, obj.args[0])
+            if t is None: return None
+            if not isCompleteType(t): return None
+            ctype = getCType(t, stateStruct)
+            return ctypes.sizeof(ctype)
+
         t = obj.base
         while isinstance(t, CTypedef):
             t = t.type
@@ -2827,6 +2845,8 @@ def getValueType(stateStruct, obj):
         enumType = obj.parent
         assert isinstance(enumType, CEnum)
         return enumType
+    if isinstance(obj, (CType, CTypedef, CStruct, CUnion, CEnum)):
+        return obj
     assert False, "no type for %r" % obj
 
 

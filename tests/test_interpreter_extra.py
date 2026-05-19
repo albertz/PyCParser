@@ -1,7 +1,7 @@
 
 from helpers_test import parse
 from cparser.interpreter import Interpreter, GlobalsWrapper, getAstNodeForVarType, FuncEnv
-from cparser.cparser import State, CArrayType, CBuiltinType, CStatement, CIdentifier, CVarDecl, CPointerType
+from cparser.cparser import State, CArrayType, CBuiltinType, CStatement, CIdentifier, CVarDecl, CPointerType, CFuncCall, CSizeofSymbol, getConstValue
 import ctypes
 import ast
 
@@ -132,6 +132,93 @@ def test_interpret_type_identity_compatibility():
     
     r = interpreter.runFunc("test")
     assert r.value == 49
+
+
+def test_sizeof_constant_evaluation():
+    # Tests that sizeof can be evaluated as a constant (e.g. for array length).
+    testcode = """
+        int test() {
+            // Test sizeof(type)
+            long buffer[sizeof(long) * 2];
+            return sizeof(buffer) / sizeof(long);
+        }
+    """
+    state = parse(testcode)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    
+    r = interpreter.runFunc("test")
+    assert r.value == 16
+
+
+def test_makeFuncPtr_casting():
+    # Tests that a function can be cast to a different pointer type.
+    # This verifies the casting logic added to makeFuncPtr.
+    # The casting is necessary to avoid "incompatible types" TypeError
+    # when the same function is used with different signatures.
+    testcode = """
+        typedef int (*func1_t)(int);
+        typedef int (*func2_t)(int, int);
+        
+        int my_func(int x) { return x + 10; }
+        
+        struct S1 { func1_t f; };
+        struct S2 { func2_t f; };
+        
+        int test() {
+            struct S1 s1;
+            struct S2 s2;
+            
+            // 1. First use as func1_t
+            s1.f = my_func;
+            
+            // 2. Second use as func2_t (with cast)
+            // This would fail without the casting logic in makeFuncPtr
+            // because my_func already has a func1_t instance attached.
+            s2.f = (func2_t)my_func;
+            
+            return s1.f(5);
+        }
+    """
+    state = parse(testcode)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    
+    r = interpreter.runFunc("test")
+    assert r.value == 15
+
+
+def test_sizeof_constant_evaluation_2():
+    # Tests sizeof on various types
+    testcode = """
+        typedef struct { int x; int y; } S;
+        int test() {
+            if (sizeof(S) < sizeof(int) * 2) return 1;
+            if (sizeof(char) != 1) return 2;
+            return 0;
+        }
+    """
+    state = parse(testcode)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("test")
+    assert r.value == 0
+
+
+def test_sizeof_incomplete_type():
+    state = parse("struct S; void* p = (void*)sizeof(struct S);", withSystemMacros=False)
+    # sizeof(struct S) should not be evaluatable
+    p = state.vars["p"]
+    # It should be a cast (CFuncCall) of a sizeof (CFuncCall)
+    assert isinstance(p.body, CStatement)
+    cast_call = p.body._leftexpr
+    assert isinstance(cast_call, CFuncCall)
+    sizeof_stmnt = cast_call.args[0]
+    assert isinstance(sizeof_stmnt, CStatement)
+    sizeof_call = sizeof_stmnt._leftexpr
+    assert isinstance(sizeof_call, CFuncCall)
+    assert isinstance(sizeof_call.base, CSizeofSymbol)
+    assert getConstValue(state, sizeof_call) is None
 
 
 def test_bitfields():
