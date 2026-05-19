@@ -100,6 +100,39 @@ def test_sizeof_computed_array_size():
     r = interpreter.runFunc("f")
     assert r.value == 0
 
+def test_interpret_type_identity_compatibility():
+    # Demonstrates the need for global caching of CFUNCTYPE and POINTER.
+    # In cparser, each C function is translated to a separate Python function.
+    # Without global caching, each translated Python function would create its own
+    # distinct ctypes class for the same C function pointer type, causing
+    # TypeErrors during assignment.
+    
+    testcode = """
+        typedef int (*callback_t)(int);
+        struct S {
+            callback_t f;
+        };
+        int my_callback(int x) { return x + 42; }
+        
+        void set_callback(struct S* s) {
+            // This assignment requires 'my_callback' to be wrapped in 'callback_t'.
+            // The resulting wrapper must match the type of 's->f'.
+            s->f = my_callback;
+        }
+        
+        int test() {
+            struct S s;
+            set_callback(&s);
+            return s.f(7);
+        }
+    """
+    state = parse(testcode)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    
+    r = interpreter.runFunc("test")
+    assert r.value == 49
+
 
 def test_bitfields():
     state = parse("""

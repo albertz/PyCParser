@@ -425,7 +425,7 @@ class CPointerType(CType):
             if t is None:
                 ptrType = getCType(ctypes.c_void_p, stateStruct)
             else:
-                ptrType = ctypes.POINTER(t)
+                ptrType = get_pointer_type(t)
             return ptrType
         except CTypeConstructionException as e:
             stateStruct.error("getCType " + str(self) + ": error getting type (" + str(e) + "), falling back to void-ptr")
@@ -2186,15 +2186,27 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
             stateStruct.error("finalize " + str(self) + ": type is unknown. type tokens: " + str(self._type_tokens))
         # Name can be unset. It depends where this is declared.
     def getCType(self, stateStruct, workaroundPtrReturn=True, wrap=True):
+        # We cache locally because the type might depend on workaroundPtrReturn/wrap.
+        # get_cfunctype below provides additional global caching for the resulting signature.
+        cache_attr = "_ctype_cached"
+        if not hasattr(self, cache_attr):
+            setattr(self, cache_attr, {})
+        cache = getattr(self, cache_attr)
+        cache_key = (workaroundPtrReturn, wrap)
+        if cache_key in cache:
+            return cache[cache_key]
+
         if workaroundPtrReturn and isinstance(self.type, CPointerType):
             # https://bugs.python.org/issue5710
             restype = ctypes.c_void_p
         else:
             restype = getCType(self.type, stateStruct)
         if wrap: restype = wrapCTypeClassIfNeeded(restype)
-        argtypes = map(lambda a: getCType(a, stateStruct), self.args)
-        if wrap: argtypes = map(wrapCTypeClassIfNeeded, argtypes)
-        return ctypes.CFUNCTYPE(restype, *argtypes)
+        argtypes = list(map(lambda a: getCType(a, stateStruct), self.args))
+        if wrap: argtypes = list(map(wrapCTypeClassIfNeeded, argtypes))
+        res = get_cfunctype(restype, *argtypes)
+        cache[cache_key] = res
+        return res
     def asCCode(self, indent=""):
         return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
 
@@ -2262,8 +2274,8 @@ class CFunc(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="funcs", **kwargs)
     def getCType(self, stateStruct):
         restype = getCType(self.type, stateStruct)
-        argtypes = map(lambda a: getCType(a, stateStruct), self.args)
-        return ctypes.CFUNCTYPE(restype, *argtypes)
+        argtypes = list(map(lambda a: getCType(a, stateStruct), self.args))
+        return get_cfunctype(restype, *argtypes)
     def asCCode(self, indent=""):
         s = indent + asCCode(self.type) + " " + self.name + "(" + ", ".join(map(asCCode, self.args)) + ")"
         if self.body is None: return s
@@ -2289,6 +2301,38 @@ def needWrapCTypeClass(t):
     if t is None:
         return False
     return t.__base__ is _ctypes._SimpleCData
+
+
+_pointer_type_cache = {}
+def get_pointer_type(t):
+    """
+    ctypes.POINTER(t) creates a new type class on every call.
+    We need to cache it to ensure that logically identical pointer types
+    have the same Python object identity, which is required by ctypes
+    for type compatibility in some cases (e.g. function pointers, struct fields).
+    """
+    if t in _pointer_type_cache:
+        return _pointer_type_cache[t]
+    res = ctypes.POINTER(t)
+    _pointer_type_cache[t] = res
+    return res
+
+
+_cfunctype_cache = {}
+def get_cfunctype(restype, *argtypes):
+    """
+    ctypes.CFUNCTYPE(...) creates a new type class on every call.
+    Global caching ensures that identical function signatures result in
+    the same type instance, avoiding 'incompatible types' errors in ctypes.
+    """
+    key = (restype, tuple(argtypes))
+    if key in _cfunctype_cache:
+        return _cfunctype_cache[key]
+    if _cfunctype_cache: # Only print after initialization to avoid noise
+        pass # print("get_cfunctype", restype, argtypes)
+    res = ctypes.CFUNCTYPE(restype, *argtypes)
+    _cfunctype_cache[key] = res
+    return res
 
 
 def wrapCTypeClassIfNeeded(t):
@@ -2385,6 +2429,7 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
         return obj._ctype
 
     if hasattr(obj, "_ctype"):
+        # Cache to ensure consistent type identity.
         return obj._ctype
     if not hasattr(obj, "body"):
         raise CTypeConstructionException("%s must have the body attrib" % obj)

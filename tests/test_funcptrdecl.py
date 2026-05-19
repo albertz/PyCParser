@@ -88,3 +88,17 @@ def test_funcptrdecl():
     # the function has the parameters `int(*)(long), int`
     # the func-ptr func returns `int`
     # the func-ptr func has the parameters `int, ...`
+
+def test_ctypes_type_caching():
+    # Fix: Global caching of CFUNCTYPE and POINTER
+    state = State()
+
+    # Test POINTER caching
+    ptr1 = CPointerType(CBuiltinType(("int",))).getCType(state)
+    ptr2 = CPointerType(CBuiltinType(("int",))).getCType(state)
+    assert ptr1 is ptr2
+
+    # Test CFUNCTYPE caching
+    func1 = CFuncPointerDecl(type=CBuiltinType(("int",)), args=[CFuncArgDecl(type=CBuiltinType(("int",)))]).getCType(state)
+    func2 = CFuncPointerDecl(type=CBuiltinType(("int",)), args=[CFuncArgDecl(type=CBuiltinType(("int",)))]).getCType(state)
+    assert func1 is func2

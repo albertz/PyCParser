@@ -415,8 +415,10 @@ def getAstNodeForVarType(funcEnv, t):
     elif isinstance(t, CPointerType):
         if isinstance(t.pointerOf, CBuiltinType) and t.pointerOf.builtinType == ("void",):
             return getAstNodeAttrib("ctypes_wrapped", "c_void_p")
-        a = getAstNodeAttrib("ctypes", "POINTER")
-        return makeAstNodeCall(a, getAstNodeForVarType(funcEnv, t.pointerOf))
+        return makeAstNodeCall(
+            ast.Name(id="get_pointer_type", ctx=ast.Load()),
+            getAstNodeForVarType(funcEnv, t.pointerOf)
+        )
     elif isinstance(t, CTypedef):
         if t in funcEnv.localTypes:
             return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
@@ -463,7 +465,7 @@ def getAstNodeForVarType(funcEnv, t):
         return ast.BinOp(left=arrayOf, op=ast.Mult(), right=arrayLen)
     elif isinstance(t, (CFuncPointerDecl, CFunc)):
         return makeAstNodeCall(
-            getAstNodeAttrib("ctypes", "CFUNCTYPE"),
+            ast.Name(id="get_cfunctype", ctx=ast.Load()),
             makeAstNodeCall(
                 getAstNodeAttrib("helpers", "fixReturnType"),
                 getAstNodeForVarType(funcEnv, t.type)
@@ -2207,7 +2209,9 @@ class Interpreter:
             "structs": self.globalsStructWrapper,
             "unions": self.globalsUnionsWrapper,
             "values": self.wrappedValues,
-            "intp": self
+            "intp": self,
+            "get_cfunctype": get_cfunctype,
+            "get_pointer_type": get_pointer_type,
         }
         self.debug_print_getFunc = False
         self.debug_print_getVar = False
