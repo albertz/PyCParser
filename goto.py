@@ -149,10 +149,11 @@ class _Flatten:
         self.c += 1
         return GotoStatement(label)
 
-    def flatten(self, body, breakJump=None):
+    def flatten(self, body, breakJump=None, continueJump=None):
         """
         :type body: list[ast.AST]
         :param breakJump: if we find some ast.Break in a while-loop, add this jump
+        :param continueJump: if we find some ast.Continue in a while-loop, add this jump
         :rtype: list[ast.AST]
         """
         r = []
@@ -168,11 +169,11 @@ class _Flatten:
                 else:
                     goto_orelse_stmnt = None
                     r += [ast.If(test=a, body=[goto_final_stmnt], orelse=[])]
-                r += self.flatten(s.body, breakJump=breakJump)
+                r += self.flatten(s.body, breakJump=breakJump, continueJump=continueJump)
                 if s.orelse:
                     r += [goto_final_stmnt]
                     r += [GotoLabel(goto_orelse_stmnt.label)]
-                    r += self.flatten(s.orelse, breakJump=breakJump)
+                    r += self.flatten(s.orelse, breakJump=breakJump, continueJump=continueJump)
                 r += [GotoLabel(goto_final_stmnt.label)]
             elif isinstance(s, ast.While):
                 if s.orelse: raise NotImplementedError
@@ -183,7 +184,12 @@ class _Flatten:
                 a.operand = s.test
                 goto_final_stmnt = self.make_jump()
                 r += [ast.If(test=a, body=[goto_final_stmnt], orelse=[])]
-                r += self.flatten(s.body, breakJump=goto_final_stmnt)
+                # Inside the loop body: `break` jumps past the loop, `continue`
+                # jumps back to the top (re-checking the test).  When we recurse
+                # into the body we install NEW break/continue jumps so that any
+                # outer-loop jumps still in scope are shadowed -- break/continue
+                # in C always target the innermost enclosing loop.
+                r += self.flatten(s.body, breakJump=goto_final_stmnt, continueJump=goto_repeat_stmnt)
                 r += [goto_repeat_stmnt]
                 r += [GotoLabel(goto_final_stmnt.label)]
             elif isinstance(s, ast.For):
@@ -193,6 +199,9 @@ class _Flatten:
             elif isinstance(s, ast.Break):
                 assert breakJump, "found break in unexpected scope"
                 r += [breakJump]
+            elif isinstance(s, ast.Continue):
+                assert continueJump, "found continue in unexpected scope"
+                r += [continueJump]
             else:
                 r += [s]
         return r

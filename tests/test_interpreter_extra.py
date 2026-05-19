@@ -291,6 +291,120 @@ def test_release_interned_noop_does_not_crash():
     assert r.value == 0, "expected 0 (stub called, body skipped), got %r" % r
 
 
+def test_continue_in_function_with_goto():
+    """C `continue` inside a loop must target the innermost loop -- even when
+    the function also contains C `goto` statements (which trigger the
+    goto-rewriting transformation in cparser.goto, wrapping the whole function
+    body in a single `while True:` loop).  Before the fix, a bare ast.Continue
+    survived the flatten pass unchanged, turning into a Python `continue` that
+    continued the function-level loop and re-executed the function's prologue.
+    This is the bug that made `pmerge` (used by MRO computation in
+    typeobject.c) loop forever during _Py_ReadyTypes.
+    """
+    state = parse("""
+    int f() {
+        int total = 0;
+        int trips = 0;
+        for (int i = 0; i < 10; i++) {
+            trips++;
+            if (i % 2 == 0) {
+                continue;  /* must continue the for-loop, NOT restart f() */
+            }
+            total += i;
+            if (total > 100) goto done;
+        }
+    done:
+        /* sum of odd i in [0,10) = 1+3+5+7+9 = 25; trips must equal 10 */
+        return total * 1000 + trips;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 25 * 1000 + 10, "expected 25010, got %r" % r
+
+
+def test_continue_in_nested_loop_with_goto():
+    """`continue` must target the innermost loop in the presence of goto."""
+    state = parse("""
+    int f() {
+        int hits = 0;
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (j == i) continue;  /* skip diagonal in inner loop */
+                hits++;
+            }
+        }
+        if (hits == 0) goto err;
+        return hits;
+    err:
+        return -1;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    # 4x4 grid minus 4 diagonal entries = 12
+    assert r.value == 12, "expected 12, got %r" % r
+
+
+def test_address_of_local_var():
+    """Pointers created via & must be correctly registered in pointerStorage.
+    This verifies that the _storePtr call added to the & operator is working.
+    """
+    state = parse("""
+    int f() {
+        int x = 42;
+        int *p = &x;
+        return *p;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 42
+
+
+def test_pointer_chained_assignment():
+    """Chained pointer assignments through multiple locals must preserve the
+    target.  Stresses the pointerStorage tracking: q and r are not registered
+    via &, only via assignment from p (which was registered via &x)."""
+    state = parse("""
+    int f() {
+        int x = 42;
+        int *p = &x;
+        int *q = p;
+        int *r = q;
+        return *r;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    res = interp.runFunc("f")
+    assert res.value == 42
+
+
+def test_logical_not_on_bitfield():
+    """`!` applied to a bitfield must yield a usable int (0 or 1) that can
+    participate in further boolean expressions."""
+    state = parse("""
+    typedef struct { unsigned int x:1; } S;
+    int f(S *s) {
+        return (!s->x) || 0;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.typedefs['S'])
+    s = S()
+    s.x = 0
+    # (!0) || 0  => 1 || 0 => 1
+    assert interp.getFunc("f")(ctypes.pointer(s)) == 1
+    s.x = 1
+    # (!1) || 0  => 0 || 0 => 0
+    assert interp.getFunc("f")(ctypes.pointer(s)) == 0
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())

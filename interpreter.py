@@ -1718,7 +1718,8 @@ def astAndTypeForCStatement(funcEnv, stmnt):
             if offset is not None:
                 t = CStdIntType("intptr_t")
                 return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=offset)), t
-            return makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode), CPointerType(rightType)
+            ptrAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "pointer"), rightAstNode)
+            return makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), ptrAst), CPointerType(rightType)
         elif stmnt._op.content in OpUnary:
             a = ast.UnaryOp()
             a.op = OpUnary[stmnt._op.content]()
@@ -2321,7 +2322,11 @@ class Interpreter:
         if not ptr_addr:
             return  # free(NULL) is a no-op in C
         try:
-            self.mallocs.pop(ptr_addr)
+            buf = self.mallocs.pop(ptr_addr)
+            # Proactively remove from ranges and storage to avoid leaks
+            obj_size = ctypes.sizeof(buf)
+            self.pointerStorageRanges.discard((ptr_addr, obj_size))
+            self.pointerStorage.pop(ptr_addr, None)
         except KeyError:
             raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
 
