@@ -311,7 +311,95 @@ class Wrapper:
         state.macros["false"] = Macro(rightside="0")
     def handle_stddef_h(self, state): pass  # offsetof is handled as a cparser builtin keyword
     def handle_math_h(self, state):
-        wrapCFunc(state, "log", restype=ctypes.c_double, argtypes=(ctypes.c_double,))
+        """Wrap the standard C99 <math.h> functions and constants.
+
+        We bind directly to libc (via ctypes), so behaviour matches the host
+        platform's libm.  Only the double-precision variants are wrapped --
+        CPython source mostly uses those.
+        """
+        import math
+        # Infinity macros.
+        # We need each of these to expand to a single token
+        # that parses as a C float literal and evaluates to +inf.
+        # Of the three obvious candidates:
+        #   - `(1.0/0.0)`  -- canonical C, but blows up in our interpreter
+        #                     (Python raises ZeroDivisionError on float div).
+        #   - `(DBL_MAX*DBL_MAX)` -- glibc-style overflow; would require us
+        #                     to also pull `<float.h>` into every TU that
+        #                     uses `<math.h>` so DBL_MAX is in scope.
+        #   - `1e999`      -- a decimal float literal whose magnitude
+        #                     exceeds DBL_MAX.  Python (and IEEE-754
+        #                     hardware in C) round it to +inf on
+        #                     conversion, which is exactly what we want.
+        # We pick the third: it's a single token, self-contained, parses
+        # fine in cparser, and `float("1e999") == inf` in Python.
+        # We deliberately do NOT define NAN here -- the canonical
+        # `(0.0/0.0)` parses fine but raises ZeroDivisionError when our
+        # interpreter evaluates it, and CPython source uses the
+        # `Py_IS_NAN` macro for NaN tests rather than the `NAN` value, so
+        # leaving it undefined is fine in practice.
+        state.macros["HUGE_VAL"] = Macro(rightside="1e999")
+        state.macros["HUGE_VALF"] = Macro(rightside="1e999F")
+        state.macros["HUGE_VALL"] = Macro(rightside="1e999L")
+        state.macros["INFINITY"] = Macro(rightside="1e999F")
+        # FP classification result codes (C99 <math.h>).  Values match glibc.
+        state.macros["FP_NAN"] = Macro(rightside="0")
+        state.macros["FP_INFINITE"] = Macro(rightside="1")
+        state.macros["FP_ZERO"] = Macro(rightside="2")
+        state.macros["FP_SUBNORMAL"] = Macro(rightside="3")
+        state.macros["FP_NORMAL"] = Macro(rightside="4")
+        # M_* constants (POSIX; widely used but not in strict C99).
+        state.macros["M_PI"] = Macro(rightside=repr(math.pi))
+        state.macros["M_E"] = Macro(rightside=repr(math.e))
+        state.macros["M_LN2"] = Macro(rightside=repr(math.log(2)))
+        state.macros["M_LN10"] = Macro(rightside=repr(math.log(10)))
+        state.macros["M_LOG2E"] = Macro(rightside=repr(1.0 / math.log(2)))
+        state.macros["M_LOG10E"] = Macro(rightside=repr(1.0 / math.log(10)))
+        state.macros["M_SQRT2"] = Macro(rightside=repr(math.sqrt(2)))
+        # Single-arg double-returning functions.
+        # We skip names that the host libc doesn't actually expose
+        # (e.g. "cbrt" is missing on some MSVC builds, "nearbyint" on very old runtimes).
+        _double = ctypes.c_double
+        for _fn in (
+                # Power and logarithm
+                "sqrt", "cbrt", "exp", "exp2", "expm1",
+                "log", "log2", "log10", "log1p",
+                # Rounding and truncation
+                "floor", "ceil", "round", "trunc", "rint", "nearbyint",
+                # Absolute value
+                "fabs",
+                # Trigonometric
+                "sin", "cos", "tan", "asin", "acos", "atan",
+                # Hyperbolic
+                "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+                # Error / gamma
+                "erf", "erfc", "tgamma", "lgamma",
+                # FP-bit-pattern queries
+                "logb",
+        ):
+            if hasattr(libc, _fn):
+                wrapCFunc(state, _fn, restype=_double, argtypes=(_double,))
+        # Two-arg double-returning functions.
+        for _fn in ("pow", "atan2", "fmod", "hypot",
+                    "copysign", "nextafter", "remainder", "fdim",
+                    "fmax", "fmin"):
+            if hasattr(libc, _fn):
+                wrapCFunc(state, _fn, restype=_double, argtypes=(_double, _double))
+        # Functions with mixed signatures.
+        if "ldexp" not in state.funcs and hasattr(libc, "ldexp"):
+            wrapCFunc(state, "ldexp", restype=_double, argtypes=(_double, ctypes.c_int))
+        if "frexp" not in state.funcs and hasattr(libc, "frexp"):
+            wrapCFunc(state, "frexp", restype=_double,
+                      argtypes=(_double, ctypes.POINTER(ctypes.c_int)))
+        if "modf" not in state.funcs and hasattr(libc, "modf"):
+            wrapCFunc(state, "modf", restype=_double,
+                      argtypes=(_double, ctypes.POINTER(_double)))
+        # Classification: return int (an FP_* code or boolean).
+        for _fn in ("isnan", "isinf", "isfinite", "isnormal", "signbit",
+                    "fpclassify"):
+            if hasattr(libc, _fn):
+                wrapCFunc(state, _fn, restype=ctypes.c_int, argtypes=(_double,))
+
     def handle_string_h(self, state):
         wrapCFunc(state, "strlen", restype=ctypes.c_size_t, argtypes=(ctypes.c_char_p,))
         wrapCFunc(state, "strcpy", restype=ctypes.c_char_p, argtypes=(ctypes.c_char_p,ctypes.c_char_p))
