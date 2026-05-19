@@ -830,5 +830,65 @@ def test_parse_prefix_and_binary_precedence():
     assert stmnt._leftexpr._op.content == "*"
 
 
+def test_parse_deref_postinc_bitwise_precedence():
+    """`*p++ & 0x80` must parse as `(*p++) & 0x80`, NOT `*((p++) & 0x80)`.
+
+    This is the pattern from CPython's stringlib find_max_char
+    (`if (*p++ & 0x80) return 255;`).  Before the fix, after delegating
+    a tighter-binding postfix `++` to the inner expression, the outer
+    wrapper went unconditionally to state 8 -- so the next operator
+    (here `&`) never got the precedence check against the outer prefix
+    `*`, and was instead absorbed by the inner statement, producing the
+    wrong AST `*((p++) & 0x80)`.
+
+    The critical invariant: the *top-level* operator of the returned
+    expression must be the bitwise `&`, not the unary `*`.  We also
+    check that the right-hand side of `&` is the literal 128 and that
+    the left-hand side contains both a `*` and a `++` -- so the AST is
+    `(deref+postinc) & 128`, regardless of how many intermediate
+    wrapper CStatement nodes the parser inserts.
+    """
+    state = parse("""
+    int f(unsigned char *p) {
+        return *p++ & 128;
+    }
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    f = state.funcs["f"]
+    # The function body is a single `return EXPR;`; CReturnStatement.body
+    # is the returned CStatement.
+    ret = f.body.contentlist[0]
+    expr = ret.body
+    # Top-level: bitwise AND.  This is THE assertion that flips on the
+    # precedence fix; before the fix this would be `*` and the test
+    # would fail with `_op.content == '*'`.
+    assert expr._op is not None and expr._op.content == "&", \
+        "top-level op should be '&', got %r (full expr: %r)" % (expr._op, expr)
+    assert expr._rightexpr.content == 128, \
+        "right side should be the literal 128, got %r" % expr._rightexpr
+    # The left side must contain BOTH a `*` (deref) and a `++`
+    # (post-increment) anywhere in its subtree -- the parser nests
+    # wrapper CStatement nodes around unary operators, so we walk
+    # the tree rather than asserting a specific shape.
+    def _ops_in(node):
+        seen = set()
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n is None:
+                continue
+            op = getattr(n, "_op", None)
+            if op is not None:
+                seen.add(op.content)
+            for attr in ("_leftexpr", "_rightexpr", "_middleexpr"):
+                child = getattr(n, attr, None)
+                if child is not None:
+                    stack.append(child)
+        return seen
+    ops = _ops_in(expr._leftexpr)
+    assert "*" in ops, "expected '*' in left subtree, got ops=%r" % ops
+    assert "++" in ops, "expected '++' in left subtree, got ops=%r" % ops
+
+
 if __name__ == "__main__":
     main(globals())

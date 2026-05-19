@@ -5035,5 +5035,65 @@ def test_flexible_array_member_address():
     assert res.value == 42, "flexible array member read: expected 42, got %r" % res
 
 
+def test_deref_postinc_bitwise_precedence():
+    """`*p++ & 0x80` must parse as `(*p++) & 0x80`, NOT `*((p++) & 0x80)`.
+
+    Previously, after handling a postfix operator (whose precedence was
+    correctly compared against the outer prefix `*`) the parser left the
+    outer wrapper in state 8.  When the next operator -- e.g. the
+    bitwise `&` here -- arrived, state 8 blindly delegated to the inner
+    statement, so the `&` ended up grouped with the (pointer) operand
+    of `++` instead of with the dereferenced byte.  That produced an
+    AST of the form `*((p++) & 0x80)`, which the interpreter then
+    rejected via ``ptrArithmetic`` (`'&' not in ('+','-')`).
+
+    The CPython codebase hits exactly this in stringlib's
+    ``find_max_char`` (``if (*p++ & 0x80) return 255;``), so it must
+    interpret correctly end-to-end here too.
+    """
+    state = parse("""
+    int f(unsigned char *p) {
+        return *p++ & 128;
+    }
+    int run() {
+        unsigned char buf[2] = { 0x7f, 0x80 };
+        unsigned char *p = buf;
+        int a = f(p);      /* *p == 0x7f -> 0x7f & 0x80 == 0 */
+        p = buf + 1;
+        int b = f(p);      /* *p == 0x80 -> 0x80 & 0x80 == 0x80 */
+        return (a << 16) | b;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 0x80, "expected 0x80, got %r" % r
+
+
+def test_deref_postinc_mixed_bitops():
+    """Variants of ``*p++ <op> N`` -- all the bitwise ops we expect to see."""
+    state = parse("""
+    int f_or(unsigned char *p)  { return *p++ | 0x10; }
+    int f_xor(unsigned char *p) { return *p++ ^ 0x0F; }
+    int f_shl(unsigned char *p) { return *p++ << 4;   }
+    int f_shr(unsigned char *p) { return *p++ >> 1;   }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # build a one-byte buffer and re-use a fresh ubyte* per call so we
+    # don't rely on the post-increment side-effect across calls.
+    Buf = (ctypes.c_ubyte * 1)
+    for fn, b, expected in [
+            ("f_or",  0x80, 0x80 | 0x10),
+            ("f_xor", 0x55, 0x55 ^ 0x0F),
+            ("f_shl", 0x03, 0x03 << 4),
+            ("f_shr", 0x80, 0x80 >> 1),
+    ]:
+        buf = Buf(b)
+        r = interp.getFunc(fn)(ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte)))
+        assert r == expected, \
+            "%s on 0x%02x: expected 0x%x, got 0x%x" % (fn, b, expected, r)
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

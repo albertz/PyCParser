@@ -3291,7 +3291,18 @@ class CStatement(_CBaseWithOptBody):
                     self._state = 6
                 else:
                     self._rightexpr._cpre3_handle_token(stateStruct, token)
-                    self._state = 8
+                    # Mirror the state-8 transition logic: once
+                    # the inner expression is back in a "complete value" state
+                    # (5/7/9/...), the outer wrapper must move to state 9 so
+                    # subsequent operator tokens get the precedence check
+                    # against our prefix op.  Without this, e.g. `*p++ & 128`
+                    # would stay in state 8 after `++` and route `&` straight
+                    # into the inner statement -- producing `*((p++) & 128)`
+                    # instead of `(*p++) & 128`.
+                    if self._rightexpr._state in (5, 7, 9, 50, 51):
+                        self._state = 9
+                    else:
+                        self._state = 8
         elif self._state == 10: # after number + "."
             if isinstance(token, CNumber):
                 # Reassemble the float from the original lexemes, not from the
