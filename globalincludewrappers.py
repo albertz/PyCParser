@@ -144,15 +144,26 @@ class Wrapper:
                 rightside=state.macros["DBL_" + _suffix].rightside)
 
     def handle_limits_h(self, state):
+        # char (signed by default on x86/ARM macOS+Linux; 8-bit on every
+        # platform Python supports).
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
         state.macros["CHAR_MAX"] = Macro(rightside="127")
         state.macros["CHAR_MIN"] = Macro(rightside="-128")
+        state.macros["SCHAR_MAX"] = Macro(rightside="127")
+        state.macros["SCHAR_MIN"] = Macro(rightside="-128")
+        # short
+        state.macros["SHRT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_short) * 8 - 1) - 1))
+        state.macros["SHRT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_short) * 8 - 1))))
+        state.macros["USHRT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ushort) * 8) - 1))
+        # int
         state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1))
         state.macros["INT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1))))
         state.macros["UINT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_uint) * 8) - 1))
+        # long
         state.macros["LONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1) - 1))
         state.macros["LONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1))))
         state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
+        # long long
         state.macros["LLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1) - 1))
         state.macros["LLONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1))))
         state.macros["ULLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulonglong) * 8) - 1))
