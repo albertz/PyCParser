@@ -1486,7 +1486,8 @@ def astAndTypeForStatement(funcEnv, stmnt):
             pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
             while isinstance(pType, CTypedef):
                 pType = pType.type
-            assert isinstance(pType, CFuncPointerDecl)
+            if not isinstance(pType, CFuncPointerDecl):
+                raise Exception("Func ptr call: base %r is not a func ptr, got %r" % (stmnt.base, pType))
             a = makeAstNodeCall(
                 Helpers.checkedFuncPtrCall,
                 pAst,
