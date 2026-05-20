@@ -696,6 +696,104 @@ def test_call_through_ternary_func_pointer():
     assert interp.runFunc("run", 0, 5).value == -95
 
 
+def test_get_ptr_through_overlapping_inner_range():
+    """End-to-end repro of the overlapping-range bug via interpreted C code.
+
+    Mirrors the structural shape of `PyTupleObject` / `PyDictKeysObject`:
+    a heap-allocated struct with several pointer fields.  Taking the
+    address of a non-first field (e.g. `&t->p1`) makes the interpreter
+    register an 8-byte inner range at `malloc+8` in
+    ``pointerStorageRanges`` (the struct field is a sub-view of the
+    malloc'd buffer).  The malloc buffer's own range
+    (``(malloc_addr, 40)``) is already in there too.
+
+    We then access a later field's address (`&t->p4` at `malloc+32`)
+    via raw uintptr arithmetic so the resulting pointer has no
+    ``_b_base_`` chain.  ``_getPtr`` walks the range list in reverse,
+    finds the smaller inner ``(malloc+8, 8)`` first, observes
+    ``8 + 8 <= 32``, and ``break``s -- never checking the outer
+    ``(malloc, 40)`` range that does cover the address.  Result:
+    ``Exception("invalid pointer access ...")``.
+
+    The bug fix is to stop registering ranges for sub-views (objs with
+    a non-None ``_b_base_``): the enclosing root allocation's range
+    already covers them, and adding a smaller overlapping range only
+    breaks the reverse-irange invariant.
+    """
+    state = parse("""
+    extern void* malloc(unsigned long);
+    typedef struct { int *p0; int *p1; int *p2; int *p3; int *p4; } Five;
+    int run(void) {
+        Five *t = (Five*) malloc(sizeof(Five));
+        int x = 100, y = 200;
+        /* register inner range at &t->p1 (non-zero offset, fresh addr) */
+        int **slot1 = &t->p1;
+        *slot1 = &x;
+        /* access &t->p4 via raw uintptr -- no _b_base_ chain */
+        unsigned long slot4_addr = ((unsigned long) slot1) + 3UL * 8UL;
+        int **slot4 = (int**) slot4_addr;
+        *slot4 = &y;
+        return **slot4;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # Wire a minimal malloc that returns a raw address (interpreter's
+    # _malloc returns a c_void_p; the generated code feeds it to _getPtr
+    # which expects an int).
+    def _malloc(size):
+        if hasattr(size, "value"): size = size.value
+        ptr = interp._malloc(int(size))
+        return ptr.value or 0
+    _malloc.C_argTypes = [ctypes.c_ulong]
+    _malloc.C_resType = ctypes.c_void_p
+    interp._func_cache["malloc"] = _malloc
+
+    r = interp.runFunc("run")
+    assert r.value == 200, "expected 200, got %r" % r.value
+
+
+def test_store_ptr_does_not_add_overlapping_inner_range_for_subview():
+    """`pointerStorageRanges` should only contain entries for *root*
+    allocations (ctypes with no `_b_base_`).  Sub-views into an existing
+    root are already covered by the root's range; adding a smaller
+    overlapping range for them would break the reverse-irange `break`
+    invariant in the range-search fallback (see
+    `test_get_ptr_through_overlapping_inner_range` for the user-visible
+    consequence).
+
+    This test pokes `_storePtr` directly with a sub-view ctype and
+    asserts no inner range was added.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Heap-allocate a buffer of pointer slots.
+    PtrArrT = ctypes.c_void_p * 4
+    buf = interp._malloc(ctypes.sizeof(PtrArrT))
+    buf_addr = _ctype_ptr_get_value(buf)
+    # The root range is in place from _malloc.
+    assert (buf_addr, ctypes.sizeof(PtrArrT)) in interp.pointerStorageRanges
+    ranges_before = set(interp.pointerStorageRanges)
+
+    # Build a sub-view ctype at offset 8 of the buffer (mirrors taking
+    # `&t->p1` for a struct field at non-zero offset, or `&arr[1]` for
+    # an array element).  `_storePtr` on a pointer to this sub-view must
+    # not register an additional `(buf_addr+8, 8)` range.
+    arr = ctypes.cast(buf, ctypes.POINTER(PtrArrT)).contents
+    inner_view = ctypes.cast(
+        ctypes.byref(arr, 8), ctypes.POINTER(ctypes.c_void_p))
+    interp._storePtr(inner_view)
+
+    new_ranges = set(interp.pointerStorageRanges) - ranges_before
+    assert not new_ranges, (
+        "_storePtr unexpectedly added inner range(s) for a sub-view: %r"
+        % new_ranges)
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())

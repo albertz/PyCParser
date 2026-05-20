@@ -2432,8 +2432,15 @@ class Interpreter:
                 self.pointerStorage[obj_ptr_addr] = obj
                 if offset != 0:
                     self.pointerStorage[ptr_addr] = obj
-                obj_size = ctypes.sizeof(obj)
-                self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
+                # Only register the range entry if `obj` is a *root* ctype (no `_b_base_`).
+                # Sub-views of an existing root are already covered by the root's range,
+                # which was added when the root was first stored (eg. by _malloc).
+                # We might have not registered it yet if it lives on the stack and not via _malloc.
+                # Adding a smaller overlapping range for a sub-view would break
+                # the reverse-irange `break` invariant in the fallback search below.
+                if getattr(obj, "_b_base_", None) is None:
+                    obj_size = ctypes.sizeof(obj)
+                    self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
                 return ptr
 
         # This is slower. Check pointerStorageRanges if we have it.
