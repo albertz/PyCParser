@@ -2024,7 +2024,29 @@ def cStatementToPyAst(funcEnv, c):
     """
     body = funcEnv.getBody()
     if isinstance(c, (CVarDecl,CFunc)):
-        funcEnv.registerNewVar(c.name, c)
+        # C function-local `static` variables (e.g. `_Py_IDENTIFIER(__eq__)`
+        # which expands to `static _Py_Identifier PyId___eq__ = ...` inside
+        # a function body) have function scope but program lifetime -- their
+        # storage must persist across calls, not be re-created on every
+        # entry.  We promote them to global storage with a unique mangled
+        # name (`<funcname>__<varname>`) so the same ctypes object is
+        # materialised once on first use and re-used thereafter.  Without
+        # this, a function-local static would be initialised fresh on every
+        # call; in CPython source, the static-strings linked list inside
+        # `_PyUnicode_FromId` then ends up pointing at the *previous*
+        # call's temporary identifier (now GC'd), and subsequent lookups
+        # see a dangling pointer.
+        if (isinstance(c, CVarDecl)
+                and "static" in getattr(c, "attribs", ())
+                and id(c) not in funcEnv.globalScope.names):
+            mangled = "%s__%s" % (funcEnv.get_name(), c.name)
+            funcEnv.globalScope.identifiers[mangled] = c
+            funcEnv.globalScope.names[id(c)] = mangled
+            # The CVarDecl is now visible as a global; references inside the
+            # function body resolve through getAstNodeForVarDecl ->
+            # findName -> "g.<mangled>".  No local-variable assignment.
+        else:
+            funcEnv.registerNewVar(c.name, c)
     elif isinstance(c, CStatement):
         a, t = astAndTypeForCStatement(funcEnv, c)
         if isinstance(a, ast.expr):

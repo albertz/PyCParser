@@ -5035,6 +5035,79 @@ def test_flexible_array_member_address():
     assert res.value == 42, "flexible array member read: expected 42, got %r" % res
 
 
+def test_function_local_static_persists_across_calls():
+    """A C function-local `static` variable has program lifetime, NOT
+    function lifetime -- its storage must be re-used across calls, not
+    re-created on every entry.
+
+    This is the construct used by CPython's `_Py_IDENTIFIER(__eq__)` macro
+    (which expands to `static _Py_Identifier PyId___eq__ = {...}` inside a
+    function body).  Before the fix, each call materialised a fresh
+    ctypes object for the static, so any cross-call linked list built on
+    those addresses (e.g. unicodeobject.c's `static_strings`) ended up
+    pointing into freed memory and `_storePtr` would raise
+    NotImplementedError on the next traversal.
+    """
+    state = parse("""
+    int bump(void) {
+        static int counter = 0;
+        counter++;
+        return counter;
+    }
+    int* addr_of_counter(void) {
+        static int counter = 0;
+        return &counter;
+    }
+    int read_via_addr(void) {
+        int *p = addr_of_counter();
+        return *p;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    bump = interp.getFunc("bump")
+    # Each call must see the *previous* call's increment, i.e. shared
+    # storage across calls.  Three calls -> 1, 2, 3.
+    assert bump() == 1
+    assert bump() == 2
+    assert bump() == 3
+
+    # And: the address of the static must also be stable across calls,
+    # which is what `_Py_IDENTIFIER` relies on to thread identifiers into
+    # the static_strings linked list.
+    addr_fn = interp.getFunc("addr_of_counter")
+    p1 = ctypes.cast(addr_fn(), ctypes.c_void_p).value
+    p2 = ctypes.cast(addr_fn(), ctypes.c_void_p).value
+    assert p1 == p2, "function-local static must have a stable address: %r vs %r" % (p1, p2)
+
+    # And: reading via the returned pointer must observe the same storage
+    # that bump() writes to -- well, it's a *different* static, but writes
+    # via the returned pointer must persist.
+    read = interp.getFunc("read_via_addr")
+    # Initially 0 (zero-initialised).
+    assert read() == 0
+
+
+def test_two_functions_each_have_own_static():
+    """Two different functions each with a `static int counter` must have
+    INDEPENDENT counters, even though they share the variable name.  Our
+    mangling scheme is `<funcname>__<varname>`, so they get distinct
+    global storage."""
+    state = parse("""
+    int f(void) { static int counter = 0; return ++counter; }
+    int g(void) { static int counter = 100; return ++counter; }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    f = interp.getFunc("f")
+    g = interp.getFunc("g")
+    assert f() == 1
+    assert g() == 101
+    assert f() == 2
+    assert g() == 102
+    assert f() == 3
+
+
 def test_deref_postinc_bitwise_precedence():
     """`*p++ & 0x80` must parse as `(*p++) & 0x80`, NOT `*((p++) & 0x80)`.
 
