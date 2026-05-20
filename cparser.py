@@ -603,6 +603,10 @@ class State(object):
         "ptrdiff_t": ctypes.c_long,
         "intptr_t": ctypes.c_long,
         "uintptr_t": ctypes.c_ulong,
+        # _Bool is the C99 underlying boolean type.  `<stdbool.h>` aliases
+        # it as `bool` via a macro, but CPython source uses `_Bool` directly
+        # in a few places (e.g. Objects/memoryobject.c).  Map to c_bool.
+        "_Bool": ctypes.c_bool,
         "FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
     }
     Attribs = [
