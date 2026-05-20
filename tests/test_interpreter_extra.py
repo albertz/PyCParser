@@ -527,6 +527,64 @@ def test_logical_not_on_bitfield():
     assert interp.getFunc("f")(ctypes.pointer(s)) == 0
 
 
+def test_signed_char_cast_in_loop_expression():
+    """Regression: `(signed char)arr[idx]` must be treated as a cast.
+
+    CPython `frameobject.c` uses this exact pattern in `frame_setlineno`.
+    It used to be parsed as a call-like expression and tripped an internal
+    assertion that expected only function-pointer calls in this code path.
+    """
+    state = parse("""
+    int f() {
+        unsigned char lnotab[4] = {1, 2, 3, 4};
+        int line = 0;
+        int offset;
+        for (offset = 0; offset < 4; offset += 2) {
+            line += (signed char)lnotab[offset + 1];
+        }
+        return line;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("f")
+    assert r.value == 6
+
+
+def test_ambiguous_call_cast_raises_type_error():
+    """A non-callable base used like a call must raise a clear TypeError."""
+    state = parse("""
+    int f() {
+        int x = 7;
+        return (x)(1);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    try:
+        interp.runFunc("f")
+        raise Exception("expected exception for ambiguous call/cast")
+    except Exception as e:
+        assert "'x'" in str(e), str(e)
+
+
+def test_unknown_builtin_cast_tokens_raise_type_error():
+    """Unknown builtin-token cast spellings should fail with clear error."""
+    state = parse("""
+    int f() {
+        int x = 7;
+        return (signed signed char int)x;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    try:
+        interp.runFunc("f")
+        raise Exception("expected exception for unknown builtin cast tokens")
+    except Exception as e:
+        assert "signed" in str(e), str(e)
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())
