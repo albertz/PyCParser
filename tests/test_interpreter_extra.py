@@ -753,6 +753,48 @@ def test_get_ptr_through_overlapping_inner_range():
     assert r.value == 200, "expected 200, got %r" % r.value
 
 
+def test_func_ptr_cast_preserves_argcount():
+    """When a function pointer is cast to a different signature for
+    storage (e.g. `(PyCFunction)foo` stowing a METH_FASTCALL 4-arg
+    function into the 2-arg PyMethodDef.ml_meth slot) and later cast
+    back to the actual signature at the call site, calling the casted
+    pointer must invoke the Python function with its full argument
+    list.
+
+    Previously, `Helpers.makeFuncPtr` wrapped the function with the
+    *cast target* CFUNCTYPE on first use.  If that first use was a
+    cast to a narrower signature, the ctypes callback was generated
+    with the narrower argcount; any later cast back to the original
+    signature still passed the narrow argcount to the Python function,
+    yielding `TypeError: missing N required positional arguments`.
+
+    This is exactly the failure mode of `builtin___build_class__` and
+    other METH_FASTCALL builtins in interpreted cpython.py.
+    """
+    state = parse("""
+    typedef int (*two_arg_t)(int, int);
+    typedef int (*four_arg_t)(int, int, int, int);
+
+    int four_arg_impl(int a, int b, int c, int d) {
+        return a + b + c + d;
+    }
+
+    int run(void) {
+        /* Stow the 4-arg function into a 2-arg slot, mirroring
+           `(PyCFunction)builtin___build_class__`. */
+        two_arg_t stored = (two_arg_t) four_arg_impl;
+        /* Later, the dispatcher casts back to the real signature
+           and calls with all four args. */
+        four_arg_t called = (four_arg_t) stored;
+        return called(1, 2, 3, 4);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 10, "expected 10, got %r" % r.value
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly

@@ -1212,12 +1212,24 @@ class Helpers:
             if isinstance(func.C_funcPtr, funcCType):
                 return func.C_funcPtr
             return ctypes.cast(func.C_funcPtr, funcCType)
+        # Wrap the Python function with its *actual* CFUNCTYPE signature, not the cast target.
+        # The ctypes callback is generated from the CFUNCTYPE's argtypes.
+        canonical = funcCType
+        cfunc = getattr(func, "C_cFunc", None)
+        if cfunc is not None:
+            stateStruct = self.interpreter._cStateWrapper
+            restype = self.fixReturnType(
+                getCType(cfunc.type, stateStruct) if cfunc.type is not None else None)
+            argtypes = [getCType(a, stateStruct) for a in cfunc.args]
+            canonical = get_cfunctype(restype, *argtypes)
         # We store the pointer in the func itself
         # so that it don't get out of scope (because of casts).
-        func.C_funcPtr = funcCType(func)
+        func.C_funcPtr = canonical(func)
         func.C_funcPtrStorage = PointerStorage(ptr=func.C_funcPtr, value=func)
         self.interpreter._storePtr(func.C_funcPtr, value=func.C_funcPtrStorage)
-        return func.C_funcPtr
+        if isinstance(func.C_funcPtr, funcCType):
+            return func.C_funcPtr
+        return ctypes.cast(func.C_funcPtr, funcCType)
 
     def checkedFuncPtrCall(self, f, *args):
         if _ctype_ptr_get_value(f) == 0:
