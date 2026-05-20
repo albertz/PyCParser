@@ -753,6 +753,49 @@ def test_get_ptr_through_overlapping_inner_range():
     assert r.value == 200, "expected 200, got %r" % r.value
 
 
+def test_realloc_shrink_keeps_buffer_tracked():
+    """`_realloc` for a same-or-smaller size must keep the original
+    buffer in ``interp.mallocs`` -- otherwise it's no longer strongly
+    referenced and gets GC'd, the weak entry in ``pointerStorage``
+    dies, the range entry is auto-pruned on next lookup, and any
+    subsequent access to the address (which is still valid memory from
+    the C-side's perspective) raises NotImplementedError.
+
+    This matches the cpython.py failure pattern: a range
+    ``(addr, size)`` was removed via the auto-prune path (weak entry
+    None) immediately before a ``_storePtr`` call at the same address.
+    """
+    import gc as _gc
+    state = parse("int x;")  # minimal; only need an Interpreter
+    interp = Interpreter()
+    interp.register(state)
+
+    # Malloc and capture the address.
+    buf_ptr = interp._malloc(64)
+    buf_addr = ctypes.cast(buf_ptr, ctypes.c_void_p).value
+    assert buf_addr in interp.mallocs
+
+    # Realloc to a smaller size (fits in original).  Currently the
+    # implementation pops from mallocs and does not re-add.
+    interp._realloc(buf_addr, 32)
+    assert buf_addr in interp.mallocs, (
+        "realloc-shrink dropped the buffer from interp.mallocs; the "
+        "only strong reference is gone and the address will be lost "
+        "as soon as the weak entry dies.")
+
+    # Drop the original c_void_p Python local handle and force GC --
+    # the buffer must still be tracked.
+    del buf_ptr
+    _gc.collect()
+    assert buf_addr in interp.pointerStorage, (
+        "after realloc-shrink + GC, address is no longer in "
+        "pointerStorage -- the buffer was lost.")
+
+    # And _storePtr on a fresh c_void_p at that address must succeed.
+    fresh = interp.ctypes_wrapped.c_void_p(buf_addr)
+    interp._storePtr(fresh)
+
+
 def test_store_ptr_does_not_add_overlapping_inner_range_for_subview():
     """`pointerStorageRanges` should only contain entries for *root*
     allocations (ctypes with no `_b_base_`).  Sub-views into an existing

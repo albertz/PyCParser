@@ -2381,6 +2381,9 @@ class Interpreter:
         except KeyError:
             raise Exception("_realloc: address 0x%x was not allocated by us" % ptr_addr)
         if buf._length_ >= size:
+            # The existing buffer is big enough -- keep it.
+            # We popped it from `mallocs` above; we must re-add it.
+            self.mallocs[ptr_addr] = buf
             return ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p))
         ptr = self._malloc(size)
         ctypes.memmove(ptr, ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p)), ctypes.c_size_t(buf._length_))
