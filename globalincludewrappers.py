@@ -170,6 +170,10 @@ class Wrapper:
 
     def handle_stdio_h(self, state):
         state.macros["NULL"] = Macro(rightside="0")
+        # Conventional stdio buffer size; matches glibc/libc on macOS+Linux.
+        state.macros["BUFSIZ"] = Macro(rightside="8192")
+        # EOF is the typical sentinel returned by getc/fgetc on end-of-file.
+        state.macros["EOF"] = Macro(rightside="-1")
         FileP = CPointerType(CStdIntType("FILE")).getCType(state)
         wrapCFunc(state, "fopen", restype=FileP, argtypes=(ctypes.c_char_p, ctypes.c_char_p))
         wrapCFunc(state, "fclose", restype=ctypes.c_int, argtypes=(FileP,))
