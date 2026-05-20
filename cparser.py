@@ -2491,6 +2491,11 @@ def _resolveForwardDecl(obj, dictName, stateStruct):
 class CStruct(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
     def getCType(self, stateStruct):
+        # Some parsed "struct X" references are represented as an anonymous
+        # CStruct that points to the typedef object for X. Resolve through the
+        # typedef first so we don't try to construct an incomplete body=None struct.
+        if self.body is None and isinstance(getattr(self, "type", None), CTypedef):
+            return getCType(self.type, stateStruct)
         obj = _resolveForwardDecl(self, "structs", stateStruct)
         result = _getCTypeStruct(ctypes.Structure, obj, stateStruct)
         if obj is not self and not hasattr(self, "_ctype"):

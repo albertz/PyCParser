@@ -5006,6 +5006,24 @@ def test_struct_forward_decl_size():
         "sizeof(Pair) expected %d, got %r" % (2 * _ct.sizeof(_ct.c_int), res))
 
 
+def test_typedef_tag_struct_sizeof_resolves_body():
+    """sizeof(struct Tag) must resolve when Tag comes from typedef struct Tag { ... } Tag."""
+    state = parse("""
+    typedef struct PyModuleDef {
+      int a;
+      int b;
+    } PyModuleDef;
+
+    int f() { return (int)sizeof(struct PyModuleDef); }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    import ctypes as _ct
+    res = interp.runFunc("f")
+    assert res.value == 2 * _ct.sizeof(_ct.c_int), (
+        "sizeof(struct PyModuleDef) expected %d, got %r" % (2 * _ct.sizeof(_ct.c_int), res))
+
+
 def test_flexible_array_member_address():
     """A struct with a flexible array member char arr[] must expose arr as a
     byte-addressable array (not a Python bytes object).  Reading arr[0] through
