@@ -159,6 +159,24 @@ class GlobalScope:
         if self.interpreter.debug_print_getVar: print("+ getVar %s" % decl)
         assert isinstance(decl, CVarDecl)
 
+        # Warn about "unresolved extern" globals -- analogous to a C linker
+        # error.  This happens when a translation unit declares a symbol
+        # via `extern T name;` (often through a public-API header like
+        # `PyAPI_DATA(PyTypeObject) PyByteArray_Type;`) but no other parsed
+        # `.c` file provides the matching definition.  We would silently
+        # zero-fill such a variable, which then cascades into far-removed
+        # crashes (e.g. `PyType_Ready` returning -1 with no Python-level
+        # error because the type struct is all zeros).  Print once per
+        # symbol so the actionable signal is visible without spam.
+        if decl.body is None and "extern" in getattr(decl, "attribs", ()):
+            if not getattr(self, "_warned_extern", None):
+                self._warned_extern = set()
+            if name not in self._warned_extern:
+                self._warned_extern.add(name)
+                print("WARNING: getVar(%r): symbol is `extern`-declared but has no "
+                      "definition in any parsed source file" % name,
+                      flush=True)
+
         # Note: To avoid infinite loops, we must first create the object.
         # This is to avoid infinite loops, in case that the initializer
         # access the var itself.
