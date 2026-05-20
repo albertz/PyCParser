@@ -2178,6 +2178,7 @@ def _ctype_collect_objects(obj):
     all the ref'd objects will live, too.
     """
     d = OrderedDict()  # id(o) -> o
+    seen_generic = set()
     def collect(o):
         if o is None: return
         if id(o) in d: return
@@ -2185,10 +2186,16 @@ def _ctype_collect_objects(obj):
         d[id(o)] = o
         visit_c(o)
     def visit_generic(o):
+        if o is None:
+            return
+        obj_id = id(o)
+        if obj_id in seen_generic:
+            return
+        seen_generic.add(obj_id)
         if isinstance(o, dict):
             for s in o.values():
                 visit_generic(s)
-        elif isinstance(o, tuple):
+        elif isinstance(o, (tuple, list, set, frozenset)):
             for s in o:
                 visit_generic(s)
         elif isinstance(o, str):
