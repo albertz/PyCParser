@@ -1486,6 +1486,17 @@ def astAndTypeForStatement(funcEnv, stmnt):
             pAst, pType = astAndTypeForStatement(funcEnv, stmnt.base)
             while isinstance(pType, CTypedef):
                 pType = pType.type
+            if isinstance(pType, CWrapFuncType):
+                # CWrapFuncType is produced for plain CFunc references,
+                # including a ternary like `cond ? funcA : funcB` whose branches are both CFuncs.
+                # Generate plain Python call rather than going through checkedFuncPtrCall.
+                a = ast.Call(keywords=[], starargs=None, kwargs=None)
+                a.func = pAst
+                a.args = autoCastArgs(funcEnv, [f_arg.type for f_arg in pType.func.args], stmnt.args)
+                rettype = pType.func.type
+                if rettype in (CBuiltinType(("void",)), CVoidType()):
+                    return a, rettype
+                return getAstNode_newTypeInstance(funcEnv, rettype, a), rettype
             if not isinstance(pType, CFuncPointerDecl):
                 raise Exception("Func ptr call: base %r is not a func ptr, got %r" % (stmnt.base, pType))
             a = makeAstNodeCall(

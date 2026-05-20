@@ -585,6 +585,62 @@ def test_unknown_builtin_cast_tokens_raise_type_error():
         assert "signed" in str(e), str(e)
 
 
+def test_ptr_ptr_subtraction_in_arithmetic():
+    """`ptr - ptr` in C yields ptrdiff_t, not the pointer type.  This matters
+    in mixed-arithmetic contexts like binary-search bisection
+    `p = l + ((r - l) >> 1);` (from Objects/listobject.c binarysort), where
+    the inner `r - l` must be a scalar for the outer `l + (...)` to be
+    valid pointer-arithmetic rather than triggering the
+    `assert ptr OP ptr requires '-' op` check.
+
+    Previously `CStatement.getValueType` returned `getCommonValueType(ptr,ptr)
+    == ptr` for the `-` op, so the inner expression's type was reported as
+    the pointer type, propagating outward through `>>` and confusing the
+    interpreter's AST builder.
+    """
+    state = parse("""
+    int f(int *arr, int n) {
+        int *l = arr;
+        int *r = arr + n;
+        int *m = l + ((r - l) >> 1);  /* the failing pattern */
+        return (int)(m - arr);        /* should be n/2 */
+    }
+    int run(void) {
+        int buf[10] = {0,1,2,3,4,5,6,7,8,9};
+        int a = f(buf, 10);
+        int b = f(buf, 7);
+        return a * 100 + b;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    # n=10 -> 5, n=7 -> 3 ; combined = 503
+    assert r.value == 503, "expected 503, got %r" % r
+
+
+def test_call_through_ternary_func_pointer():
+    """`(cond ? funcA : funcB)(args)` must work when both branches are
+    plain CFuncs.  The ternary expression's type is CWrapFuncType (not
+    CFuncPointerDecl), so the func-call dispatcher in
+    interpreter.astAndTypeForStatement must accept both.
+
+    This is the pattern used in CPython's stringlib/unicode_format.h to
+    select between SubString_new_object_or_empty / SubString_new_object.
+    """
+    state = parse("""
+    int add(int x) { return x + 100; }
+    int sub(int x) { return x - 100; }
+    int run(int cond, int x) {
+        return (cond ? add : sub)(x);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    assert interp.runFunc("run", 1, 5).value == 105
+    assert interp.runFunc("run", 0, 5).value == -95
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())

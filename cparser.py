@@ -3587,6 +3587,9 @@ class CStatement(_CBaseWithOptBody):
         elif self._op.content in ("=","*=","-=","+=","/=","%=","&=","^=","|="):  # assign
             return v1
         elif self._op.content in ("+","-","*","/","&","^","|","%"):
+            # C special case: `ptr - ptr` yields ptrdiff_t, NOT the pointer type.
+            if self._op.content == "-" and isPointerType(v1) and isPointerType(v2):
+                return CStdIntType("ptrdiff_t")
             return getCommonValueType(stateStruct, v1, v2)
         else:
             assert False, "invalid bin op %r" % self._op
