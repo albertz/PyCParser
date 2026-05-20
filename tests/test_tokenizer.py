@@ -184,6 +184,39 @@ def test_float_literal_with_f_suffix():
     assert not state._errors, "unexpected errors: %r" % state._errors
 
 
+def test_float_literal_trailing_dot():
+    """`0.` is a valid C float literal (means 0.0) -- it may be followed
+    by any non-digit token (operator, semicolon, comma, ...) and the
+    parser must accept that.
+
+    CPython's Objects/complexobject.c uses `x == 0.` heavily, e.g.::
+
+        if (b.real == 0. && b.imag == 0.) { ... }
+
+    which previously crashed our parser with
+    `did not expect <COp '&&'> in state 11` because state 11 (after
+    `expr + op + number + "."`) only handled the case where another
+    number followed the dot.
+    """
+    import cparser as _cparser
+    for src in (
+        # trailing dot followed by binary operator (the complexobject case)
+        "int f(double x, double y) { return x == 0. && y == 0.; }",
+        # trailing dot followed by `||`
+        "int g(double x) { return x == 0. || x == 1.; }",
+        # trailing dot on the LEFT side of a comparison
+        "int h(double x) { return 0. < x; }",
+        # trailing dot in a variable initializer (semicolon next)
+        "double i(void) { double a = 3.; return a; }",
+        # trailing dot followed by comma (function call)
+        "double j(void) { extern double pow(double, double); return pow(2., 3.); }",
+    ):
+        state = State()
+        state.autoSetupSystemMacros()
+        _cparser.parse_code(src, state)
+        assert not state._errors, "src %r unexpected errors: %r" % (src, state._errors)
+
+
 # ---------------------------------------------------------------------------
 # __func__: CFuncName sentinel token
 # ---------------------------------------------------------------------------

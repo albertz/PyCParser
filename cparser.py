@@ -3317,15 +3317,27 @@ class CStatement(_CBaseWithOptBody):
                 # Using rawstr ("0" + "0e0" -> "0.0e0") handles both plain
                 # `3.14` and scientific cases like `0.0e0`, `1.5e-3`.
                 self._leftexpr = CNumber(*_combine_float_parts(self._leftexpr, token))
+                self._state = 5
             else:
-                stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
-            self._state = 5
+                # Trailing-dot float literal: `0.` is a valid C float (== 0.0)
+                # with no fractional digits.  Promote the integer leftexpr to
+                # a float CNumber, then re-process the current token from
+                # state 5 (after expr) so it's handled as the next operator
+                # / suffix.
+                self._leftexpr = CNumber(*_combine_float_parts(
+                    self._leftexpr, CNumber(0, "")))
+                self._state = 5
+                self._cpre3_handle_token(stateStruct, token)
         elif self._state == 11: # after expr + op + number + "."
             if isinstance(token, CNumber):
                 self._rightexpr = CNumber(*_combine_float_parts(self._rightexpr, token))
+                self._state = 7
             else:
-                stateStruct.error("statement parsing: did not expect %s in state %i" % (token, self._state))
-            self._state = 7
+                # Trailing-dot float on the right side, same as state 10.
+                self._rightexpr = CNumber(*_combine_float_parts(
+                    self._rightexpr, CNumber(0, "")))
+                self._state = 7
+                self._cpre3_handle_token(stateStruct, token)
         elif self._state == 20: # after attrib/ptr access
             if isinstance(token, CIdentifier):
                 assert isinstance(self._leftexpr, (CAttribAccessRef,CPtrAccessRef))
