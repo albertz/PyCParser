@@ -234,6 +234,19 @@ def test_offsetof_second_field_greater_than_first():
     assert r.value == 1, "offsetof(b) not > offsetof(a): %r" % r
 
 
+def test_fstat_returns_int_status():
+    """fstat must return an int status value usable in comparisons."""
+    r = _run("""
+    #include <sys/stat.h>
+    int f() {
+        struct stat st;
+        int rc = fstat(0, &st);
+        return (rc == 0) || (rc == -1);
+    }
+    """)
+    assert r.value == 1, "fstat did not return int-like status: %r" % r
+
+
 # ---------------------------------------------------------------------------
 # errno.h: errno constants
 # ---------------------------------------------------------------------------

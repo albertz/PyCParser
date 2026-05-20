@@ -652,13 +652,45 @@ class Wrapper:
             CVarDecl(parent=struct_stat, name="st_rdev", type=state.typedefs["dev_t"]).finalize(state)
             CVarDecl(parent=struct_stat, name="st_size", type=state.typedefs["off_t"]).finalize(state)
             # ... add more if needed
-        state.funcs["fstat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="fstat") # TODO
-        state.funcs["stat"] = CWrapValue(lambda *args: None, returnType=ctypes.c_int, name="stat") # TODO
-        state.macros["S_IFMT"] = Macro(rightside="0") # TODO
-        state.macros["S_IFDIR"] = Macro(rightside="0") # TODO
-        state.macros["S_IFREG"] = Macro(rightside="0") # TODO
-        state.macros["S_ISDIR"] = Macro(args=("m",), rightside="(((m) & 0) == 0)") # TODO
-        state.macros["S_ISREG"] = Macro(args=("m",), rightside="(((m) & 0) == 0)") # TODO
+        def _fill_stat_struct(st_ptr, st_res):
+            if not st_ptr:
+                return ctypes.c_int(-1)
+            st = st_ptr.contents
+            st.st_dev = st_res.st_dev
+            st.st_ino = st_res.st_ino
+            st.st_mode = st_res.st_mode
+            st.st_nlink = st_res.st_nlink
+            st.st_uid = st_res.st_uid
+            st.st_gid = st_res.st_gid
+            st.st_rdev = st_res.st_rdev
+            st.st_size = st_res.st_size
+            return ctypes.c_int(0)
+
+        def _fstat(fd, st_ptr):
+            fd_v = fd.value if hasattr(fd, "value") else int(fd)
+            try:
+                st_res = os.fstat(fd_v)
+            except OSError:
+                return ctypes.c_int(-1)
+            return _fill_stat_struct(st_ptr, st_res)
+
+        def _stat(path, st_ptr):
+            path_b = ctypes.cast(path, ctypes.c_char_p).value
+            if not path_b:
+                return ctypes.c_int(-1)
+            try:
+                st_res = os.stat(path_b.decode("utf8"))
+            except OSError:
+                return ctypes.c_int(-1)
+            return _fill_stat_struct(st_ptr, st_res)
+
+        state.funcs["fstat"] = CWrapValue(_fstat, name="fstat", returnType=ctypes.c_int)
+        state.funcs["stat"] = CWrapValue(_stat, name="stat", returnType=ctypes.c_int)
+        state.macros["S_IFMT"] = Macro(rightside="0170000")
+        state.macros["S_IFDIR"] = Macro(rightside="0040000")
+        state.macros["S_IFREG"] = Macro(rightside="0100000")
+        state.macros["S_ISDIR"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFDIR)")
+        state.macros["S_ISREG"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFREG)")
 
     def handle_sys_types_h(self, state):
         """Provide basic POSIX scalar typedefs from <sys/types.h>."""
