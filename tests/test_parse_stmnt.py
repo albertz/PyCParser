@@ -830,6 +830,42 @@ def test_parse_prefix_and_binary_precedence():
     assert stmnt._leftexpr._op.content == "*"
 
 
+def test_parse_cast_postfix_inc_precedence():
+    """`(T) *p->ptr++` must parse as `(T)(*((p->ptr)++))`, NOT
+    `((T)(*p->ptr))++`.
+
+    Per the C grammar `cast-expression : ( type-name ) cast-expression`,
+    postfix operators (++, --, ., ->, [], ()) bind to the operand of the
+    cast, not to its result.  Mis-parsing put the `++` on the cast's
+    return value (an rvalue), making it a no-op -- which broke marshal's
+    byte-stream reader `(unsigned char) *p->ptr++` and meant frozen
+    module bytecode never advanced past byte 0.
+    """
+    state = parse("""
+    int f(int *p) {
+        return (int) *p++;
+    }
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    f = state.funcs["f"]
+    ret = f.body.contentlist[0]
+    expr = ret.body
+    # Top-level should NOT have `_op = ++` -- the ++ must be inside the cast.
+    assert expr._op is None or expr._op.content != "++", \
+        "top-level op should NOT be '++'; ++ must bind to the cast operand, " \
+        "got %r (full: %r)" % (expr._op, expr)
+    # The outermost should be a cast (CFuncCall with type base).
+    # Walk: ret.body._leftexpr is the cast.
+    cast = expr._leftexpr
+    from cparser import CFuncCall
+    assert isinstance(cast, CFuncCall), \
+        "expected outermost to be a CFuncCall (cast), got %r" % type(cast).__name__
+    # Cast arg should contain both `*` and `++` (deref of postinc).
+    arg_str = repr(cast.args[0]) if cast.args else "<no args>"
+    assert "*" in arg_str and "++" in arg_str, \
+        "cast arg should contain '*' and '++', got %r" % arg_str
+
+
 def test_parse_deref_postinc_bitwise_precedence():
     """`*p++ & 0x80` must parse as `(*p++) & 0x80`, NOT `*((p++) & 0x80)`.
 

@@ -585,6 +585,61 @@ def test_unknown_builtin_cast_tokens_raise_type_error():
         assert "signed" in str(e), str(e)
 
 
+def test_short_array_initializer_zero_fills():
+    """C zero-fills array elements that aren't explicitly initialised.
+    CPython's `static PyObject *unicode_latin1[256] = {NULL};` declares a
+    256-slot array with only one explicit initialiser; the remaining 255
+    slots must be zero.  Previously the interpreter asserted
+    `arrayLen == len(argType)` and refused to compile."""
+    state = parse("""
+    static int arr[5] = {7, 3};
+    int sum(void) {
+        int s = 0;
+        int i;
+        for (i = 0; i < 5; i++) s += arr[i];
+        return s;
+    }
+    int get_last(void) { return arr[4]; }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # 7 + 3 + 0 + 0 + 0 == 10
+    assert interp.runFunc("sum").value == 10
+    # last element must be 0, not garbage
+    assert interp.runFunc("get_last").value == 0
+
+
+def test_cast_postfix_inc_advances_pointer():
+    """`(unsigned char) *p->ptr++` must increment p->ptr.  Previously the
+    parser placed the `++` outside the cast (`((unsigned char)*p->ptr)++`),
+    making it a no-op on the cast's rvalue result and breaking marshal's
+    byte-stream reader (frozen module bytecode never advanced past byte 0).
+    """
+    state = parse("""
+    typedef struct { char *ptr; char *end; } P;
+    int read_one(P *p) {
+        int c = -1;
+        if (p->ptr < p->end)
+            c = (unsigned char) *p->ptr++;
+        return c;
+    }
+    int run(void) {
+        char buf[3] = {0x41, 0x42, 0x43};
+        P p; p.ptr = buf; p.end = buf + 3;
+        int a = read_one(&p);
+        int b = read_one(&p);
+        int c = read_one(&p);
+        int d = read_one(&p);  /* exhausted, must return -1 */
+        return ((a & 0xff) << 24) | ((b & 0xff) << 16) |
+               ((c & 0xff) << 8)  | (d & 0xff);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 0x414243ff, "expected 0x414243ff, got %r" % hex(r.value)
+
+
 def test_ptr_ptr_subtraction_in_arithmetic():
     """`ptr - ptr` in C yields ptrdiff_t, not the pointer type.  This matters
     in mixed-arithmetic contexts like binary-search bisection

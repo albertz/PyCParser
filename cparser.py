@@ -3371,7 +3371,14 @@ class CStatement(_CBaseWithOptBody):
         elif self._state == 40: # after cast_call((expr) x)
             if self._leftexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
                 self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
-            elif token in (COp("."),COp("->")):
+            elif token in (COp("."), COp("->"), COp("++"), COp("--")):
+                # Postfix operators (`.`, `->`, `++`, `--`) bind to the
+                # inner expression, not to the cast result.  Per the C
+                # grammar `cast-expression : ( type-name ) cast-expression`
+                # the postfix ops are part of the cast's operand, so
+                # `(T) *p->ptr++` is `(T)(*((p->ptr)++))`, NOT
+                # `((T)(*p->ptr))++`.  This affects marshal's
+                # `(unsigned char) *p->ptr++` byte-reader.
                 self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
             else:
                 self._leftexpr.args[0].finalize(stateStruct)
@@ -3380,7 +3387,7 @@ class CStatement(_CBaseWithOptBody):
         elif self._state == 45: # after expr + op + cast_call((expr) x)
             if self._rightexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
                 self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
-            elif token in (COp("."),COp("->")):
+            elif token in (COp("."), COp("->"), COp("++"), COp("--")):
                 self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
             else:
                 self._rightexpr.args[0].finalize(stateStruct)
@@ -3394,7 +3401,13 @@ class CStatement(_CBaseWithOptBody):
                 funcCall.args = [CStatement(parent=funcCall)]
             assert len(funcCall.args) == 1
             subStatement = funcCall.args[0]
-            if subStatement._state != 0 and isinstance(token, COp) and token not in (COp("."),COp("->")):
+            # Postfix `.`/`->`/`++`/`--` bind to the cast operand (per the C
+            # grammar `cast-expression : ( type-name ) cast-expression`).
+            # Without these, `(unsigned char) *p->ptr++` is mis-parsed as
+            # `((unsigned char) *p->ptr) ++` and `++` becomes a no-op on
+            # the cast result -- breaking marshal's byte-stream reader.
+            if subStatement._state != 0 and isinstance(token, COp) and token not in (
+                    COp("."), COp("->"), COp("++"), COp("--")):
                 subStatement.finalize(stateStruct, addToContent=False)
                 if self._state == 50: self._state = 5
                 else: self._state = 7

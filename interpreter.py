@@ -769,7 +769,13 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
             arrayLen = getConstValue(interpreter.globalScope.stateStruct, objType.arrayLen)
             assert arrayLen is not None
             if isinstance(argType, (tuple, list)):
-                assert arrayLen == len(argType)
+                # C allows fewer initializers than the array length; the
+                # remaining elements are zero-initialized.  E.g.
+                #   static PyObject *unicode_latin1[256] = {NULL};
+                # specifies just one element; the other 255 are zero.
+                # getAstNode_curlyArrayArgsInit fills in the gap below.
+                assert len(argType) <= arrayLen, \
+                    "too many initializers (%d) for array of size %d" % (len(argType), arrayLen)
         else:
             # Handle array type extra here for the case when array-len is not specified.
             assert argType is not None
