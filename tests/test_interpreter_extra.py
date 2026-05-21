@@ -991,6 +991,58 @@ def test_func_ptr_cast_preserves_argcount():
     assert r.value == 10, "expected 10, got %r" % r.value
 
 
+def test_free_purges_interior_pointer_storage_entries():
+    """``_storePtr`` may register the same buffer object at multiple
+    ``pointerStorage`` keys -- the base address *and* every interior
+    address it was queried at with a non-zero offset (e.g. ``buf +
+    offsetof(struct, field)``).  When the buffer is later freed via
+    ``_free``, the base entry is purged but the interior entries are
+    leaked.  The buffer may then stay alive via the
+    ``WeakValueDictionary`` only by accident, or vanish leaving stale
+    interior references; either way it is bookkeeping divergence
+    between ``mallocs`` (now empty) and ``pointerStorage`` (still
+    referencing the freed allocation).
+
+    ``_free`` must purge every ``pointerStorage`` entry whose key
+    falls inside ``[base, base + size)``.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Malloc, then probe two interior offsets to seed pointerStorage.
+    buf = interp._malloc(64)
+    base = _ctype_ptr_get_value(buf)
+    # Force `_storePtr` to register interior addresses by using
+    # offset != 0 -- mirroring `helpers.ptrArithmetic(buf, '+', n)`.
+    fresh_inner_1 = interp.ctypes_wrapped.c_void_p(base + 16)
+    interp._storePtr(fresh_inner_1, offset=16)
+    fresh_inner_2 = interp.ctypes_wrapped.c_void_p(base + 32)
+    interp._storePtr(fresh_inner_2, offset=32)
+
+    # Interior keys should now be in pointerStorage.
+    assert (base + 16) in interp.pointerStorage
+    assert (base + 32) in interp.pointerStorage
+
+    interp._free(base)
+    # mallocs and pointerStorageRanges have been purged.
+    assert base not in interp.mallocs
+    assert not any(
+        s <= base < s + sz for (s, sz) in interp.pointerStorageRanges)
+    # ...and all interior pointerStorage entries that pointed into the
+    # freed buffer must be purged too.  Without this, the bookkeeping
+    # diverges from `mallocs`, leaving stale weak refs that confuse
+    # later lookups and (more dangerously) keep the buffer object
+    # alive through chains of `_b_base_` that no longer reflect the
+    # interpreter's allocation state.
+    assert (base + 16) not in interp.pointerStorage, (
+        "interior entry base+16 was leaked after _free")
+    assert (base + 32) not in interp.pointerStorage, (
+        "interior entry base+32 was leaked after _free")
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly

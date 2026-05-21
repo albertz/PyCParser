@@ -2434,6 +2434,15 @@ class Interpreter:
         # keep them alive.
         self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
         self.pointerStorageRanges = SortedSet()  # (ptr-addr,size) tuples
+        # `pointerStorage` may hold multiple keys mapping into the same
+        # allocation: the base address plus interior offsets (e.g.
+        # `&struct->field`).  When `_free` runs we need to purge every
+        # such key without scanning the whole `pointerStorage` (which
+        # has many thousand entries in real programs).  This dict
+        # tracks, per malloc base address, the set of interior keys
+        # registered for it.  Updated whenever `_storePtr`/`_getPtr`
+        # register an interior pointer, read by `_free`.
+        self.pointerStorageInteriorKeysByBase = {}  # base addr -> set[int]
         # Here we hold constant strings, because they need some global
         # storage which will not get freed.
         self.constStrings = {}  # str -> ctype c_char_p
@@ -2558,20 +2567,44 @@ class Interpreter:
         ctypes.memmove(ptr, ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p)), ctypes.c_size_t(buf._length_))
         return ptr
 
+    def _registerInteriorPtrKey(self, base_addr, interior_addr):
+        """Record that ``pointerStorage[interior_addr]`` references the
+        allocation whose base address is ``base_addr``.  Used by
+        ``_free`` to purge all interior keys in O(K) on free, instead
+        of scanning the entire ``pointerStorage`` dict.  No-op when
+        the key is the base itself or when the base hasn't been seen
+        before (e.g. registered before any malloc -- harmless, the
+        base will simply not have an entry in this map).
+        """
+        if interior_addr == base_addr:
+            return
+        s = self.pointerStorageInteriorKeysByBase.get(base_addr)
+        if s is None:
+            s = set()
+            self.pointerStorageInteriorKeysByBase[base_addr] = s
+        s.add(interior_addr)
+
     def _free(self, ptr_addr):
         """
         :param int ptr_addr:
         """
         if not ptr_addr:
             return  # free(NULL) is a no-op in C
-        try:
-            buf = self.mallocs.pop(ptr_addr)
-            # Proactively remove from ranges and storage to avoid leaks
-            obj_size = ctypes.sizeof(buf)
-            self.pointerStorageRanges.discard((ptr_addr, obj_size))
-            self.pointerStorage.pop(ptr_addr, None)
-        except KeyError:
+        if ptr_addr not in self.mallocs:
             raise Exception("_free: address 0x%x was not allocated by us" % ptr_addr)
+        buf = self.mallocs.pop(ptr_addr)
+        # Proactively remove from ranges and storage to avoid leaks.
+        # `_storePtr`/`_getPtr` may have registered this buffer at
+        # multiple keys in `pointerStorage` -- the base address plus
+        # every interior offset they were queried at (e.g.
+        # `buf + offsetof(field)`).  We track those interior keys per
+        # base in `pointerStorageInteriorKeysByBase`.
+        obj_size = ctypes.sizeof(buf)
+        self.pointerStorageRanges.discard((ptr_addr, obj_size))
+        self.pointerStorage.pop(ptr_addr, None)
+        interior_keys = self.pointerStorageInteriorKeysByBase.pop(ptr_addr, ())
+        for k in interior_keys:
+            self.pointerStorage.pop(k, None)
 
     def _storePtr(self, ptr, offset=0, value=None):
         """
@@ -2593,7 +2626,9 @@ class Interpreter:
             return ptr
         assert not isinstance(ptr, ctypes._CFuncPtr)  # should have been catched above
         if ptr_addr - offset in self.pointerStorage:
-            self.pointerStorage[ptr_addr] = self.pointerStorage[ptr_addr - offset]
+            base_obj = self.pointerStorage[ptr_addr - offset]
+            self.pointerStorage[ptr_addr] = base_obj
+            self._registerInteriorPtrKey(ptr_addr - offset, ptr_addr)
             return ptr
         objs = _ctype_collect_objects(ptr)
         # Later collected objects are more likely the ones we want.
@@ -2604,6 +2639,7 @@ class Interpreter:
                 self.pointerStorage[obj_ptr_addr] = obj
                 if offset != 0:
                     self.pointerStorage[ptr_addr] = obj
+                    self._registerInteriorPtrKey(obj_ptr_addr, ptr_addr)
                 # Only register the range entry if `obj` is a *root* ctype (no `_b_base_`).
                 # Sub-views of an existing root are already covered by the root's range,
                 # which was added when the root was first stored (eg. by _malloc).
@@ -2626,6 +2662,7 @@ class Interpreter:
             elif obj_ptr_addr <= ptr_addr:
                 # Found it!
                 self.pointerStorage[ptr_addr] = obj
+                self._registerInteriorPtrKey(obj_ptr_addr, ptr_addr)
                 return ptr
         # Note: This can also/esp happen when the ptr was not allocated by us.
         # Not sure how to handle that yet...
@@ -2660,6 +2697,7 @@ class Interpreter:
                     continue
                 if obj_ptr_addr <= addr:
                     obj = candidate
+                    self._registerInteriorPtrKey(obj_ptr_addr, addr)
                     self.pointerStorage[addr] = obj  # cache for future lookups
                     break
             if obj is None:
