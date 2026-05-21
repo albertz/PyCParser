@@ -753,6 +753,70 @@ def test_get_ptr_through_overlapping_inner_range():
     assert r.value == 200, "expected 200, got %r" % r.value
 
 
+def test_do_while_continue_runs_post_iteration():
+    """In C, `continue` inside a `do { ... } while (cond);` jumps to the
+    condition test -- which, for a `do { ... } while (expr_with_side_effect);`
+    pattern, must still evaluate the side-effect-bearing expression
+    (e.g. `(++p)->offset == offset` in typeobject.c's `update_one_slot`).
+
+    The previous translation emitted a plain `while True: <body>; if cond:
+    continue else: break`, so a C-continue became a Python `continue` that
+    jumped back to the top of `while True:`, skipping the bottom condition
+    check entirely.  For loops whose only state-advance lives in the
+    condition test, this caused an infinite loop (observed in
+    `update_one_slot` calling `find_name_in_mro` 45,000+ times on a single
+    type during interpreted cpython.py init).
+    """
+    state = parse("""
+    int run(void) {
+        int arr[6] = {0, 0, 0, 1, 2, 3};
+        int *p = arr;
+        int sum = 0;
+        do {
+            if (*p == 0) continue;   /* must still evaluate `*++p` below */
+            sum += *p;
+        } while (*++p != 3);
+        return sum;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    # arr = {0,0,0,1,2,3}, p walks arr[0..5].
+    # iter 0: *p=0 -> continue; ++p -> *p=0, cond true (0 != 3).
+    # iter 1: *p=0 -> continue; ++p -> *p=0, cond true.
+    # iter 2: *p=0 -> continue; ++p -> *p=1, cond true.
+    # iter 3: *p=1, sum=1;       ++p -> *p=2, cond true.
+    # iter 4: *p=2, sum=3;       ++p -> *p=3, cond false -> exit.
+    assert r.value == 3, "expected 3, got %r" % r.value
+
+
+def test_do_while_break_exits_loop():
+    """`break` inside a do-while must exit the loop entirely (not just
+    a wrapping construct introduced by the translation).  This is a
+    companion to ``test_do_while_continue_runs_post_iteration``: when
+    we wrap the body in an inner single-iteration `for` to fix
+    `continue` semantics, we must not regress `break` -- it must still
+    exit the do-while, not just the inner for.
+    """
+    state = parse("""
+    int run(void) {
+        int i = 0;
+        int sum = 0;
+        do {
+            if (i == 3) break;          /* exit while i==3, sum=3 */
+            sum += i;
+            i++;
+        } while (i < 100);
+        return sum * 100 + i;           /* expect 3*100 + 3 = 303 */
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 303, "expected 303, got %r" % r.value
+
+
 def test_func_ptr_cast_preserves_argcount():
     """When a function pointer is cast to a different signature for
     storage (e.g. `(PyCFunction)foo` stowing a METH_FASTCALL 4-arg

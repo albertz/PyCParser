@@ -1922,6 +1922,43 @@ def astForCFor(funcEnv, stmnt):
     funcEnv.popScope() # ifAst
     return ifAst
 
+class _DoWhileFlowRewriter(ast.NodeTransformer):
+    """Rewrite top-level C `continue` / `break` inside a do-while body
+    so they cooperate with the surrounding `while True: for _ in (0,): ...`
+    translation (see :func:`astForCDoWhile`):
+
+    - Python `continue` (= C `continue`) inside the body must fall through
+      to the condition test at the bottom of the outer `while True:`.
+      Wrapping the body in a single-iteration `for _ in (0,):` makes a
+      plain Python `continue` exit the for naturally and fall through to
+      the condition test, so no rewrite is needed for `continue` here --
+      it works because the `continue` now targets the innermost (inner)
+      loop.
+    - Python `break` (= C `break`) must exit the outer `while True:`
+      entirely, not just the inner `for`.  We rewrite top-level breaks
+      to set a flag and break the inner for; the outer while then checks
+      the flag and breaks too.
+
+    Both rewrites must NOT descend into nested loops -- breaks/continues
+    inside nested for/while target those loops, not the do-while.
+    """
+    def __init__(self, flag_name):
+        self.flag_name = flag_name
+    def visit_For(self, node):
+        return node  # do not descend
+    def visit_While(self, node):
+        return node  # do not descend
+    def visit_AsyncFor(self, node):
+        return node  # do not descend
+    def visit_Break(self, node):
+        return [
+            ast.Assign(
+                targets=[ast.Name(id=self.flag_name, ctx=ast.Store())],
+                value=ast.Name(id="True", ctx=ast.Load())),
+            ast.Break(),
+        ]
+
+
 def astForCDoWhile(funcEnv, stmnt):
     assert isinstance(stmnt, CDoStatement)
     assert isinstance(stmnt.whilePart, CWhileStatement)
@@ -1929,12 +1966,51 @@ def astForCDoWhile(funcEnv, stmnt):
     assert len(stmnt.args) == 0
     assert len(stmnt.whilePart.args) == 1
     assert isinstance(stmnt.whilePart.args[0], CStatement)
-    whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
 
-    funcEnv.pushScope(whileAst.body)
+    # In C, `continue` inside a do-while jumps to the condition test --
+    # which may have side effects (e.g. `(++p)->offset == offset`).
+    # A naive `while True: <body>; if cond: continue else: break` makes
+    # a C-continue (= Python continue) jump to the top of `while True:`,
+    # skipping the condition test entirely.  Wrap the body in a
+    # single-iteration inner `for _ in (0,):` so Python continue exits
+    # the for and falls through to the condition test.  Top-level
+    # C-break must still exit the outer while, so we rewrite it via a
+    # flag.
+    flag_name = funcEnv.registerNewUnscopedVarName("dw_break", initNone=False)
+
+    body_block = []
+    funcEnv.pushScope(body_block)
     if stmnt.body is not None:
         cCodeToPyAstList(funcEnv, stmnt.body)
     funcEnv.popScope()
+
+    rewriter = _DoWhileFlowRewriter(flag_name)
+    body_block = [rewriter.visit(stmt) for stmt in body_block]
+    # NodeTransformer may return a list; flatten.
+    flat_body = []
+    for stmt in body_block:
+        if isinstance(stmt, list):
+            flat_body.extend(stmt)
+        else:
+            flat_body.append(stmt)
+
+    innerLoop = ast.For(
+        target=ast.Name(id="_dowhile_once", ctx=ast.Store()),
+        iter=ast.Tuple(elts=[ast.Num(n=0)], ctx=ast.Load()),
+        body=flat_body or [ast.Pass()],
+        orelse=[])
+
+    whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
+    whileAst.body.append(
+        ast.Assign(
+            targets=[ast.Name(id=flag_name, ctx=ast.Store())],
+            value=ast.Name(id="False", ctx=ast.Load())))
+    whileAst.body.append(innerLoop)
+    whileAst.body.append(
+        ast.If(
+            test=ast.Name(id=flag_name, ctx=ast.Load()),
+            body=[ast.Break()],
+            orelse=[]))
 
     ifAst = ast.If(body=[ast.Continue()], orelse=[ast.Break()])
     ifAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.whilePart.args[0]), isPartOfCOp=True)

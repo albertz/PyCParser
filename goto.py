@@ -193,7 +193,11 @@ class _Flatten:
                 r += [goto_repeat_stmnt]
                 r += [GotoLabel(goto_final_stmnt.label)]
             elif isinstance(s, ast.For):
-                raise NotImplementedError
+                if s.orelse: raise NotImplementedError
+                # Single-iteration `for _ in (0,):` pseudo-loop emitted by `astForCDoWhile`.
+                goto_final_stmnt = self.make_jump()
+                r += self.flatten(s.body, breakJump=goto_final_stmnt, continueJump=goto_final_stmnt)
+                r += [GotoLabel(goto_final_stmnt.label)]
             elif isinstance(s, (ast.TryExcept, ast.TryFinally) if PY2 else ast.Try):
                 raise NotImplementedError
             elif isinstance(s, ast.Break):
