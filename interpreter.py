@@ -545,9 +545,15 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         if isinstance(objType, CPointerType) and usePyRefForType(objType.pointerOf):
             # The "pointer" is a `Helpers.PyRef` (e.g. `&va_list`) -- a
             # Python-level reference with no materialized C address.
-            # In valid C such a pointer is always non-NULL, so any
-            # comparison or boolean test should see a non-zero value.
-            return ast.Num(1)
+            # Truthy iff its `.ref` is not None; this lets a NULL PyRef
+            # (built when C passes `NULL` for `va_list *`, e.g.
+            # `skipitem(&format, NULL, 0)`) compare equal to 0.
+            return makeAstNodeCall(
+                ast.Name(id="int", ctx=ast.Load()),
+                ast.Compare(
+                    left=getAstNodeAttrib(objAst, "ref"),
+                    ops=[ast.IsNot()],
+                    comparators=[ast.Name(id="None", ctx=ast.Load())]))
         from inspect import isclass
         if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
             # Only c_void_p supports to get the pointer-value via the value-attrib.
@@ -817,9 +823,18 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
         return makeAstNodeCall(getAstNodeAttrib("helpers", "makeFuncPtr"), typeAst, argAst)
 
     if isinstance(objType, CPointerType) and usePyRefForType(objType.pointerOf):
-        # We expect a PyRef.
-        return makeAstNodeCall(getAstNodeAttrib("helpers", "PyRef"),
-                               *([getAstNodeAttrib(argAst, "ref")] if argAst else []))
+        # We expect a PyRef.  If `argAst` is itself a PyRef pointer
+        # (e.g. a copy of an existing `&va_list`), unwrap its `.ref`.
+        # Otherwise (e.g. a `NULL`/`0` literal cast as in CPython's
+        # `skipitem(&format, NULL, 0)`), construct an empty PyRef --
+        # accessing `.ref` on the integer 0 would raise
+        # AttributeError.
+        src_is_pyref = (isinstance(argType, CPointerType)
+                        and usePyRefForType(argType.pointerOf))
+        if argAst is not None and src_is_pyref:
+            return makeAstNodeCall(getAstNodeAttrib("helpers", "PyRef"),
+                                   getAstNodeAttrib(argAst, "ref"))
+        return makeAstNodeCall(getAstNodeAttrib("helpers", "PyRef"))
 
     if isPointerType(objType, checkWrapValue=True) and isPointerType(argType, checkWrapValue=True):
         # We can have it simpler. This is even important in some cases
@@ -1310,8 +1325,12 @@ class Helpers:
     class PyRef:
         """
         Python-level reference. Like a pointer but all the logic handled in Python.
+
+        ``ref`` is optional so we can build a "null" PyRef when C code
+        passes `NULL`/`0` where a `va_list *` is expected (e.g.
+        CPython's ``skipitem(&format, NULL, 0)`` in getargs.c).
         """
-        def __init__(self, ref):
+        def __init__(self, ref=None):
             self.ref = ref
 
 

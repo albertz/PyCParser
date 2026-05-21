@@ -817,6 +817,32 @@ def test_do_while_break_exits_loop():
     assert r.value == 303, "expected 303, got %r" % r.value
 
 
+def test_null_initializer_for_va_list_pointer():
+    """Passing a literal `NULL`/`0` where a `va_list *` is expected
+    (e.g. CPython getargs.c's ``skipitem(&format, NULL, 0)``) must be
+    handled correctly: the interpreter represents such pointers via
+    ``Helpers.PyRef``, but a NULL literal has no ``.ref`` attribute.
+    The translation must construct an empty / null ``PyRef`` instead
+    of trying to access ``.ref`` on the integer 0.
+
+    Previously this failed with
+    ``AttributeError: 'wrapCTypeClass_c_int' object has no attribute 'ref'``.
+    """
+    state = parse("""
+    #include <stdarg.h>
+    int helper(va_list *p_va) {
+        return (p_va != 0);
+    }
+    int run(void) {
+        return helper(0);   /* NULL for va_list* -- common in getargs.c */
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 0, "expected 0, got %r" % r.value
+
+
 def test_address_of_va_list_compares_against_null():
     """Taking the address of a `va_list` (`&args`) gives a pointer that
     real C code routinely tests against ``NULL`` (e.g. ``p_va != NULL``
