@@ -1329,6 +1329,23 @@ class Helpers:
         ``ref`` is optional so we can build a "null" PyRef when C code
         passes `NULL`/`0` where a `va_list *` is expected (e.g.
         CPython's ``skipitem(&format, NULL, 0)`` in getargs.c).
+
+        **Limitation:** A PyRef is purely a Python-level wrapper around
+        a :class:`Helpers.VarArgs` instance.  Forwarding it through
+        helper chains works as long as each step carries the same
+        PyRef object (the AST builder unwraps ``.ref`` when copying a
+        PyRef-typed value into another PyRef-typed slot).  But if C
+        code stows ``&va_list`` somewhere we cannot trace (e.g. into a
+        struct field of pointer-to-something type, then later
+        reconstructs a fresh pointer from the raw address), there is
+        no way to recover the originating :class:`VarArgs` -- a fresh
+        ctypes ``void*`` has no link back to the Python-side wrapper.
+        We do not currently need this case for CPython's startup path,
+        so it is unsupported.  If a future failure surfaces it, the
+        symptom is easy to identify: an :class:`AttributeError` for
+        ``.ref`` on a non-PyRef object, or a PyRef appearing where a
+        normal ctypes pointer is expected.
+        We can rewrite this to use a proper C struct for va_list typedef.
         """
         def __init__(self, ref=None):
             self.ref = ref
