@@ -1232,7 +1232,8 @@ class Helpers:
         return ctypes.cast(func.C_funcPtr, funcCType)
 
     def checkedFuncPtrCall(self, f, *args):
-        if _ctype_ptr_get_value(f) == 0:
+        addr = _ctype_ptr_get_value(f)
+        if addr == 0:
             raise Exception("checkedFuncPtrCall: tried to call NULL ptr")
         # Normalize args: wrap plain Python ints/None as c_void_p so that
         # ctypes.cast() inside the callee doesn't receive a non-ctypes object.
@@ -1245,6 +1246,34 @@ class Helpers:
             # We might need to store some pointers to local vars here.
             if isinstance(arg, (ctypes.c_void_p, ctypes._Pointer)):
                 self.interpreter._storePtr(arg)
+        # Short-circuit: if `f` points at one of *our own* Python
+        # functions (wrapped earlier by `makeFuncPtr`), call the Python
+        # function directly rather than going through the ctypes
+        # CFUNCTYPE callback.  Two reasons:
+        #  - Exceptions raised inside the Python function propagate to
+        #    the caller.  Calling via ctypes prints
+        #    "Exception ignored on calling ctypes callback function"
+        #    and silently returns NULL/0, hiding real interpreter bugs.
+        #  - It avoids the ctypes arg-marshalling round-trip.
+        # If the pointer is anything else (real libc, an unregistered
+        # address, etc.), fall back to the normal ctypes call.
+        obj = self.interpreter.pointerStorage.get(addr)
+        if isinstance(obj, PointerStorage):
+            py_func = obj.valueRef()
+            if py_func is not None and inspect.isfunction(py_func):
+                result = py_func(*args)
+                # The ctypes callback path would have wrapped the Python
+                # return value in the CFUNCTYPE's `restype`, so callers
+                # uniformly read `.value` on the result.  Match that
+                # behaviour for the direct call: wrap a raw Python
+                # int/float in `restype` if it isn't already a ctype.
+                restype = getattr(type(f), "_restype_", None)
+                if restype is not None and not isinstance(result, restype):
+                    if result is None:
+                        result = restype()
+                    else:
+                        result = restype(result)
+                return result
         return f(*args)
 
     class VarArgs:

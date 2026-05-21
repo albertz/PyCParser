@@ -817,6 +817,48 @@ def test_do_while_break_exits_loop():
     assert r.value == 303, "expected 303, got %r" % r.value
 
 
+def test_func_ptr_call_propagates_python_exception():
+    """When a function pointer is called by interpreted C code and the
+    underlying callable is one of our own Python functions (translated
+    from C source, or an injected stub), any Python exception it
+    raises must propagate to the outer caller -- not be silently
+    swallowed by the ctypes callback layer.
+
+    The previous implementation always called the function pointer
+    *through* its ctypes CFUNCTYPE wrapper, which prints
+    `Exception ignored on calling ctypes callback function: ...`
+    and returns to C with a NULL/0 result.  That hides interpreter
+    bugs (e.g. AssertionError, ctypes.ArgumentError, custom raises)
+    behind silent corruption deeper in the interpreted CPython.
+    """
+    state = parse("""
+    extern int the_fn(int);
+    typedef int (*int_fn_t)(int);
+    int run(int x) {
+        int_fn_t f = the_fn;   /* take address -> wraps via makeFuncPtr */
+        return f(x);           /* call via the wrapped pointer */
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+
+    class _Boom(Exception):
+        pass
+
+    def _raising_boom(x):
+        raise _Boom("boom x=%r" % (x.value if hasattr(x, "value") else x))
+    _raising_boom.C_argTypes = [ctypes.c_int]
+    _raising_boom.C_resType = ctypes.c_int
+    interp._func_cache["the_fn"] = _raising_boom
+
+    raised = False
+    try:
+        interp.runFunc("run", 7)
+    except _Boom:
+        raised = True
+    assert raised, "expected _Boom to propagate through function-pointer call"
+
+
 def test_func_ptr_cast_preserves_argcount():
     """When a function pointer is cast to a different signature for
     storage (e.g. `(PyCFunction)foo` stowing a METH_FASTCALL 4-arg
