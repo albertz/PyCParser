@@ -542,6 +542,12 @@ def getAstNode_valueFromObj(stateStruct, objAst, objType, isPartOfCOp=False):
         # bitfields are returned as plain ints by ctypes
         return objAst
     elif isPointerType(objType):
+        if isinstance(objType, CPointerType) and usePyRefForType(objType.pointerOf):
+            # The "pointer" is a `Helpers.PyRef` (e.g. `&va_list`) -- a
+            # Python-level reference with no materialized C address.
+            # In valid C such a pointer is always non-NULL, so any
+            # comparison or boolean test should see a non-zero value.
+            return ast.Num(1)
         from inspect import isclass
         if not isclass(objType) or not issubclass(objType, ctypes.c_void_p):
             # Only c_void_p supports to get the pointer-value via the value-attrib.

@@ -817,6 +817,35 @@ def test_do_while_break_exits_loop():
     assert r.value == 303, "expected 303, got %r" % r.value
 
 
+def test_address_of_va_list_compares_against_null():
+    """Taking the address of a `va_list` (`&args`) gives a pointer that
+    real C code routinely tests against ``NULL`` (e.g. ``p_va != NULL``
+    in CPython's getargs.c convertitem chain).  The interpreter
+    represents ``&va_list`` as a ``Helpers.PyRef`` (a Python-level
+    reference, not a ctypes pointer), so any code path that translates
+    ``(void *)p_va != 0`` into ``ctypes.cast(p_va, c_void_p).value != 0``
+    fails with ``ArgumentError: 'PyRef' object cannot be interpreted as
+    ctypes.c_void_p``.
+
+    The cast pattern must accept PyRef and treat it as a non-NULL
+    pointer (a va_list pointer in valid C is never NULL).
+    """
+    state = parse("""
+    #include <stdarg.h>
+    int run(int x, ...) {
+        va_list args;
+        va_start(args, x);
+        int r = ((&args) != 0);
+        va_end(args);
+        return r;
+    }
+    """, withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run", 1, 42)
+    assert r.value == 1, "expected 1, got %r" % r.value
+
+
 def test_func_ptr_call_propagates_python_exception():
     """When a function pointer is called by interpreted C code and the
     underlying callable is one of our own Python functions (translated
