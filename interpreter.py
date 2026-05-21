@@ -1282,6 +1282,16 @@ class Helpers:
         if isinstance(obj, PointerStorage):
             py_func = obj.valueRef()
             if py_func is not None and inspect.isfunction(py_func):
+                # Truncate `args` to the Python function's actual declared
+                # argument count.  Real C ignores extra args via the
+                # calling convention (e.g. METH_NOARGS calls a 1-arg
+                # `dictitems_new(PyObject*)` as `meth(self, NULL)`), and
+                # we must do the same -- otherwise the Python function
+                # raises ``TypeError: takes N positional arguments but M
+                # were given``.
+                py_argtypes = getattr(py_func, "C_argTypes", None)
+                if py_argtypes is not None and len(args) > len(py_argtypes):
+                    args = args[:len(py_argtypes)]
                 result = py_func(*args)
                 # The ctypes callback path would have wrapped the Python
                 # return value in the CFUNCTYPE's `restype`, so callers

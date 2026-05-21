@@ -872,6 +872,41 @@ def test_address_of_va_list_compares_against_null():
     assert r.value == 1, "expected 1, got %r" % r.value
 
 
+def test_func_ptr_call_with_extra_args_truncates_to_signature():
+    """When a function pointer is cast to a wider signature and called
+    with more args than the function actually declares (the standard
+    METH_NOARGS dispatch pattern: a 1-arg C function stored as 2-arg
+    ``PyCFunction`` and invoked with ``meth(self, NULL)``), real C
+    ignores the extra args via the calling convention.  Our
+    short-circuited direct Python call in ``Helpers.checkedFuncPtrCall``
+    must do the same -- pass only as many args as the function's
+    actual signature declares -- otherwise the Python function raises
+    ``TypeError: takes N positional argument but M were given``.
+
+    This is what trips ``dictitems_new`` (declared ``dictitems_new(PyObject *)``,
+    1 arg) when CPython's METH_NOARGS dispatcher calls it as
+    ``meth(self, NULL)`` via the cast to ``PyCFunction``.
+    """
+    state = parse("""
+    typedef int (*two_arg_t)(int, int);
+
+    int one_arg_impl(int x) {
+        return x * 10;
+    }
+
+    int run(void) {
+        /* Stow the 1-arg function as a 2-arg PyCFunction-like slot. */
+        two_arg_t stored = (two_arg_t) one_arg_impl;
+        /* The dispatcher calls it with the extra arg ignored. */
+        return stored(7, 0);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.runFunc("run")
+    assert r.value == 70, "expected 70, got %r" % r.value
+
+
 def test_func_ptr_call_propagates_python_exception():
     """When a function pointer is called by interpreted C code and the
     underlying callable is one of our own Python functions (translated
