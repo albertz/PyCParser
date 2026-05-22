@@ -1139,6 +1139,105 @@ def test_free_purges_cache_path_interior_keys_under_root():
         "tracked under an intermediate address, not the root's base")
 
 
+def test_ctype_collect_objects_target_addr_filters_unrelated_keepalives():
+    """``_ctype_collect_objects(obj, target_addr=X)`` should prune
+    ctype entries reached through ``_objects`` whose memory range does
+    NOT contain ``X``.  Memory-sharing entries (``cast(x, T)`` style,
+    where source and result point at the same target) must still be
+    found.  Unrelated keep-alives (eg. a separate buffer attached as a
+    side ref) must NOT be returned.
+    """
+    from cparser.interpreter import _ctype_collect_objects
+
+    # Two completely separate buffers.
+    src = (ctypes.c_int * 4)(1, 2, 3, 4)
+    side = (ctypes.c_int * 4)(9, 9, 9, 9)
+    src_addr = ctypes.addressof(src)
+
+    # ``cast(x, T)`` is the memory-sharing case we DO want to find.
+    src_ptr = ctypes.cast(src, ctypes.POINTER(ctypes.c_int))
+    casted = ctypes.cast(src_ptr, ctypes.POINTER(ctypes.c_char))
+    # Attach an unrelated keep-alive entry via _objects.  ctypes itself
+    # does not normally put unrelated buffers in _objects, so simulate
+    # it explicitly.  (In real PyCPython usage, _objects can accumulate
+    # many such entries when intermediate pointer casts happen.)
+    if casted._objects is None:
+        # Force-create the dict via a no-op assignment if needed.
+        # ctypes pointers expose _objects as a writable attribute.
+        casted._objects = {}
+    casted._objects["unrelated-side-buffer"] = side
+
+    # Without target_addr, both ``src`` (memory-sharing) and ``side``
+    # (unrelated) are reachable.
+    all_collected = list(_ctype_collect_objects(casted))
+    ids_all = {id(o) for o in all_collected}
+    assert id(side) in ids_all, (
+        "sanity check failed: unfiltered walk did not see the unrelated "
+        "side buffer we explicitly attached via _objects")
+
+    # With target_addr at src's address, the side buffer must be
+    # pruned -- it does not contain src_addr.
+    filtered = list(_ctype_collect_objects(casted, target_addr=src_addr))
+    ids_filtered = {id(o) for o in filtered}
+    assert id(side) not in ids_filtered, (
+        "target_addr filter should have pruned the unrelated side "
+        "buffer (its memory range does not contain src_addr); got %r"
+        % [type(o).__name__ for o in filtered])
+    # And the memory-sharing source MUST still be reachable, even
+    # though we get there via the intermediate ``src_ptr`` pointer
+    # (whose own ``addressof`` is unrelated to ``src_addr``).
+    # Pointer entries must not be pruned -- they're the bridge.
+    assert id(src) in ids_filtered, (
+        "target_addr filter incorrectly pruned the memory-sharing "
+        "source buffer reachable via an intermediate pointer; got %r"
+        % [type(o).__name__ for o in filtered])
+
+
+def test_ctype_collect_objects_target_addr_keeps_subview_bridges():
+    """A small ``_b_base_`` sub-view (eg. ``a[0]``) whose own range
+    does NOT contain ``target_addr`` must still be kept by the filter
+    when its ``_b_base_`` chain leads to an ancestor whose range DOES
+    contain ``target_addr``.  Otherwise the bridge is broken and the
+    actual matching root never gets collected -- which is exactly what
+    happens with ``ctypes.pointer(a[0])`` for pointer arithmetic into
+    an array (the test_interpret_init_array regression).
+    """
+    from cparser.interpreter import _ctype_collect_objects
+
+    # Build a sub-view (struct field) whose ``_b_base_`` chain reaches
+    # a larger root struct.  ``sub`` is smaller than the root: its
+    # own range does NOT cover the chosen target, but the root's
+    # does.  ``ctypes`` sets ``_b_base_`` on field access for
+    # non-primitive field types (here a nested struct).
+    class Inner(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_int)]
+    class Root(ctypes.Structure):
+        _fields_ = [("inner", Inner),
+                    ("y", ctypes.c_int),
+                    ("z", ctypes.c_int)]
+    root = Root()
+    sub = root.inner  # size 4, _b_base_ = root (size 12)
+    assert sub._b_base_ is root
+    # ``ctypes.pointer(sub)`` stores ``sub`` in its ``_objects`` dict;
+    # casting again carries it forward.  The resulting ``p._objects``
+    # contains ``sub`` (the sub-view we want as the bridge).
+    p = ctypes.cast(ctypes.pointer(sub), ctypes.POINTER(ctypes.c_int))
+    assert any(v is sub for v in p._objects.values()), (
+        "test setup: expected sub in p._objects via pointer-then-cast")
+    target_addr = ctypes.addressof(root) + Root.z.offset
+    # Sanity: sub's range does not cover target, root's range does.
+    assert not (ctypes.addressof(sub) <= target_addr
+                <= ctypes.addressof(sub) + ctypes.sizeof(sub))
+    assert (ctypes.addressof(root) <= target_addr
+            <= ctypes.addressof(root) + ctypes.sizeof(root))
+    collected = list(_ctype_collect_objects(p, target_addr=target_addr))
+    ids = {id(o) for o in collected}
+    assert id(root) in ids, (
+        "target_addr filter pruned the sub-view bridge and so failed "
+        "to reach the matching root struct via _b_base_; got %r"
+        % [type(o).__name__ for o in collected])
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly
