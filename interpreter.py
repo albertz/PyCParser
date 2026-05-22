@@ -2506,6 +2506,7 @@ class Interpreter:
         # When the real ctype objects go out of scope, we don't want to
         # keep them alive.
         self.pointerStorage = WeakValueDictionary()  # ptr addr -> weak ctype obj ref
+        # Non-overlapping (start, size) tuples.
         self.pointerStorageRanges = SortedSet()  # (ptr-addr,size) tuples
         # `pointerStorage` may hold multiple keys mapping into the same
         # allocation: the base address plus interior offsets (e.g.
@@ -2678,6 +2679,136 @@ class Interpreter:
             self.pointerStorageInteriorKeysByBase[base_addr] = s
         s.add(interior_addr)
 
+    def _addPointerStorageRange(self, start, size):
+        """Insert ``(start, size)`` into ``pointerStorageRanges`` while
+        keeping the set non-overlapping.
+
+        Stale entries (whose ``pointerStorage`` weakref is dead --
+        the obj has been GC'd) are pruned first.
+        After pruning, three real cases remain:
+
+        * **New is contained in an existing range** (``s_pred <= start``,
+          ``e_pred >= end``) -- drop new; the outer range already
+          covers the same memory.
+        * **New strictly contains existing ranges** -- remove the
+          contained smaller entries, then add new.
+        * **Partial overlap** (edges cross without containment) --
+          this is a *bug* (the underlying object layout is
+          inconsistent with what we've seen before).
+
+        :param int start: starting address of the new range.
+        :param int size: byte length of the new range.
+        """
+        end = start + size
+
+        # Step 1: prune stale predecessors whose range reaches into
+        # the new range.  Loop because removing one may expose another.
+        while True:
+            i = self.pointerStorageRanges.bisect_right((start + 1, 0))
+            if i == 0:
+                break
+            s, sz = self.pointerStorageRanges[i - 1]
+            if s + sz <= start:
+                break  # predecessor doesn't reach into new
+            if s in self.pointerStorage:
+                break  # alive; stop pruning
+            self.pointerStorageRanges.remove((s, sz))
+
+        # Step 2: prune stale successors starting in [start, end).
+        stale = [
+            (s, sz) for s, sz in self.pointerStorageRanges.irange(
+                minimum=(start, 0), maximum=(end, 0), inclusive=(True, False))
+            if s not in self.pointerStorage
+        ]
+        for r in stale:
+            self.pointerStorageRanges.remove(r)
+
+        # Step 3: containment / overlap logic on the surviving (alive)
+        # entries.  Predecessor first.
+        i = self.pointerStorageRanges.bisect_right((start + 1, 0))
+        if i > 0:
+            pred_start, pred_size = self.pointerStorageRanges[i - 1]
+            pred_end = pred_start + pred_size
+            # ``i - 1`` is the largest entry with first element ``<= start``.
+            if pred_end >= end:
+                # ``pred_start <= start`` (from bisect_right) and
+                # ``pred_end >= end`` => new is fully inside (or equal
+                # to) predecessor.  Drop.
+                return
+            # Strict left partial overlap (predecessor ends inside
+            # the new range) is a real bug: the caller is registering
+            # a range that disagrees with an alive earlier
+            # registration on memory layout.  Assert.
+            assert not (pred_end > start > pred_start), (
+                "_addPointerStorageRange: partial left overlap; "
+                "new=[0x%x, 0x%x) (size=%d), existing=[0x%x, 0x%x) "
+                "(size=%d).  Both ranges' pointerStorage entries "
+                "are alive -- their underlying objs disagree on "
+                "memory layout." % (
+                    start, end, size,
+                    pred_start, pred_end, pred_size))
+            # else: predecessor doesn't reach into new, OR same start
+            # with smaller end (handled in Step 4 below).
+
+        # Step 4: successors starting in [start, end) -- either fully
+        # contained (remove, subsumed by new) or partial right overlap
+        # (assert).
+        contained_to_remove = []
+        for s, sz in self.pointerStorageRanges.irange(
+                minimum=(start, 0), maximum=(end, 0), inclusive=(True, False)):
+            assert s + sz <= end, (
+                "_addPointerStorageRange: partial right overlap; "
+                "new=[0x%x, 0x%x) (size=%d), existing=[0x%x, 0x%x) "
+                "(size=%d).  Both ranges' pointerStorage entries "
+                "are alive -- their underlying objs disagree on "
+                "memory layout." % (
+                    start, end, size, s, s + sz, sz))
+            contained_to_remove.append((s, sz))
+        for r in contained_to_remove:
+            self.pointerStorageRanges.remove(r)
+        self.pointerStorageRanges.add((start, size))
+
+    def _lookupPointerStorageRange(self, addr):
+        """Find the ctype object whose ``pointerStorageRanges`` entry
+        covers ``addr``, or ``None`` if no such entry exists.
+
+        With the non-overlap invariant maintained by
+        ``_addPointerStorageRange``, at most one entry can cover any
+        given address: the predecessor (largest start ``<= addr``).
+        A single ``bisect_right`` lookup answers the question -- no
+        iteration is needed.
+
+        Dead weakrefs at the predecessor are recovered from
+        ``mallocs`` when possible (the underlying buffer is still
+        alive); otherwise the stale range entry is pruned and the
+        function reports no match (no covering range exists -- by
+        non-overlap, the predecessor would have been the only
+        candidate, and it's gone).
+
+        :param int addr: address to look up.
+        :rtype: ctype object | None
+        """
+        i = self.pointerStorageRanges.bisect_right((addr + 1, 0))
+        if i == 0:
+            return None
+        obj_ptr_addr, obj_size = self.pointerStorageRanges[i - 1]
+        # Cover check: inclusive upper bound for the one-past-the-end
+        # C pointer (``arr + len`` is a valid pointer for arithmetic).
+        if obj_ptr_addr + obj_size < addr:
+            return None
+        obj = self.pointerStorage.get(obj_ptr_addr, None)
+        if obj is None:
+            if obj_ptr_addr in self.mallocs:
+                obj = self.mallocs[obj_ptr_addr]
+                self.pointerStorage[obj_ptr_addr] = obj
+            else:
+                # Stale: prune the entry; non-overlap means no other
+                # range can cover ``addr`` either.
+                self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
+                return None
+        self._registerInteriorPtrKey(obj_ptr_addr, addr)
+        return obj
+
     def _free(self, ptr_addr):
         """
         :param int ptr_addr:
@@ -2794,25 +2925,23 @@ class Interpreter:
             # Sub-views of an existing root are already covered by the root's range,
             # which was added when the root was first stored (eg. by _malloc).
             # We might have not registered it yet (on stack, or static or global; not via _malloc).
-            # Adding a smaller overlapping range for a sub-view would break
-            # the reverse-irange `break` invariant in the fallback search below.
+            # ``_addPointerStorageRange`` enforces non-overlap: a fresh root
+            # whose address lies inside an existing malloc range
+            # (eg. a ``from_address`` view into a malloc'd buffer) is
+            # dropped -- the outer range already covers it.
             if getattr(obj, "_b_base_", None) is None:
-                self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
+                self._addPointerStorageRange(obj_ptr_addr, obj_size)
             return ptr
 
-        # This is slower. Check pointerStorageRanges if we have it.
-        for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
-                reverse=True, maximum=(ptr_addr + 1, 0), inclusive=(True, False)
-        ):
-            if obj_ptr_addr + obj_size <= ptr_addr: break
-            obj = self.pointerStorage.get(obj_ptr_addr, None)
-            if obj is None:  # not alive anymore
-                self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
-            elif obj_ptr_addr <= ptr_addr:
-                # Found it!
-                self.pointerStorage[ptr_addr] = obj
-                self._registerInteriorPtrKey(obj_ptr_addr, ptr_addr)
-                return ptr
+        # Range-fallback: with the non-overlap invariant maintained
+        # by ``_addPointerStorageRange``, at most one range can
+        # possibly cover ``ptr_addr`` -- the predecessor (largest
+        # start ``<= ptr_addr``).  A single ``bisect_right`` lookup
+        # is enough; no iteration / termination condition needed.
+        obj = self._lookupPointerStorageRange(ptr_addr)
+        if obj is not None:
+            self.pointerStorage[ptr_addr] = obj
+            return ptr
         # Note: This can also/esp happen when the ptr was not allocated by us.
         # Not sure how to handle that yet...
         raise NotImplementedError(
@@ -2835,21 +2964,12 @@ class Interpreter:
         else:
             # Not found directly; try range-based lookup for interior pointers
             # (e.g. alignment-derived addresses like _Py_ALIGN_DOWN results).
-            obj = None
-            for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
-                    reverse=True, maximum=(addr + 1, 0), inclusive=(True, False)
-            ):
-                if obj_ptr_addr + obj_size <= addr:
-                    break
-                candidate = self.pointerStorage.get(obj_ptr_addr, None)
-                if candidate is None:  # not alive anymore
-                    self.pointerStorageRanges.remove((obj_ptr_addr, obj_size))
-                    continue
-                if obj_ptr_addr <= addr:
-                    obj = candidate
-                    self._registerInteriorPtrKey(obj_ptr_addr, addr)
-                    self.pointerStorage[addr] = obj  # cache for future lookups
-                    break
+            # See ``_storePtr`` range fallback comment: a single
+            # predecessor lookup is enough given the non-overlap
+            # invariant on ``pointerStorageRanges``.
+            obj = self._lookupPointerStorageRange(addr)
+            if obj is not None:
+                self.pointerStorage[addr] = obj  # cache for future lookups
             if obj is None:
                 raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
         if isinstance(obj, PointerStorage):

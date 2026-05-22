@@ -1305,6 +1305,159 @@ def test_storeptr_obj_loop_does_not_overwrite_malloc_entry():
         "than the malloc'd buf; expected the original buf to remain")
 
 
+def test_add_pointer_storage_range_drops_interior_insert():
+    """``_addPointerStorageRange`` must drop an insert whose start is
+    strictly interior to an existing range.  Otherwise nested
+    overlapping ranges accumulate (eg. a fresh ``from_address`` view
+    over a malloc'd buffer), and the range-fallback's reverse-irange
+    ``break`` shortcut would miss the outer covering range.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Malloc a 128-byte region.  ``_malloc`` -> ``_storePtr`` -> obj-loop
+    # ends up calling ``_addPointerStorageRange(base, 128)``.
+    buf_ptr = interp._malloc(128)
+    base = _ctype_ptr_get_value(buf_ptr)
+    assert (base, 128) in interp.pointerStorageRanges
+
+    # Now attempt to add a small inner range (eg. a fresh view obj
+    # that happened to land inside the malloc).  The helper must
+    # drop it.
+    interp._addPointerStorageRange(base + 64, 8)
+    assert (base + 64, 8) not in interp.pointerStorageRanges, (
+        "interior insert was not dropped; non-overlap invariant broken")
+    # And the outer malloc range must still be there untouched.
+    assert (base, 128) in interp.pointerStorageRanges
+
+    # An insert that does NOT overlap any existing range still goes
+    # through (sanity check that the helper isn't over-zealous).
+    interp._addPointerStorageRange(base + 256, 16)
+    assert (base + 256, 16) in interp.pointerStorageRanges
+
+
+def test_add_pointer_storage_range_removes_subsumed_existing():
+    """When the new range strictly contains existing smaller ranges,
+    those subsumed entries are removed.  Otherwise the set would
+    contain both, violating non-overlap.
+    """
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    interp._addPointerStorageRange(200, 8)
+    interp._addPointerStorageRange(220, 16)
+    assert (200, 8) in interp.pointerStorageRanges
+    assert (220, 16) in interp.pointerStorageRanges
+
+    # Larger new range strictly contains both existing ranges.
+    interp._addPointerStorageRange(150, 200)  # [150, 350)
+    assert (150, 200) in interp.pointerStorageRanges
+    assert (200, 8) not in interp.pointerStorageRanges, (
+        "subsumed smaller range was not removed")
+    assert (220, 16) not in interp.pointerStorageRanges
+
+
+def test_add_pointer_storage_range_partial_overlap_asserts():
+    """Partial overlap (edges cross without containment) on *alive*
+    ranges signals a real bug -- the underlying objects disagree on
+    memory layout.  Must raise AssertionError rather than silently
+    drop/merge.
+    """
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Make the existing entry "alive" by storing a real ctype in
+    # pointerStorage at the same start.  ``alive`` stays referenced
+    # in this local for the duration of the test, keeping the
+    # weakref valid.
+    alive = (ctypes.c_byte * 50)()
+    interp.pointerStorage[200] = alive
+    interp._addPointerStorageRange(200, 50)
+
+    # New starts before existing, ends inside it -> partial overlap
+    # on the predecessor side.  Existing is alive, so this is a
+    # real conflict and must assert.
+    raised = None
+    try:
+        interp._addPointerStorageRange(180, 40)  # [180, 220)
+    except AssertionError as e:
+        raised = e
+    assert raised is not None, (
+        "expected AssertionError on partial-overlap insert, got none")
+    assert "partial" in str(raised), (
+        "AssertionError message should mention 'partial'; got %r" % str(raised))
+    # Existing untouched.
+    assert (200, 50) in interp.pointerStorageRanges
+    # Reference ``alive`` so the weakref above stays valid until here.
+    assert ctypes.addressof(alive) == 200 or True
+
+
+def test_add_pointer_storage_range_prunes_stale_overlap():
+    """When an existing overlapping range is *stale* (its
+    ``pointerStorage`` weakref is dead -- the obj was GC'd), the new
+    insert must prune it rather than treat it as a partial overlap.
+    Otherwise a later ``_malloc`` that reuses the same memory would
+    bogusly conflict with the orphan range entry.
+    """
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Simulate the situation: a range exists in pointerStorageRanges
+    # but its pointerStorage entry is dead (no obj referenced).
+    interp.pointerStorageRanges.add((300, 56))
+    # pointerStorage[300] is unset -> ``in`` returns False (treated as dead).
+    assert 300 not in interp.pointerStorage
+
+    # New 55-byte range at the same start should now succeed (the
+    # stale entry gets pruned).
+    interp._addPointerStorageRange(300, 55)
+    assert (300, 55) in interp.pointerStorageRanges
+    assert (300, 56) not in interp.pointerStorageRanges, (
+        "stale predecessor range was not pruned on insert")
+
+
+def test_storeptr_range_fallback_recovers_from_mallocs_when_weakref_dead():
+    """When the weakref entry at a range's start is dead, the
+    underlying memory may still be alive in ``mallocs`` (eg. because
+    a transient overwrote ``pointerStorage`` and then died).  The
+    range fallback must recover from ``mallocs`` instead of pruning
+    the range and failing.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    buf_ptr = interp._malloc(64)
+    base = _ctype_ptr_get_value(buf_ptr)
+    # Simulate the "transient overwrote and died" state by deleting
+    # the pointerStorage entry directly while leaving mallocs[base]
+    # intact.  The range entry stays in pointerStorageRanges.
+    del interp.pointerStorage[base]
+    assert base in interp.mallocs
+    assert base not in interp.pointerStorage
+    assert (base, 64) in interp.pointerStorageRanges
+
+    # Storing a pointer to an interior address should recover the
+    # entry from mallocs and succeed (not raise NotImplementedError
+    # and not prune the still-valid range).
+    ptr = ctypes.c_void_p(base + 16)
+    interp._storePtr(ptr)
+    assert (base + 16) in interp.pointerStorage
+    # The base entry should be re-populated from mallocs too.
+    assert base in interp.pointerStorage
+    assert (base, 64) in interp.pointerStorageRanges, (
+        "range fallback wrongly pruned a range whose memory is still "
+        "alive in mallocs")
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly
