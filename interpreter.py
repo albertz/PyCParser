@@ -2572,6 +2572,27 @@ class Interpreter:
         ctypes.memmove(ptr, ctypes.cast(buf, wrapCTypeClass(ctypes.c_void_p)), ctypes.c_size_t(buf._length_))
         return ptr
 
+    def _rootAddrOf(self, obj):
+        """Walk ``obj._b_base_`` chain to the root ctype and return
+        its ``addressof``.  Always returns a concrete address (the
+        root's, or obj's own if it is the root).  Callers compare
+        against the addr they already have to decide whether interior
+        tracking is needed.
+
+        ``obj`` must be a ctype object (one whose chain ends in a
+        ctype) -- the obj-loop in ``_storePtr`` only matches ctypes,
+        so the precondition always holds at call sites.
+        """
+        assert hasattr(obj, "_b_base_"), \
+            "_rootAddrOf requires a ctype object, got %r" % type(obj)
+        root = obj
+        while True:
+            base = getattr(root, "_b_base_", None)
+            if base is None:
+                break
+            root = base
+        return _ctype_get_ptr_addr(root)
+
     def _registerInteriorPtrKey(self, base_addr, interior_addr):
         """Record that ``pointerStorage[interior_addr]`` references the
         allocation whose base address is ``base_addr``.  Used by
@@ -2633,7 +2654,18 @@ class Interpreter:
         if ptr_addr - offset in self.pointerStorage:
             base_obj = self.pointerStorage[ptr_addr - offset]
             self.pointerStorage[ptr_addr] = base_obj
-            self._registerInteriorPtrKey(ptr_addr - offset, ptr_addr)
+            # Track the new interior key under the ROOT of `base_obj`,
+            # not under `ptr_addr - offset` (which is itself an
+            # interior address whose `_free` is never called -- the
+            # root's free is what triggers purge).
+            if isinstance(base_obj, PointerStorage):
+                # Function-pointer cell -- no interior tracking
+                # needed (the pointed-to function never gets _free'd).
+                pass
+            else:
+                root_addr = self._rootAddrOf(base_obj)
+                if root_addr != ptr_addr:
+                    self._registerInteriorPtrKey(root_addr, ptr_addr)
             return ptr
         objs = _ctype_collect_objects(ptr)
         # Later collected objects are more likely the ones we want.
@@ -2644,7 +2676,16 @@ class Interpreter:
                 self.pointerStorage[obj_ptr_addr] = obj
                 if offset != 0:
                     self.pointerStorage[ptr_addr] = obj
-                    self._registerInteriorPtrKey(obj_ptr_addr, ptr_addr)
+                # Track every interior pointerStorage key under the
+                # ROOT's address (walking obj's _b_base_ chain), so
+                # that `_free(root_addr)` purges all of them in one
+                # pass.  If obj IS the root, this just registers under
+                # obj_ptr_addr itself.
+                root_addr = self._rootAddrOf(obj)
+                if root_addr != obj_ptr_addr:
+                    self._registerInteriorPtrKey(root_addr, obj_ptr_addr)
+                if offset != 0:
+                    self._registerInteriorPtrKey(root_addr, ptr_addr)
                 # Only register the range entry if `obj` is a *root* ctype (no `_b_base_`).
                 # Sub-views of an existing root are already covered by the root's range,
                 # which was added when the root was first stored (eg. by _malloc).
