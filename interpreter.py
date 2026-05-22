@@ -2634,6 +2634,12 @@ class Interpreter:
 
     def _storePtr(self, ptr, offset=0, value=None):
         """
+        We store pointers in ``pointerStorage``.
+        We need those because:
+
+        - :func:`_getPtr` reverse lookup, needed for pointer arithmetic
+        - Function pointer cells
+
         :param ctypes.c_void_p ptr:
         :param int offset:
         :param PointerStorage|None value:
