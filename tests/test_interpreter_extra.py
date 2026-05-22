@@ -1238,6 +1238,73 @@ def test_ctype_collect_objects_target_addr_keeps_subview_bridges():
         % [type(o).__name__ for o in collected])
 
 
+def test_storeptr_obj_loop_does_not_overwrite_malloc_entry():
+    """The obj-loop in ``_storePtr`` registers two ``pointerStorage``
+    keys: one at ``ptr_addr`` (the target) and one at
+    ``obj_ptr_addr`` (the matched obj's own addr).  The latter is a
+    cache for future lookups.  If a ``_malloc``'d buffer is already
+    registered at ``obj_ptr_addr`` (via the strongly-held buf in
+    ``mallocs``), the obj-loop must NOT overwrite that stable entry
+    with whatever transient ctype view it walked to.  Otherwise the
+    transient dies shortly after (its only ref was the chain we
+    walked), the weakref entry vanishes, and ``_storePtr`` for the
+    same address later fails to find anything -- even though
+    ``mallocs`` still holds the underlying memory.
+    """
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    # 1) malloc a buffer.  Now mallocs[addr] = buf (strong),
+    #    pointerStorage[addr] = buf (weak, kept alive by mallocs).
+    buf_ptr = interp._malloc(64)
+    addr = ctypes.cast(buf_ptr, ctypes.c_void_p).value
+    assert addr in interp.mallocs
+    assert addr in interp.pointerStorage
+    original_obj = interp.pointerStorage[addr]
+
+    # 2) Build a fresh ctype view at the same address (a transient
+    #    struct overlay) and a pointer that ``_objects``-chains back
+    #    to it.  ``pointer(overlay)`` keeps ``overlay`` in its
+    #    ``_objects`` so the obj-loop will reach it.  We aim at an
+    #    INTERIOR offset so the cache-fast-path misses and we go
+    #    through the obj-loop (where the side-branch write would
+    #    overwrite ``pointerStorage[addr]``).
+    class Big(ctypes.Structure):
+        _fields_ = [("data", ctypes.c_byte * 64)]
+    overlay = Big.from_address(addr)  # transient, addressof == addr
+    assert ctypes.addressof(overlay) == addr
+    overlay_ptr = ctypes.pointer(overlay)
+    # An interior pointer one byte into the overlay.  Cast carries
+    # ``overlay`` forward in ``_objects`` so the obj-loop can reach
+    # it (and via the ``_b_base_``-walk-to-root range check, see it
+    # as covering ``addr + 1``).
+    interior_ptr = ctypes.cast(overlay_ptr, ctypes.POINTER(ctypes.c_byte))
+    from cparser.interpreter import _ctype_ptr_set_value
+    _ctype_ptr_set_value(interior_ptr, addr + 1)
+    # Drop our last named strong refs.  The pointer's ``_objects``
+    # still chains to overlay; overlay's ``_b_base_`` is None (it's
+    # ``from_address``); the only thing keeping the obj-loop's match
+    # alive once `_storePtr` returns is whatever ``pointerStorage``
+    # wrote -- which, with the bug, is the transient overlay.
+    del overlay, overlay_ptr
+    interp._storePtr(interior_ptr)
+    del interior_ptr
+    import gc
+    gc.collect()
+
+    # 3) The stable malloc-backed entry must STILL be at
+    #    ``pointerStorage[addr]`` (not overwritten by the transient
+    #    overlay).
+    assert addr in interp.pointerStorage, (
+        "obj-loop overwrote the malloc-backed pointerStorage entry "
+        "with a transient view that has since died; the address is "
+        "now unfindable even though mallocs still holds it")
+    assert interp.pointerStorage[addr] is original_obj, (
+        "pointerStorage[addr] was replaced with a different object "
+        "than the malloc'd buf; expected the original buf to remain")
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly

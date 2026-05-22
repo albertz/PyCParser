@@ -2766,7 +2766,18 @@ class Interpreter:
             # `pointerStorageRanges` fallback.
             if not (obj_ptr_addr <= ptr_addr <= obj_ptr_addr + obj_size):
                 continue
-            self.pointerStorage[obj_ptr_addr] = obj
+            # Don't overwrite an existing ``pointerStorage`` entry at
+            # ``obj_ptr_addr`` with the obj we just walked to.  The
+            # side-branch write here is for caching: if a stable entry
+            # already lives there (eg. a malloc'd ``c_byte`` buf), a
+            # subsequent ``_storePtr`` for a transient struct view at
+            # the same address would otherwise replace the stable buf
+            # with the view -- which dies shortly after, leaving the
+            # entry dead even though ``mallocs`` still holds the
+            # underlying memory.  See
+            # test_storeptr_obj_loop_does_not_overwrite_malloc_entry.
+            if obj_ptr_addr not in self.pointerStorage:
+                self.pointerStorage[obj_ptr_addr] = obj
             if obj_ptr_addr != ptr_addr:
                 self.pointerStorage[ptr_addr] = obj
             # Track every interior pointerStorage key under the
