@@ -2361,8 +2361,10 @@ def _ctype_collect_objects(obj):
       E.g. if obj is a field of the struct of _b_base_.
     _b_needsfree_ is True/False, depending if we need to free sth.
     _objects is a dict, where the values are counted-refs to objects which we depend on,
-    such as maybe char pointers to strings.
-    counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
+    such as maybe char pointers to strings,
+    but also the string itself (for a char pointer),
+    or the base object pointer in case this is a casted pointer.
+    Counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
     all the ref'd objects will live, too,
     such as the string that the char pointer is pointing to.
     """
