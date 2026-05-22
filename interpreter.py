@@ -2353,20 +2353,34 @@ def _ctype_ptr_set_value(ptr, addr):
 def _ctype_get_ptr_addr(obj):
     return _ctype_ptr_get_value(ctypes.pointer(obj))
 
-def _ctype_collect_objects(obj):
-    """
-    :param ctypes._CData obj: ctypes obj
-    _CData has the relevant attribs _b_base_, _b_needsfree_, _objects.
-    _b_base_ would be a counted-ref to a base _CData object which shares mem with it.
-      E.g. if obj is a field of the struct of _b_base_.
-    _b_needsfree_ is True/False, depending if we need to free sth.
-    _objects is a dict, where the values are counted-refs to objects which we depend on,
-    such as maybe char pointers to strings,
-    but also the string itself (for a char pointer),
-    or the base object pointer in case this is a casted pointer.
-    Counted-ref as opposed to weak-ref, i.e. as long as `obj` lives,
-    all the ref'd objects will live, too,
-    such as the string that the char pointer is pointing to.
+def _ctype_collect_objects(obj, include_objects_dict=True):
+    """Collect ctypes that ``obj`` keeps alive, transitively.
+
+    :param ctypes._CData obj: ctypes obj.
+    :param bool include_objects_dict: if False, walk only the
+        ``_b_base_`` chain (cheap; covers struct-field / array-index /
+        typed-cast sub-views).  If True (default), also descend into
+        ``_objects`` -- needed to find the buffer behind a
+        ``cast(x, T)`` whose ``_b_base_`` is detached from x.  Callers
+        that only care about "which buffer does this ctype's memory
+        live in" can use False as a fast path and fall back to True
+        if no match is found.
+
+    Notes on ``_CData`` attribs:
+    ``_b_base_`` is a counted-ref to a base ``_CData`` that **shares
+    memory** with ``obj`` -- e.g. ``obj`` is a field/element of
+    ``_b_base_``.
+
+    ``_objects`` is a dict of counted-refs to external objects
+    ``obj`` depends on -- e.g. the source of a ``cast(x, T)``
+    (which may share memory with the cast result), or a string
+    whose buffer is referenced by a ``c_char_p`` field (which does
+    NOT share memory with the struct holding the field).  So
+    ``_objects`` is *mostly* used to keep cast sources alive (the
+    memory-sharing case ``_b_base_`` cannot model) and to keep
+    external buffers alive (no memory sharing).  Counted-ref as
+    opposed to weak-ref, i.e. as long as ``obj`` lives, all the
+    referenced objects live too.
     """
     d = OrderedDict()  # id(o) -> o
     seen_generic = set()
@@ -2396,7 +2410,8 @@ def _ctype_collect_objects(obj):
     def visit_c(b):
         # Usually, we get a ctypes object with _objects and _b_base_ here.
         # However, sometimes get ctypes.CThunkObject here which does not have these attribs.
-        visit_generic(b._objects)
+        if include_objects_dict:
+            visit_generic(b._objects)
         collect(b._b_base_)
     collect(obj)
     return d.values()
@@ -2673,24 +2688,44 @@ class Interpreter:
                 if root_addr != ptr_addr:
                     self._registerInteriorPtrKey(root_addr, ptr_addr)
             return ptr
-        objs = _ctype_collect_objects(ptr)
-        # Later collected objects are more likely the ones we want.
-        # So go over in reverse order.
-        for obj in reversed(objs):
-            obj_ptr_addr = _ctype_get_ptr_addr(obj)
-            if ptr_addr == obj_ptr_addr + offset:
+        # Two-phase obj-loop.  Phase 1 walks only obj's `_b_base_`
+        # chain (cheap; covers struct-field/array-index/typed-cast
+        # sub-views and direct matches).  Phase 2 additionally walks
+        # `_objects` (catches `cast(x, T)` style where the source is
+        # referenced via the keep-alive dict rather than `_b_base_`).
+        # Splitting the walk avoids paying the `_objects` recursion
+        # cost on the common case where `_b_base_` alone is enough --
+        # `_objects` of a big struct can contain many entries we don't
+        # need to visit.
+        def _try_match(objs, prev_seen):
+            for obj in reversed(objs):
+                if id(obj) in prev_seen:
+                    continue
+                obj_ptr_addr = _ctype_get_ptr_addr(obj)
+                obj_size = ctypes.sizeof(obj)
+                # Range check: ptr is "in" obj iff ptr_addr falls inside
+                # `[obj_ptr_addr, obj_ptr_addr + obj_size]`.  Note the
+                # inclusive upper bound: C allows "one-past-the-end"
+                # pointers (`arr + len(arr)`) as a valid -- if not
+                # dereferenceable -- pointer.  This is more lenient
+                # than the historical exact equality
+                # (`ptr_addr == obj_ptr_addr + offset`) and catches
+                # interior pointers we'd otherwise punt to the
+                # `pointerStorageRanges` fallback.
+                if not (obj_ptr_addr <= ptr_addr <= obj_ptr_addr + obj_size):
+                    continue
                 self.pointerStorage[obj_ptr_addr] = obj
-                if offset != 0:
+                if obj_ptr_addr != ptr_addr:
                     self.pointerStorage[ptr_addr] = obj
                 # Track every interior pointerStorage key under the
-                # ROOT's address (walking obj's _b_base_ chain), so
+                # ROOT's address (walking obj's `_b_base_` chain), so
                 # that `_free(root_addr)` purges all of them in one
                 # pass.  If obj IS the root, this just registers under
                 # obj_ptr_addr itself.
                 root_addr = self._rootAddrOf(obj)
                 if root_addr != obj_ptr_addr:
                     self._registerInteriorPtrKey(root_addr, obj_ptr_addr)
-                if offset != 0:
+                if obj_ptr_addr != ptr_addr:
                     self._registerInteriorPtrKey(root_addr, ptr_addr)
                 # Only register the range entry if `obj` is a *root* ctype (no `_b_base_`).
                 # Sub-views of an existing root are already covered by the root's range,
@@ -2699,9 +2734,16 @@ class Interpreter:
                 # Adding a smaller overlapping range for a sub-view would break
                 # the reverse-irange `break` invariant in the fallback search below.
                 if getattr(obj, "_b_base_", None) is None:
-                    obj_size = ctypes.sizeof(obj)
                     self.pointerStorageRanges.add((obj_ptr_addr, obj_size))
-                return ptr
+                return True
+            return False
+
+        objs_phase1 = _ctype_collect_objects(ptr, include_objects_dict=False)
+        if _try_match(objs_phase1, prev_seen=set()):
+            return ptr
+        objs_phase2 = _ctype_collect_objects(ptr, include_objects_dict=True)
+        if _try_match(objs_phase2, prev_seen={id(o) for o in objs_phase1}):
+            return ptr
 
         # This is slower. Check pointerStorageRanges if we have it.
         for obj_ptr_addr, obj_size in self.pointerStorageRanges.irange(
@@ -2719,8 +2761,9 @@ class Interpreter:
         # Note: This can also/esp happen when the ptr was not allocated by us.
         # Not sure how to handle that yet...
         raise NotImplementedError(
-            "_storePtr: ptr %r, objs %r, ptr_addr 0x%x, obj_ptr_addr %s" % (
-                ptr, objs, ptr_addr, [hex(_ctype_get_ptr_addr(o) + offset) for o in objs]))
+            "_storePtr: ptr %r, objs %r, ptr_addr 0x%x, obj_ptr_addrs %s" % (
+                ptr, list(objs_phase2), ptr_addr,
+                [hex(_ctype_get_ptr_addr(o) + offset) for o in objs_phase2]))
 
     def _getPtr(self, addr, ptr_type=None):
         """

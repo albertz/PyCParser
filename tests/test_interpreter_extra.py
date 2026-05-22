@@ -1043,6 +1043,102 @@ def test_free_purges_interior_pointer_storage_entries():
         "interior entry base+32 was leaked after _free")
 
 
+def test_free_purges_subview_keys_tracked_under_root():
+    """``_storePtr`` may match an obj that is itself a *sub-view* (has
+    ``_b_base_``).  Its ``addressof`` is then interior to a malloc'd
+    root buffer.  When the obj-loop registers it in ``pointerStorage``,
+    we must track the key under the *root*'s base address (walked via
+    ``_b_base_``), not under the sub-view's own address -- otherwise
+    ``_free(root_addr)`` won't know to purge it, and the entry stays
+    in ``pointerStorage`` with a ``_b_base_`` chain pointing at memory
+    that is no longer in ``mallocs``.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value, _ctype_get_ptr_addr
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    PtrArrT = ctypes.c_void_p * 4
+    buf = interp._malloc(ctypes.sizeof(PtrArrT))
+    base = _ctype_ptr_get_value(buf)
+
+    # Build a sub-view by casting the malloc'd buffer to a typed
+    # pointer and then accessing an element.  The resulting ctype's
+    # `_b_base_` chain leads back to `buf`.
+    arr = ctypes.cast(buf, ctypes.POINTER(PtrArrT)).contents
+    # `byref(arr, 8)` is the c-level pointer (no _b_base_); cast it to
+    # a typed pointer.  The cast result's `_b_base_` chain reaches the
+    # arr/buf.
+    interior_ptr = ctypes.cast(
+        ctypes.byref(arr, 8),
+        ctypes.POINTER(ctypes.c_void_p))
+    # Trigger the obj-loop with a sub-view match.
+    interp._storePtr(interior_ptr)
+
+    # An interior key for the sub-view's addressof should now exist
+    # in pointerStorage.  Find it.
+    interior_keys = [k for k in interp.pointerStorage
+                     if base < k < base + ctypes.sizeof(PtrArrT)]
+    assert interior_keys, (
+        "expected at least one interior key in pointerStorage "
+        "after _storePtr on a sub-view; got none")
+
+    # Free the root buffer.  Every interior key must be purged.
+    interp._free(base)
+    leaked = [k for k in interp.pointerStorage
+              if base <= k < base + ctypes.sizeof(PtrArrT)]
+    assert not leaked, (
+        "after _free(root), interior keys %r still in pointerStorage; "
+        "they were not tracked under the root's address" % [hex(k) for k in leaked])
+
+
+def test_free_purges_cache_path_interior_keys_under_root():
+    """``_storePtr``'s cache fast-path (``ptr_addr - offset in
+    pointerStorage``) inserts ``pointerStorage[ptr_addr] = base_obj``.
+    That new interior key must be tracked under the *root*'s base
+    address (walking ``base_obj._b_base_``), not under
+    ``ptr_addr - offset`` -- because that address may itself be only
+    an interior offset, never the target of ``_free``.
+    """
+    from cparser.interpreter import _ctype_ptr_get_value
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+
+    PtrArrT = ctypes.c_void_p * 4   # 32 bytes
+    buf = interp._malloc(ctypes.sizeof(PtrArrT))
+    base = _ctype_ptr_get_value(buf)
+
+    # Seed the cache: register the interior at base+8 via a sub-view
+    # _storePtr call (obj-loop path).  This puts `pointerStorage[base+8]
+    # = some sub-view`.
+    arr = ctypes.cast(buf, ctypes.POINTER(PtrArrT)).contents
+    seed_ptr = ctypes.cast(
+        ctypes.byref(arr, 8),
+        ctypes.POINTER(ctypes.c_void_p))
+    interp._storePtr(seed_ptr)
+    assert (base + 8) in interp.pointerStorage
+
+    # Now exercise the cache fast-path with offset=8: the call sees
+    # `ptr_addr - offset = base + 8` is already known, and inserts
+    # `pointerStorage[base + 16] = pointerStorage[base + 8]`.
+    fresh_ptr = interp.ctypes_wrapped.c_void_p(base + 16)
+    interp._storePtr(fresh_ptr, offset=8)
+    assert (base + 16) in interp.pointerStorage
+
+    # Free the root.  Both interior keys (base+8 and base+16) must be
+    # purged -- regardless of which one was registered via cache vs.
+    # obj-loop.
+    interp._free(base)
+    assert (base + 8) not in interp.pointerStorage, (
+        "obj-loop interior key base+8 leaked after _free")
+    assert (base + 16) not in interp.pointerStorage, (
+        "cache-path interior key base+16 leaked after _free -- it was "
+        "tracked under an intermediate address, not the root's base")
+
+
 def test_realloc_shrink_keeps_buffer_tracked():
     """`_realloc` for a same-or-smaller size must keep the original
     buffer in ``interp.mallocs`` -- otherwise it's no longer strongly
