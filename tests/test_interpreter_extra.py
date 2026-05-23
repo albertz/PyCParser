@@ -1542,6 +1542,135 @@ def test_store_ptr_does_not_add_overlapping_inner_range_for_subview():
         % new_ranges)
 
 
+def test_obmalloc_usedpools_pta_init_does_not_corrupt_python_heap():
+    """Standalone minimal repro for the gen2-corruption-via-interp'd-
+    obmalloc bug (investigation in cpython.py via ``--gc-list-diff``).
+
+    Running the full ``cpython.py -c "print('hello')"`` corrupts the
+    host Python's real gen2 GC linked list at iter ~1343 of
+    ``checkedFuncPtrCall``.  The stack at that iter is inside
+    interp'd ``_PyObject_Malloc → pymalloc_alloc``.  pymalloc relies
+    on a static ``usedpools[]`` array whose entries are "fudged-up"
+    pointers computed via
+    ``PTA(x) = (poolp)((uint8_t*)&usedpools[2*x] - 2*sizeof(block*))``
+    so that, treated as ``poolp``, ``pool->nextpool == pool``
+    (empty-list sentinel).  This depends on ctype struct layout and
+    on the interp computing the pointer arithmetic correctly.
+
+    This test parses a minimal standalone C snippet replicating just
+    that pattern (no full CPython source), runs the sentinel check
+    via the interp, then triggers ``gc.collect()`` and a gen2 walk.
+
+    It runs in a SUBPROCESS so that process-cleanup paths (which
+    walk the host's gc heap and segfault on corruption) are observed.
+    A clean exit (code 0) means the minimal snippet does NOT
+    reproduce the corruption; nonzero (esp. -11 / 139 for SIGSEGV)
+    means we have a tight repro to bisect against.
+
+    Status: this minimal PTA-init-plus-sentinel-read does NOT trigger
+    the bug -- the subprocess exits 0 -- so the corruption needs
+    more than just the static pointer arithmetic.  Likely the
+    corrupting write happens during a real allocation
+    (``pymalloc_alloc`` going through the empty-list branch,
+    ``new_arena``, then ``init_pool``).  Extending this snippet with
+    an actual allocation path is the next step; if THAT version of
+    the test fails (rc != 0), we have a tight repro detached from
+    CPython's full source tree.
+    """
+    import subprocess
+    import sys as _sys
+    import os as _os
+    import textwrap as _tw
+
+    # Locate the cparser tests dir (this file's dir) so the subprocess
+    # can ``from helpers_test import parse``.
+    _tests_dir = _os.path.dirname(_os.path.abspath(__file__))
+
+    _script = _tw.dedent("""
+        import sys, gc
+        sys.path.insert(0, %(tests_dir)r)
+        from helpers_test import parse
+        from cparser.interpreter import Interpreter
+
+        C_CODE = '''
+        typedef unsigned int uint;
+        typedef unsigned char block;
+        struct pool_header {
+            union { block *_padding; uint count; } ref;
+            block *freeblock;
+            struct pool_header *nextpool;
+            struct pool_header *prevpool;
+            uint arenaindex;
+            uint szidx;
+            uint nextoffset;
+            uint maxnextoffset;
+        };
+        typedef struct pool_header *poolp;
+
+        #define PTA(x) ((poolp)((unsigned char *)&(usedpools[2*(x)]) - 2*sizeof(block *)))
+        #define PT(x)  PTA(x), PTA(x)
+
+        static poolp usedpools[2 * 4 * 8] = {
+            PT(0), PT(1), PT(2), PT(3), PT(4), PT(5), PT(6), PT(7),
+            PT(8), PT(9), PT(10), PT(11), PT(12), PT(13), PT(14), PT(15),
+            PT(16), PT(17), PT(18), PT(19), PT(20), PT(21), PT(22), PT(23),
+            PT(24), PT(25), PT(26), PT(27), PT(28), PT(29), PT(30), PT(31)
+        };
+
+        /* Replicates the top of pymalloc_alloc: get the empty-list
+           sentinel and check pool != pool->nextpool.  For an
+           untouched usedpools[], every list is empty so this must
+           return 0 -- and crucially, ``pool->nextpool`` must NOT
+           dereference into foreign memory. */
+        int test_sentinel(int size) {
+            uint i = (uint)(size - 1) >> 3;
+            poolp pool = usedpools[i + i];
+            if (pool != pool->nextpool) return 1;
+            return 0;
+        }
+        '''
+
+        # Force a baseline collection so gen2 is settled.
+        gc.collect(); gc.collect()
+        before_count = len(gc.get_objects(generation=2))
+
+        state = parse(C_CODE, withGlobalIncludeWrappers=False)
+        interp = Interpreter()
+        interp.register(state)
+
+        # Call the sentinel check for several size classes.  Each call
+        # reads ``pool->nextpool`` -- if PTA() math is broken in the
+        # interp, this dereferences foreign memory.  Sizes capped at
+        # 256: our 32-row usedpools[] only covers size classes up to
+        # (32-1)*8 + 8 = 256 bytes; anything larger reads out-of-bounds.
+        for sz in (1, 8, 16, 32, 64, 128, 256):
+            r = interp.runFunc("test_sentinel", sz)
+            assert r.value == 0, (
+                "empty-pool sentinel returned %%d for size=%%d"
+                %% (r.value, sz))
+
+        # Now exercise the host's GC.  Gen2 walk would segfault if the
+        # interp'd code corrupted Python's gc linked list.
+        gc.collect(); gc.collect()
+        after_count = len(gc.get_objects(generation=2))
+        print("OK gen2: before=%%d after=%%d" %% (before_count, after_count))
+    """) % {"tests_dir": _tests_dir}
+
+    _p = subprocess.run(
+        [_sys.executable, "-c", _script],
+        capture_output=True, timeout=120)
+    _rc = _p.returncode
+    _out = _p.stdout.decode("utf-8", "replace")
+    _err = _p.stderr.decode("utf-8", "replace")
+    assert _rc == 0, (
+        "subprocess exited with rc=%d (expected 0).  Nonzero -- "
+        "especially -11/139 for SIGSEGV -- means the minimal repro "
+        "reproduced the gen2 corruption.\n"
+        "stdout (last 600 chars):\n%s\n"
+        "stderr (last 600 chars):\n%s"
+        % (_rc, _out[-600:], _err[-600:]))
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())
