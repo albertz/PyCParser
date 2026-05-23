@@ -1543,18 +1543,65 @@ def test_store_ptr_does_not_add_overlapping_inner_range_for_subview():
 
 
 def test_obmalloc_minimal_pool_alloc_does_not_corrupt_python_heap():
-    """Slightly larger minimal repro: define ``usedpools[]`` with the
-    PTA trick AND go through one full mock pool-allocation that
-    (a) calls ``malloc`` for a pool block, (b) writes the pool-header
-    fields (``ref.count``, ``szidx``, ``nextpool``, ``prevpool``,
-    ``freeblock``, ``nextoffset``, ``maxnextoffset``), and (c) links
-    the pool into the ``usedpools[]`` sentinel circle.
+    """Standalone minimal repro attempt for the gen2-corruption-via-
+    interp'd-obmalloc bug observed in ``cpython.py -c "print('hello')"``.
 
-    This mimics ``pymalloc_alloc``'s ``init_pool`` path -- the place
-    the bisect of cpython.py pointed at (iter 1343 stack ends inside
-    ``PyObject_Malloc -> pymalloc_alloc``).  If this minimal version
-    crashes the subprocess with SIGSEGV, the bug reduces to this
-    ~30-line standalone repro -- detached from CPython's source tree.
+    The full cpython.py run corrupts the host Python's real gen2 GC
+    linked list at iter ~1343 of ``checkedFuncPtrCall``, with the stack
+    inside interp'd ``PyObject_Malloc → pymalloc_alloc``.  See the
+    ``--gc-list-diff`` / ``--track-pointer-storage`` infrastructure in
+    cpython.py for the investigation.
+
+    This test approximates that scenario.  Ingredients currently
+    exercised inside the subprocess:
+
+    * ``usedpools[]`` static array with the ``PTA(x) =
+      &usedpools[2*x] - 2*sizeof(block*)`` "fudged sentinel" trick.
+    * Full ``pymalloc_alloc``'s ``init_pool`` path: writing every
+      pool-header field (``ref.count``, ``szidx``, ``nextoffset``,
+      ``maxnextoffset``, ``freeblock``, ``nextpool``/``prevpool``)
+      AND linking the pool into the sentinel's circular list.
+    * ``new_arena()``-style ``arena_object`` array with the
+      ``unused_arena_objects`` / ``usable_arenas`` linked-list
+      bind / unbind writes.  Real 256 KB arena buffers allocated
+      via ``interp._malloc`` (matching cpython.py's allocation
+      pattern).
+    * ``_PyObject_GC_TRACK`` / ``_UNTRACK``-style doubly-linked-list
+      machinery: a ``generations[]`` array with sentinel heads, and
+      ``track_node`` / ``untrack_node`` that perform the critical
+      ``last->_gc_next = g`` / ``prev->_gc_next = next`` /
+      ``next->_gc_prev = prev`` writes through pointers READ from
+      struct fields -- the exact write shape suspected for the
+      cpython.py corruption.
+    * Real ``interp._malloc``'d pool buffers (ctypes ``c_byte`` data
+      areas, matching cpython.py's allocation kind).
+    * Function-pointer dispatch through a struct-of-fn-ptrs each
+      iteration -- the same ``checkedFuncPtrCall`` site implicated
+      by the bisect of cpython.py.
+    * 5000 iterations across all 32 size classes.
+    * Periodic ``gc.collect()`` calls every 200 iterations to walk
+      the host's gen lists and surface any corruption immediately.
+
+    The test runs in a SUBPROCESS so process-cleanup gc walks are
+    also observed.  A clean exit (rc=0) means none of these
+    ingredients -- in any combination tried so far -- reproduces
+    the corruption.
+
+    Status: **passes** (does NOT reproduce).  Confirms the bug
+    isn't triggered by any single one of: pool-header writes,
+    fn-ptr dispatch, real ``_malloc`` allocations, gen-list
+    track/untrack manipulation, arena-object linkage, high
+    iteration count, or interleaved host ``gc.collect()``.
+
+    The corruption in cpython.py must therefore depend on
+    something more subtle -- likely the specific *combination* of
+    real ``obmalloc``'s pointer arithmetic on actual pool/block
+    offsets *plus* host-heap layout patterns that this minimal
+    standalone snippet can't easily reproduce.
+
+    Keeping the test as a baseline + extension point.  If a future
+    addition flips the assertion (rc != 0), we'll have a tight
+    repro detached from CPython's source tree.
     """
     import subprocess
     import sys as _sys
@@ -1598,17 +1645,149 @@ def test_obmalloc_minimal_pool_alloc_does_not_corrupt_python_heap():
         #define ALIGNMENT_SHIFT 3
         #define INDEX2SIZE(i) (((uint)(i) + 1u) << ALIGNMENT_SHIFT)
 
-        /* Single static pool buffer; reused across test_pool_init
-           calls.  Avoids needing ``malloc`` and multi-dim cast. */
-        static unsigned char pool_buf[POOL_SIZE];
+        /* === arena_object / new_arena machinery ===
+           cpython.py's real new_arena() allocates a 256 KB arena and
+           bootstraps an ``arena_object`` array, linking each entry
+           into the ``unused_arena_objects`` singly-linked list.  Each
+           link write reads a pointer from one struct and writes it
+           into another -- the same shape of write as gc-list TRACK. */
+        struct arena_object {
+            unsigned long address;
+            block *pool_address;
+            uint nfreepools;
+            uint ntotalpools;
+            struct pool_header *freepools;
+            struct arena_object *nextarena;
+            struct arena_object *prevarena;
+        };
+        #define INITIAL_ARENA_OBJECTS 16
+        #define ARENA_SIZE 262144
 
-        /* Mimics pymalloc_alloc init_pool, but using a static buffer
-           instead of malloc.  Each write goes through the interp's
+        static struct arena_object *arenas = (struct arena_object *)0;
+        static struct arena_object *unused_arena_objects = (struct arena_object *)0;
+        static struct arena_object *usable_arenas = (struct arena_object *)0;
+        static uint maxarenas = 0;
+
+        /* arenas_buf must be a malloc'd block sized for
+           INITIAL_ARENA_OBJECTS struct arena_object entries.
+           arena_addr is a separately-malloc'd 256 KB region. */
+        int test_new_arena(unsigned long arenas_buf, unsigned long arena_addr) {
+            int i;
+            if (maxarenas == 0) {
+                arenas = (struct arena_object *)arenas_buf;
+                for (i = 0; i < INITIAL_ARENA_OBJECTS; i++) {
+                    arenas[i].address = 0;
+                    arenas[i].nextarena = i < INITIAL_ARENA_OBJECTS - 1
+                                          ? &arenas[i + 1]
+                                          : (struct arena_object *)0;
+                    arenas[i].prevarena = (struct arena_object *)0;
+                }
+                unused_arena_objects = &arenas[0];
+                maxarenas = INITIAL_ARENA_OBJECTS;
+            }
+            /* Take an arena_object off the unused list and bind it
+               to ``arena_addr``.  This is the inner loop of
+               new_arena: it mutates ``unused_arena_objects`` (read
+               via ``arenaobj->nextarena`` and written back) and the
+               arena_object's fields. */
+            struct arena_object *arenaobj = unused_arena_objects;
+            if (arenaobj == (struct arena_object *)0) return -1;
+            unused_arena_objects = arenaobj->nextarena;
+            arenaobj->address = arena_addr;
+            arenaobj->nfreepools = ARENA_SIZE / POOL_SIZE;
+            arenaobj->ntotalpools = ARENA_SIZE / POOL_SIZE;
+            arenaobj->freepools = (struct pool_header *)0;
+            arenaobj->pool_address = (block *)arena_addr;
+            /* Link into usable_arenas (singly forward, doubly with prev). */
+            arenaobj->nextarena = usable_arenas;
+            arenaobj->prevarena = (struct arena_object *)0;
+            if (usable_arenas != (struct arena_object *)0) {
+                usable_arenas->prevarena = arenaobj;
+            }
+            usable_arenas = arenaobj;
+            return 0;
+        }
+
+        /* === _PyObject_GC_TRACK-style linked-list machinery ===
+           CPython's gc tracks every gc-aware object via a doubly-
+           linked list per generation.  When new objects are allocated
+           the TRACK macro splices them into the list; on free, UNTRACK
+           splices them out.  The critical writes are
+              last->_gc_next = new_node   (where last = sentinel->_gc_prev)
+              prev->_gc_next = next       (in UNTRACK)
+              next->_gc_prev = prev       (in UNTRACK)
+           Each writes 8 bytes via a POINTER read from a struct field.
+           If that pointer ever takes a value outside our memory, the
+           write corrupts whatever happens to live there -- exactly
+           the symptom we observe in cpython.py. */
+        struct gc_head {
+            struct gc_head *_gc_next;
+            struct gc_head *_gc_prev;
+            long _gc_refs;
+        };
+        typedef struct gc_head PyGC_Head;
+        struct gc_generation {
+            PyGC_Head head;
+            int threshold;
+            int count;
+        };
+        #define NUM_GENERATIONS 3
+        static struct gc_generation generations[NUM_GENERATIONS];
+
+        void init_generations(void) {
+            int i;
+            for (i = 0; i < NUM_GENERATIONS; i++) {
+                generations[i].head._gc_next = &generations[i].head;
+                generations[i].head._gc_prev = &generations[i].head;
+                generations[i].head._gc_refs = 0;
+                generations[i].threshold = 700;
+                generations[i].count = 0;
+            }
+        }
+
+        void track_node(PyGC_Head *g) {
+            PyGC_Head *sentinel = &generations[0].head;
+            PyGC_Head *last = sentinel->_gc_prev;  /* <-- read */
+            last->_gc_next = g;                    /* <-- WRITE via read'd pointer */
+            g->_gc_prev = last;
+            g->_gc_next = sentinel;
+            sentinel->_gc_prev = g;
+            generations[0].count++;
+        }
+
+        void untrack_node(PyGC_Head *g) {
+            PyGC_Head *prev = g->_gc_prev;   /* read */
+            PyGC_Head *next = g->_gc_next;   /* read */
+            prev->_gc_next = next;            /* WRITE via read'd ptr */
+            next->_gc_prev = prev;            /* WRITE via read'd ptr */
+            generations[0].count--;
+        }
+
+        /* Forward decl so the static fn-ptr below can refer to it. */
+        int test_pool_init(unsigned long pool_addr, int sz_class);
+
+        /* The cpython.py corruption happens DURING a function-pointer
+           call (helpers.checkedFuncPtrCall dispatching _PyObject.malloc).
+           Mimic that here: route every test_pool_init call through a
+           struct-of-fn-pointers dispatch, so each iteration exercises
+           checkedFuncPtrCall the same way obmalloc does. */
+        typedef int (*init_fn)(unsigned long, int);
+        struct dispatcher { init_fn init; };
+        static struct dispatcher _D = { test_pool_init };
+        int dispatch_pool_init(unsigned long pool_addr, int sz_class) {
+            return _D.init(pool_addr, sz_class);
+        }
+
+        /* Mimics pymalloc_alloc init_pool, writing into a ``pool``
+           buffer supplied by the caller (which allocates it via the
+           real ``interp._malloc``, matching cpython.py's allocation
+           pattern through the interp's malloc-wrapper / ctypes c_byte
+           data area).  Each write goes through the interp's
            ctype-struct-field assignment path -- the suspected route
            by which Python's real heap gets corrupted in cpython.py. */
-        int test_pool_init(int sz_class) {
+        int test_pool_init(unsigned long pool_addr, int sz_class) {
             uint i = (uint)sz_class;
-            poolp pool = (poolp)pool_buf;
+            poolp pool = (poolp)pool_addr;
             poolp sentinel = usedpools[i + i];
 
             /* Init the new pool. */
@@ -1627,6 +1806,16 @@ def test_obmalloc_minimal_pool_alloc_does_not_corrupt_python_heap():
             pool->nextpool = next;
             sentinel->nextpool = pool;
             next->prevpool = pool;
+
+            /* And mimic _PyObject_GC_TRACK on a virtual "PyObject"
+               whose PyGC_Head sits right at the start of the pool.
+               This exercises the linked-list manipulation that's
+               the strongest current suspect for the cpython.py
+               corruption: ``last->_gc_next = g`` writes via a
+               pointer READ from ``sentinel->_gc_prev``. */
+            PyGC_Head *g = (PyGC_Head *)pool;
+            track_node(g);
+            untrack_node(g);
             return 0;
         }
         '''
@@ -1638,15 +1827,67 @@ def test_obmalloc_minimal_pool_alloc_does_not_corrupt_python_heap():
         interp = Interpreter()
         interp.register(state)
 
-        # Run a few pool initializations across different size classes.
-        for sz in (0, 1, 4, 8, 15, 31):
-            r = interp.runFunc("test_pool_init", sz)
+        # Heavy load: cpython.py corrupts at ~iter 1343 of
+        # checkedFuncPtrCall, by which point thousands of _malloc
+        # calls have created tens of thousands of pointerStorage
+        # entries (= KeyedRef Python objects).  The KeyedRef of one
+        # of those values is what gets corrupted.  To approach that
+        # scale, we exercise BOTH:
+        #   - many test_pool_init invocations (each runFunc call
+        #     triggers _storePtr registrations for the C-side args),
+        #   - lots of interp._malloc'd buffers held in a list, so
+        #     pointerStorage grows naturally with real allocations.
+        # One-time setup: initialize our gen-list sentinels (each
+        # head->_gc_next/_gc_prev points to itself = empty list).
+        interp.runFunc("init_generations")
+
+        import ctypes
+        held_bufs = []  # keep strong refs so the values stay alive
+
+        # Allocate the arena_object array (the bootstrap one-time
+        # allocation in new_arena) and a few 256 KB arenas, then
+        # call test_new_arena to bind them.  This exercises the
+        # singly-linked-list manipulation in arena_object setup --
+        # one of the suspect write patterns.
+        ARENA_OBJ_SIZE = 64  # rough upper bound on sizeof(arena_object)
+        arenas_buf = interp._malloc(ARENA_OBJ_SIZE * 16)
+        held_bufs.append(arenas_buf)
+        arenas_buf_addr = ctypes.cast(arenas_buf, ctypes.c_void_p).value
+        for _arena_i in range(4):
+            _arena = interp._malloc(262144)  # ARENA_SIZE
+            held_bufs.append(_arena)
+            _arena_addr = ctypes.cast(_arena, ctypes.c_void_p).value
+            _r = interp.runFunc("test_new_arena", arenas_buf_addr, _arena_addr)
+            assert _r.value == 0, "test_new_arena failed: %%d" %% _r.value
+
+        for it in range(5000):
+            sz_class = it %% 32
+            # Allocate a real interp._malloc'd pool buffer (ctypes
+            # c_byte data area -- same allocation kind as cpython.py
+            # uses for obmalloc's arena/pool memory).  Pass its
+            # address as a plain int into the C function.
+            pool_buf = interp._malloc(4096)
+            held_bufs.append(pool_buf)
+            pool_addr = ctypes.cast(pool_buf, ctypes.c_void_p).value
+            # Route through the fn-ptr dispatcher to exercise
+            # ``checkedFuncPtrCall`` -- the same dispatch site that
+            # bisect of cpython.py implicated.
+            r = interp.runFunc("dispatch_pool_init", pool_addr, sz_class)
             assert r.value == 0, ("test_pool_init(%%d) returned %%d"
-                                  %% (sz, r.value))
+                                  %% (sz_class, r.value))
+            # Periodically force a host gc.collect() to walk the gen
+            # lists.  Cpython.py crashes specifically when the host's
+            # gc walker visits a corrupted PyGC_Head; if our interp's
+            # writes have nudged any host weakref's _gc_next, this
+            # forces the crash early instead of waiting for shutdown.
+            if it %% 200 == 0:
+                gc.collect()
 
         gc.collect(); gc.collect()
         after = len(gc.get_objects(generation=2))
-        print("OK gen2: before=%%d after=%%d" %% (before, after))
+        print("OK gen2: before=%%d after=%%d, "
+              "pointerStorage_size=%%d, held_bufs=%%d"
+              %% (before, after, len(interp.pointerStorage), len(held_bufs)))
     """) % {"tests_dir": _tests_dir}
 
     _p = subprocess.run(
