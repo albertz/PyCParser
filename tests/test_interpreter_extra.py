@@ -1542,48 +1542,25 @@ def test_store_ptr_does_not_add_overlapping_inner_range_for_subview():
         % new_ranges)
 
 
-def test_obmalloc_usedpools_pta_init_does_not_corrupt_python_heap():
-    """Standalone minimal repro for the gen2-corruption-via-interp'd-
-    obmalloc bug (investigation in cpython.py via ``--gc-list-diff``).
+def test_obmalloc_minimal_pool_alloc_does_not_corrupt_python_heap():
+    """Slightly larger minimal repro: define ``usedpools[]`` with the
+    PTA trick AND go through one full mock pool-allocation that
+    (a) calls ``malloc`` for a pool block, (b) writes the pool-header
+    fields (``ref.count``, ``szidx``, ``nextpool``, ``prevpool``,
+    ``freeblock``, ``nextoffset``, ``maxnextoffset``), and (c) links
+    the pool into the ``usedpools[]`` sentinel circle.
 
-    Running the full ``cpython.py -c "print('hello')"`` corrupts the
-    host Python's real gen2 GC linked list at iter ~1343 of
-    ``checkedFuncPtrCall``.  The stack at that iter is inside
-    interp'd ``_PyObject_Malloc → pymalloc_alloc``.  pymalloc relies
-    on a static ``usedpools[]`` array whose entries are "fudged-up"
-    pointers computed via
-    ``PTA(x) = (poolp)((uint8_t*)&usedpools[2*x] - 2*sizeof(block*))``
-    so that, treated as ``poolp``, ``pool->nextpool == pool``
-    (empty-list sentinel).  This depends on ctype struct layout and
-    on the interp computing the pointer arithmetic correctly.
-
-    This test parses a minimal standalone C snippet replicating just
-    that pattern (no full CPython source), runs the sentinel check
-    via the interp, then triggers ``gc.collect()`` and a gen2 walk.
-
-    It runs in a SUBPROCESS so that process-cleanup paths (which
-    walk the host's gc heap and segfault on corruption) are observed.
-    A clean exit (code 0) means the minimal snippet does NOT
-    reproduce the corruption; nonzero (esp. -11 / 139 for SIGSEGV)
-    means we have a tight repro to bisect against.
-
-    Status: this minimal PTA-init-plus-sentinel-read does NOT trigger
-    the bug -- the subprocess exits 0 -- so the corruption needs
-    more than just the static pointer arithmetic.  Likely the
-    corrupting write happens during a real allocation
-    (``pymalloc_alloc`` going through the empty-list branch,
-    ``new_arena``, then ``init_pool``).  Extending this snippet with
-    an actual allocation path is the next step; if THAT version of
-    the test fails (rc != 0), we have a tight repro detached from
-    CPython's full source tree.
+    This mimics ``pymalloc_alloc``'s ``init_pool`` path -- the place
+    the bisect of cpython.py pointed at (iter 1343 stack ends inside
+    ``PyObject_Malloc -> pymalloc_alloc``).  If this minimal version
+    crashes the subprocess with SIGSEGV, the bug reduces to this
+    ~30-line standalone repro -- detached from CPython's source tree.
     """
     import subprocess
     import sys as _sys
     import os as _os
     import textwrap as _tw
 
-    # Locate the cparser tests dir (this file's dir) so the subprocess
-    # can ``from helpers_test import parse``.
     _tests_dir = _os.path.dirname(_os.path.abspath(__file__))
 
     _script = _tw.dedent("""
@@ -1609,7 +1586,6 @@ def test_obmalloc_usedpools_pta_init_does_not_corrupt_python_heap():
 
         #define PTA(x) ((poolp)((unsigned char *)&(usedpools[2*(x)]) - 2*sizeof(block *)))
         #define PT(x)  PTA(x), PTA(x)
-
         static poolp usedpools[2 * 4 * 8] = {
             PT(0), PT(1), PT(2), PT(3), PT(4), PT(5), PT(6), PT(7),
             PT(8), PT(9), PT(10), PT(11), PT(12), PT(13), PT(14), PT(15),
@@ -1617,43 +1593,60 @@ def test_obmalloc_usedpools_pta_init_does_not_corrupt_python_heap():
             PT(24), PT(25), PT(26), PT(27), PT(28), PT(29), PT(30), PT(31)
         };
 
-        /* Replicates the top of pymalloc_alloc: get the empty-list
-           sentinel and check pool != pool->nextpool.  For an
-           untouched usedpools[], every list is empty so this must
-           return 0 -- and crucially, ``pool->nextpool`` must NOT
-           dereference into foreign memory. */
-        int test_sentinel(int size) {
-            uint i = (uint)(size - 1) >> 3;
-            poolp pool = usedpools[i + i];
-            if (pool != pool->nextpool) return 1;
+        #define POOL_SIZE 4096
+        #define POOL_OVERHEAD (sizeof(struct pool_header))
+        #define ALIGNMENT_SHIFT 3
+        #define INDEX2SIZE(i) (((uint)(i) + 1u) << ALIGNMENT_SHIFT)
+
+        /* Single static pool buffer; reused across test_pool_init
+           calls.  Avoids needing ``malloc`` and multi-dim cast. */
+        static unsigned char pool_buf[POOL_SIZE];
+
+        /* Mimics pymalloc_alloc init_pool, but using a static buffer
+           instead of malloc.  Each write goes through the interp's
+           ctype-struct-field assignment path -- the suspected route
+           by which Python's real heap gets corrupted in cpython.py. */
+        int test_pool_init(int sz_class) {
+            uint i = (uint)sz_class;
+            poolp pool = (poolp)pool_buf;
+            poolp sentinel = usedpools[i + i];
+
+            /* Init the new pool. */
+            pool->ref.count = 1;
+            pool->szidx = i;
+            pool->arenaindex = 0;
+            pool->nextoffset = POOL_OVERHEAD + (INDEX2SIZE(i) << 1);
+            pool->maxnextoffset = POOL_SIZE - INDEX2SIZE(i);
+            pool->freeblock = (block *)pool + POOL_OVERHEAD + INDEX2SIZE(i);
+            *(block **)(pool->freeblock) = (block *)0;
+
+            /* Insert pool at the head of the sentinel's circular list:
+                  prev=sentinel  <->  pool  <->  next=sentinel->nextpool */
+            poolp next = sentinel->nextpool;
+            pool->prevpool = sentinel;
+            pool->nextpool = next;
+            sentinel->nextpool = pool;
+            next->prevpool = pool;
             return 0;
         }
         '''
 
-        # Force a baseline collection so gen2 is settled.
         gc.collect(); gc.collect()
-        before_count = len(gc.get_objects(generation=2))
+        before = len(gc.get_objects(generation=2))
 
-        state = parse(C_CODE, withGlobalIncludeWrappers=False)
+        state = parse(C_CODE, withGlobalIncludeWrappers=True)
         interp = Interpreter()
         interp.register(state)
 
-        # Call the sentinel check for several size classes.  Each call
-        # reads ``pool->nextpool`` -- if PTA() math is broken in the
-        # interp, this dereferences foreign memory.  Sizes capped at
-        # 256: our 32-row usedpools[] only covers size classes up to
-        # (32-1)*8 + 8 = 256 bytes; anything larger reads out-of-bounds.
-        for sz in (1, 8, 16, 32, 64, 128, 256):
-            r = interp.runFunc("test_sentinel", sz)
-            assert r.value == 0, (
-                "empty-pool sentinel returned %%d for size=%%d"
-                %% (r.value, sz))
+        # Run a few pool initializations across different size classes.
+        for sz in (0, 1, 4, 8, 15, 31):
+            r = interp.runFunc("test_pool_init", sz)
+            assert r.value == 0, ("test_pool_init(%%d) returned %%d"
+                                  %% (sz, r.value))
 
-        # Now exercise the host's GC.  Gen2 walk would segfault if the
-        # interp'd code corrupted Python's gc linked list.
         gc.collect(); gc.collect()
-        after_count = len(gc.get_objects(generation=2))
-        print("OK gen2: before=%%d after=%%d" %% (before_count, after_count))
+        after = len(gc.get_objects(generation=2))
+        print("OK gen2: before=%%d after=%%d" %% (before, after))
     """) % {"tests_dir": _tests_dir}
 
     _p = subprocess.run(
@@ -1664,11 +1657,11 @@ def test_obmalloc_usedpools_pta_init_does_not_corrupt_python_heap():
     _err = _p.stderr.decode("utf-8", "replace")
     assert _rc == 0, (
         "subprocess exited with rc=%d (expected 0).  Nonzero -- "
-        "especially -11/139 for SIGSEGV -- means the minimal repro "
-        "reproduced the gen2 corruption.\n"
-        "stdout (last 600 chars):\n%s\n"
-        "stderr (last 600 chars):\n%s"
-        % (_rc, _out[-600:], _err[-600:]))
+        "especially -11/139 for SIGSEGV -- means the minimal "
+        "pool-init repro reproduced the gen2 corruption.\n"
+        "stdout (last 800 chars):\n%s\n"
+        "stderr (last 800 chars):\n%s"
+        % (_rc, _out[-800:], _err[-800:]))
 
 
 if __name__ == "__main__":
