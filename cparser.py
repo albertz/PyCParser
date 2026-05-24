@@ -3940,8 +3940,21 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
                     cpre3_parse_funcpointername(stateStruct, typeObj, input_iter)
                     curCObj.name = typeObj.name
                 else:
-                    stateStruct.error("cpre3 parse func args: got unexpected '(' in " + str(curCObj))
-                    _cpre3_parse_skipbracketcontent(stateStruct, curCObj._bracketlevel, input_iter)
+                    # K&R-style function-typed parameter:
+                    #   ``int get_char(struct tok_state *)``
+                    # is equivalent to
+                    #   ``int (*get_char)(struct tok_state *)``
+                    # (C standard 6.7.6.3p8: a function-type parameter is
+                    # adjusted to the corresponding pointer-to-function
+                    # type).  Convert this in-place to a function pointer
+                    # decl, preserving the name.
+                    typeObj = CFuncPointerDecl(parent=curCObj.parent)
+                    typeObj._bracketlevel = curCObj._bracketlevel
+                    typeObj._type_tokens[:] = curCObj._type_tokens
+                    typeObj.name = curCObj.name
+                    curCObj._type_tokens[:] = [typeObj]
+                    cpre3_parse_funcargs(stateStruct, typeObj, input_iter)
+                    typeObj.finalize(stateStruct)
             elif token.content == "[":
                 cpre3_parse_arrayargs(stateStruct, curCObj, input_iter)
             else:

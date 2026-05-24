@@ -89,6 +89,30 @@ def test_funcptrdecl():
     # the func-ptr func returns `int`
     # the func-ptr func has the parameters `int, ...`
 
+def test_kr_function_typed_parameter():
+    """K&R style ``int f(int g(int))`` -- the inner ``g`` is a
+    function-typed parameter, equivalent (C standard 6.7.6.3p8) to
+    ``int (*g)(int)``.  cparser must accept this and produce a
+    ``CFuncPointerDecl`` for ``g``.
+    """
+    state = helpers_test.parse('''
+        static int call_me(int get_char(int));
+        static int call_me(int get_char(int)) {
+            return get_char(5);
+        }
+    ''')
+    fn = state.funcs["call_me"]
+    assert len(fn.args) == 1
+    arg = fn.args[0]
+    assert arg.name == "get_char"
+    # arg.type should be a CFuncPointerDecl (or equivalent), NOT
+    # a plain ``int``.  Before the fix this was just ``int``.
+    from cparser.cparser import CFuncPointerDecl, CBuiltinType
+    assert isinstance(arg.type, CFuncPointerDecl), \
+        "K&R function-typed parameter should be a function pointer, " \
+        "got: %r" % (arg.type,)
+
+
 def test_ctypes_type_caching():
     # Fix: Global caching of CFUNCTYPE and POINTER
     state = State()
