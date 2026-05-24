@@ -2240,7 +2240,89 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
             old_obj = d[obj.name]
             old_has_body = getattr(old_obj, "body", None) is not None
             new_has_body = getattr(obj, "body", None) is not None
-            
+
+            # File-scope `static` collisions across translation units
+            # are SILENTLY MERGED into a single entry, which is
+            # incorrect per ISO C (file-scope statics have internal
+            # linkage -- visible only within their own .c file).
+            # Detect and warn so callers can use macros to rename one
+            # side.  This was the root cause of the SIGSEGV in
+            # cpython.py shutdown-gc (see SEGFAULT_INVESTIGATION.md).
+            # ---------------------------------------------------------
+            # File-scope `static` collision detection.
+            # ---------------------------------------------------------
+            # In C, a file-scope ``static`` decl has internal linkage --
+            # name visible only within its own translation unit.  Two .c
+            # files can independently declare ``static T x;`` and they
+            # are separate variables.  Our parser merges all parsed TUs
+            # into one ``state.vars``, so the second decl silently
+            # overwrites the first.  If the TWO declarations have
+            # different sizes (eg.  PyMethodObject* vs
+            # PyCFunctionObject*), the resulting type confusion causes
+            # memory corruption.
+            #
+            # Only WARN when:
+            #   * both old and new have ``static``;
+            #   * both are REAL definitions (both have a body / init);
+            #   * they live in different files (cross-TU collision);
+            #   * their types differ.
+            # Clinic-generated forward decls (eg. ``clinic/foo.c.h``
+            # included by ``foo.c``) do not have bodies, so are skipped.
+            old_is_static = "static" in getattr(old_obj, "attribs", ())
+            new_is_static = "static" in getattr(obj, "attribs", ())
+            if (old_is_static and new_is_static
+                    and old_has_body and new_has_body):
+                def _file_of(o, fallback):
+                    p = getattr(o, "defPos", None) or fallback
+                    if not p or p in ("<out-of-scope>", "<unknown>"):
+                        return ""
+                    return p.rsplit(":", 2)[0]
+                cur_pos = stateStruct.curPosAsStr()
+                old_file = _file_of(old_obj, "")
+                new_file = _file_of(obj, cur_pos)
+                # Skip when either type isn't fully resolved yet (the
+                # type comparison would be meaningless).  Skip same-
+                # type collisions -- these are typically intentional
+                # aliases (eg. both files define ``static
+                # _Py_Identifier PyId_builtins = ...``).  Not strictly
+                # safe per ISO C but PyCPython has long relied on it.
+                old_type = getattr(old_obj, "type", None)
+                new_type = getattr(obj, "type", None)
+                if old_type is None or new_type is None:
+                    types_match = True  # don't warn, can't compare
+                else:
+                    types_match = str(old_type) == str(new_type)
+                # Dedupe per name so the warning fires at most ONCE
+                # per offending name (otherwise spammy in long parses).
+                if not hasattr(stateStruct,
+                               "_warned_static_collisions"):
+                    stateStruct._warned_static_collisions = set()
+                already_warned = obj.name in stateStruct._warned_static_collisions
+                if (old_file and new_file and old_file != new_file
+                        and not types_match
+                        and not already_warned):
+                    stateStruct._warned_static_collisions.add(obj.name)
+                    import os as _os_warn
+                    if _os_warn.environ.get(
+                            "CPARSER_WARN_STATIC_COLLISIONS"):
+                        _msg = (
+                            "WARNING: file-scope static %r collides "
+                            "across translation units with DIFFERENT "
+                            "TYPES (old=%s type=%r, new=%s type=%r).  "
+                            "One file's references will resolve to the "
+                            "OTHER file's variable, with size-mismatch "
+                            "memory corruption.  Use a preprocessor "
+                            "macro to rename one side, e.g. "
+                            "`state.macros[%r] = cparser.Macro("
+                            "rightside=%r)` before parsing the second "
+                            "file."
+                            % (obj.name, old_file,
+                               getattr(old_obj, "type", "?"),
+                               new_file, getattr(obj, "type", "?"),
+                               obj.name, obj.name + "_2"))
+                        # Soft warning -- don't add to _errors.
+                        print(_msg)
+
             if new_has_body:
                 # Always overwrite if the new one has a body.
                 # In C, it is an error if both have a body, but we don't strictly enforce it here yet
