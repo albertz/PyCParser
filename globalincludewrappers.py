@@ -641,6 +641,39 @@ class Wrapper:
             return self.interpreter._make_string(res)
         state.funcs["setlocale"] = CWrapValue(_setlocale, name="setlocale", returnType=CPointerType(CBuiltinType(("char",))))
 
+    def handle_langinfo_h(self, state):
+        """``<langinfo.h>``: nl_langinfo(CODESET) etc.
+
+        Used by ``initfsencoding`` in pylifecycle.c (and a few others)
+        to discover the filesystem encoding.  We expose the constants
+        from host Python's ``locale`` module and dispatch
+        ``nl_langinfo`` to host ``locale.nl_langinfo``.
+        """
+        import locale as _locale
+        # Common langinfo items.  CODESET is the only one CPython's
+        # init really needs; the rest are exposed for completeness.
+        for _name in ("CODESET", "D_T_FMT", "D_FMT", "T_FMT",
+                      "T_FMT_AMPM", "AM_STR", "PM_STR", "DAY_1",
+                      "ABDAY_1", "MON_1", "ABMON_1", "ERA",
+                      "ERA_D_FMT", "ERA_D_T_FMT", "ERA_T_FMT",
+                      "ALT_DIGITS", "RADIXCHAR", "THOUSEP",
+                      "YESEXPR", "NOEXPR", "CRNCYSTR"):
+            val = getattr(_locale, _name, None)
+            if val is not None:
+                state.macros[_name] = Macro(rightside=str(val))
+        # ``nl_item`` typedef -- it's basically an int.
+        state.typedefs["nl_item"] = CTypedef(name="nl_item", type=CBuiltinType(("int",)))
+
+        def _nl_langinfo(item):
+            item_v = item.value if hasattr(item, "value") else int(item)
+            s = _locale.nl_langinfo(item_v)
+            if isinstance(s, str):
+                s = s.encode("utf-8")
+            return self.interpreter._make_string(s.decode("utf-8") if isinstance(s, bytes) else s)
+        state.funcs["nl_langinfo"] = CWrapValue(
+            _nl_langinfo, name="nl_langinfo",
+            returnType=CPointerType(CBuiltinType(("char",))))
+
     def handle_sys_stat_h(self, state):
         self.handle_sys_types_h(state)
         struct_stat = state.structs.get("stat")
