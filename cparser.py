@@ -2241,33 +2241,34 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
             old_has_body = getattr(old_obj, "body", None) is not None
             new_has_body = getattr(obj, "body", None) is not None
 
-            # File-scope `static` collisions across translation units
-            # are SILENTLY MERGED into a single entry, which is
-            # incorrect per ISO C (file-scope statics have internal
-            # linkage -- visible only within their own .c file).
-            # Detect and warn so callers can use macros to rename one
-            # side.  This was the root cause of the SIGSEGV in
-            # cpython.py shutdown-gc (see SEGFAULT_INVESTIGATION.md).
-            # ---------------------------------------------------------
-            # File-scope `static` collision detection.
-            # ---------------------------------------------------------
-            # In C, a file-scope ``static`` decl has internal linkage --
-            # name visible only within its own translation unit.  Two .c
-            # files can independently declare ``static T x;`` and they
-            # are separate variables.  Our parser merges all parsed TUs
-            # into one ``state.vars``, so the second decl silently
-            # overwrites the first.  If the TWO declarations have
-            # different sizes (eg.  PyMethodObject* vs
-            # PyCFunctionObject*), the resulting type confusion causes
-            # memory corruption.
+            # -----------------------------------------------------
+            # File-scope ``static`` collision detection.
+            # -----------------------------------------------------
+            # In C, a file-scope ``static`` decl has internal linkage:
+            # the name is visible only within its own translation
+            # unit.  Two .c files can independently declare
+            # ``static T x;`` and they are SEPARATE variables.  Our
+            # parser merges all parsed TUs into one ``state.vars``,
+            # so without this check the second decl silently
+            # overwrites the first.  If the two declarations have
+            # different types (eg. ``PyMethodObject *`` vs
+            # ``PyCFunctionObject *``), the resulting type confusion
+            # causes memory corruption at runtime -- this was the
+            # root cause of the shutdown-gc SIGSEGV in cpython.py.
             #
-            # Only WARN when:
-            #   * both old and new have ``static``;
-            #   * both are REAL definitions (both have a body / init);
-            #   * they live in different files (cross-TU collision);
-            #   * their types differ.
-            # Clinic-generated forward decls (eg. ``clinic/foo.c.h``
-            # included by ``foo.c``) do not have bodies, so are skipped.
+            # We raise an ERROR (not just a warning) so the bug class
+            # cannot reach the interpreter.  Callers who legitimately
+            # have a same-named static across files must use a
+            # preprocessor macro to rename one side
+            # (``state.macros[name] = cparser.Macro(rightside=...)``);
+            # see ``CPythonState.parse_cpython`` in ``cpython.py``
+            # for examples.
+            #
+            # Conditions: BOTH old and new have ``static``, both are
+            # real definitions with bodies (skips clinic-style
+            # forward decls), they're in different files, and their
+            # types differ (skips same-type intentional aliases like
+            # ``_Py_Identifier PyId_builtins``).
             old_is_static = "static" in getattr(old_obj, "attribs", ())
             new_is_static = "static" in getattr(obj, "attribs", ())
             if (old_is_static and new_is_static
@@ -2280,48 +2281,80 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                 cur_pos = stateStruct.curPosAsStr()
                 old_file = _file_of(old_obj, "")
                 new_file = _file_of(obj, cur_pos)
-                # Skip when either type isn't fully resolved yet (the
-                # type comparison would be meaningless).  Skip same-
-                # type collisions -- these are typically intentional
-                # aliases (eg. both files define ``static
-                # _Py_Identifier PyId_builtins = ...``).  Not strictly
-                # safe per ISO C but PyCPython has long relied on it.
-                old_type = getattr(old_obj, "type", None)
-                new_type = getattr(obj, "type", None)
+                # Compare types.  ``obj.type`` may not be set yet
+                # at "early add" time (``=`` seen, finalize pending);
+                # compute it from ``_type_tokens`` so both sides have
+                # a comparable representation.  No try/except: the
+                # tokens are always complete by the time of this call
+                # (the declaration's type is fully parsed before
+                # ``=`` triggers early-add), so resolution is reliable.
+                def _resolved_type(o):
+                    t = getattr(o, "type", None)
+                    if t is not None:
+                        return t
+                    toks = getattr(o, "_type_tokens", None)
+                    if not toks:
+                        return None
+                    return make_type_from_typetokens(stateStruct, o, toks)
+                old_type = _resolved_type(old_obj)
+                new_type = _resolved_type(obj)
                 if old_type is None or new_type is None:
-                    types_match = True  # don't warn, can't compare
+                    types_match = True  # can't compare reliably
+                elif str(old_type) == str(new_type):
+                    types_match = True
+                elif (isinstance(old_type, CArrayType)
+                        and isinstance(new_type, CArrayType)
+                        and str(old_type.arrayOf) == str(new_type.arrayOf)):
+                    # Arrays of the SAME element type but different
+                    # lengths.  This is technically a type-mismatch per
+                    # ISO C, but in practice always benign read-only
+                    # data: doc strings, method tables, etc.  Both
+                    # files have their own `static char doc[N] = "..."`
+                    # with N varying.  No size-mismatch corruption
+                    # risk because the data is just READ (printed),
+                    # never written through.  Don't error on this.
+                    types_match = True
                 else:
-                    types_match = str(old_type) == str(new_type)
-                # Dedupe per name so the warning fires at most ONCE
-                # per offending name (otherwise spammy in long parses).
+                    types_match = False
+                # Dedupe so the error fires at most ONCE per name.
                 if not hasattr(stateStruct,
-                               "_warned_static_collisions"):
-                    stateStruct._warned_static_collisions = set()
-                already_warned = obj.name in stateStruct._warned_static_collisions
+                               "_reported_static_collisions"):
+                    stateStruct._reported_static_collisions = set()
+                already = obj.name in stateStruct._reported_static_collisions
                 if (old_file and new_file and old_file != new_file
                         and not types_match
-                        and not already_warned):
-                    stateStruct._warned_static_collisions.add(obj.name)
-                    import os as _os_warn
-                    if _os_warn.environ.get(
-                            "CPARSER_WARN_STATIC_COLLISIONS"):
-                        _msg = (
-                            "WARNING: file-scope static %r collides "
-                            "across translation units with DIFFERENT "
-                            "TYPES (old=%s type=%r, new=%s type=%r).  "
-                            "One file's references will resolve to the "
-                            "OTHER file's variable, with size-mismatch "
-                            "memory corruption.  Use a preprocessor "
-                            "macro to rename one side, e.g. "
-                            "`state.macros[%r] = cparser.Macro("
-                            "rightside=%r)` before parsing the second "
-                            "file."
-                            % (obj.name, old_file,
-                               getattr(old_obj, "type", "?"),
-                               new_file, getattr(obj, "type", "?"),
-                               obj.name, obj.name + "_2"))
-                        # Soft warning -- don't add to _errors.
-                        print(_msg)
+                        and not already):
+                    stateStruct._reported_static_collisions.add(obj.name)
+                    stateStruct.error(
+                        "*** WARNING: TYPE-CONFUSION MEMORY CORRUPTION RISK ***\n"
+                        "  Two file-scope ``static`` declarations of "
+                        "%r have INCOMPATIBLE TYPES across translation "
+                        "units:\n"
+                        "    old:  %s\n"
+                        "          type=%r\n"
+                        "    new:  %s\n"
+                        "          type=%r\n"
+                        "  Per ISO C, file-scope ``static`` has "
+                        "internal linkage -- these MUST be separate "
+                        "variables.  cparser merges all translation "
+                        "units into one ``state.vars`` and would "
+                        "silently overwrite the older entry.  Code "
+                        "in the older file would then read/write the "
+                        "newer file's variable through a "
+                        "mismatched-type pointer; in the interpreter "
+                        "this manifests as SIGSEGV / silent heap "
+                        "corruption (this was the root cause of the "
+                        "shutdown-gc segfault in cpython.py; see "
+                        "SEGFAULT_INVESTIGATION.md).\n"
+                        "  Fix: rename one side via a preprocessor "
+                        "macro before parsing it, e.g.\n"
+                        "    state.macros[%r] = cparser.Macro("
+                        "rightside=%r)\n"
+                        "    cparser.parse(<the other file>, state)"
+                        % (obj.name,
+                           old_file, old_type,
+                           new_file, new_type,
+                           obj.name, obj.name + "_2"))
 
             if new_has_body:
                 # Always overwrite if the new one has a body.

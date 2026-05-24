@@ -604,6 +604,143 @@ def test_parse_library_collision():
 
 
 # ---------------------------------------------------------------------------
+# File-scope ``static`` declarations across translation units.
+#
+# Per ISO C, ``static`` at file scope has *internal linkage* -- the name
+# is visible only within its own .c file.  Two .c files can independently
+# declare ``static int counter;`` and they are SEPARATE variables.
+#
+# Our cparser currently merges all parsed translation units into a single
+# ``state.vars`` namespace and does not distinguish file-scope statics by
+# their declaring file.  When two .c files declare ``static T *x;`` with
+# the same name, the later parse silently overwrites the first.  If the
+# two declarations have DIFFERENT types (size in bytes), code in one file
+# that thinks it's accessing its own ``x`` ends up reading/writing the
+# other file's variable, causing memory corruption.
+#
+# This was the root cause of the SIGSEGV in ``cpython.py -c "print('hi')"``
+# at shutdown gc -- ``Objects/classobject.c`` declares ``static
+# PyMethodObject *free_list`` (40-byte body) while
+# ``Objects/methodobject.c`` declares ``static PyCFunctionObject
+# *free_list`` (48-byte body).  See SEGFAULT_INVESTIGATION.md for the
+# full diagnostic narrative.
+#
+# Mitigation in ``cpython.py``: preprocessor macros rename the colliding
+# statics with a per-file suffix before parsing each .c file.
+# ---------------------------------------------------------------------------
+
+def _write_two_files_and_parse(src_a, src_b):
+    """Helper: parse two .c sources (a.c, b.c in temp dir) into one
+    ``cparser.State`` and return it.  Errors are NOT asserted away --
+    the caller inspects ``state._errors``.
+    """
+    import os
+    import tempfile
+    import cparser
+    state = cparser.State()
+    state.autoSetupSystemMacros()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for basename, src in (("a.c", src_a), ("b.c", src_b)):
+            full = os.path.join(tmpdir, basename)
+            with open(full, "w") as f:
+                f.write(src)
+            cparser.parse(full, state)
+    return state
+
+
+def test_file_scope_static_collision_is_detected_as_parse_error():
+    """Two .c files declaring ``static T *shared;`` of DIFFERENT types
+    must produce a cparser parse error.  Per ISO C these are SEPARATE
+    variables (internal linkage), but cparser merges all translation
+    units into one ``state.vars``; the second decl silently
+    overwriting the first would cause type-confusion memory
+    corruption at runtime.  cparser detects this at finalize time
+    and refuses to merge.
+    """
+    src_a = """
+    typedef struct { int x_a; long y_a; } TypeA;
+    static TypeA *shared = 0;
+    int store_a(TypeA *p) { shared = p; return 1; }
+    """
+    src_b = """
+    typedef struct { int x_b; long y_b; double z_b; } TypeB;
+    static TypeB *shared = 0;
+    int store_b(TypeB *p) { shared = p; return 1; }
+    """
+    state = _write_two_files_and_parse(src_a, src_b)
+    matching = [e for e in state._errors
+                if "shared" in e and "MEMORY CORRUPTION" in e]
+    assert len(matching) == 1, (
+        "expected exactly one collision error for 'shared'; got "
+        "errors=%r" % state._errors)
+    assert "INCOMPATIBLE TYPES" in matching[0]
+
+
+def test_file_scope_static_collision_workaround_via_macros():
+    """The supported workaround: use ``state.macros`` to rename one
+    file's static before parsing it.  No name collision -> no parse
+    error.  Mirrors the pattern used throughout ``cpython.py`` for
+    ``free_list``, ``numfree``, etc.
+    """
+    import os
+    import tempfile
+    import cparser as _cparser
+    src_a = """
+    typedef struct { int x_a; long y_a; } TypeA;
+    static TypeA *shared = 0;
+    int store_a(TypeA *p) { shared = p; return 1; }
+    """
+    src_b = """
+    typedef struct { int x_b; long y_b; double z_b; } TypeB;
+    static TypeB *shared = 0;
+    int store_b(TypeB *p) { shared = p; return 1; }
+    """
+    state = _cparser.State()
+    state.autoSetupSystemMacros()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fa = os.path.join(tmpdir, "a.c")
+        fb = os.path.join(tmpdir, "b.c")
+        with open(fa, "w") as f:
+            f.write(src_a)
+        with open(fb, "w") as f:
+            f.write(src_b)
+        state.macros["shared"] = _cparser.Macro(rightside="shared_a")
+        _cparser.parse(fa, state)
+        state.macros["shared"] = _cparser.Macro(rightside="shared_b")
+        _cparser.parse(fb, state)
+        state.macros.pop("shared")
+    assert not state._errors, "parsing errors: %r" % state._errors
+    # Both variables now exist as separate entries.
+    assert "shared_a" in state.vars
+    assert "shared_b" in state.vars
+
+
+def test_file_scope_static_same_type_collision_is_accepted():
+    """Arrays of the SAME element type but different lengths
+    (eg. ``static char doc[100]`` in one file, ``static char doc[80]``
+    in another) are a common pattern for per-file doc strings.
+    cparser tolerates these without an error -- the data is read
+    not written through, so size mismatch is not dangerous.
+    """
+    src_a = """
+    static char doc[] = "doc string for file A";
+    """
+    src_b = """
+    static char doc[] = "doc string for file B (much longer)";
+    """
+    state = _write_two_files_and_parse(src_a, src_b)
+    matching = [e for e in state._errors
+                if "doc" in e and "MEMORY CORRUPTION" in e]
+    assert not matching, (
+        "did not expect collision error for same-element-type "
+        "arrays of different lengths; got: %r" % matching)
+    # The merge still happens (only one `doc` in state.vars), but no
+    # error -- file-scope arrays of identical element type are
+    # treated as compatible.
+    assert "doc" in state.vars
+
+
+# ---------------------------------------------------------------------------
 # Ternary operator in variable assignment (listobject.c pattern)
 # ---------------------------------------------------------------------------
 
