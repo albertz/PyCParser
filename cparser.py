@@ -11,7 +11,7 @@ import typing
 import ctypes
 import _ctypes
 from inspect import isclass
-from .cparser_utils import unicode, long, unichr
+from .cparser_utils import unicode, long, unichr, py_safe_identifier
 
 if typing.TYPE_CHECKING:
     from . import globalincludewrappers
@@ -172,6 +172,29 @@ def _read_hex_escape(input_stream):
             break
         hexstr += nc
     return chr(int(hexstr, 16)) if hexstr else "\x00"
+
+
+_OctalChars = frozenset("01234567")
+
+
+def _read_octal_escape(input_stream, first_digit):
+    """Read up to 3 octal digits for a ``\\NNN`` escape.
+
+    Called when the first digit ``first_digit`` (0-7) was already
+    consumed by the dispatcher (state 21 / 26).  Reads up to 2 more
+    octal digits from *input_stream* (C limits octal escapes to 3
+    digits total), puts back the first non-octal character, and
+    returns the decoded character.
+    """
+    octstr = first_digit
+    for _ in range(2):  # already have 1, take up to 2 more
+        nc = input_stream.next_char()
+        if nc is None or nc not in _OctalChars:
+            if nc is not None:
+                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+            break
+        octstr += nc
+    return chr(int(octstr, 8))
 
 
 def _read_fixed_hex_escape(input_stream, n_digits):
@@ -1749,6 +1772,9 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     laststr += _read_fixed_hex_escape(input, 4)
                 elif c == "U":
                     laststr += _read_fixed_hex_escape(input, 8)
+                elif c in _OctalChars:
+                    # Multi-digit octal escape (1-3 digits).  C standard.
+                    laststr += _read_octal_escape(input, c)
                 else:
                     laststr += simple_escape_char(c)
                 state = 20
@@ -1769,6 +1795,9 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     laststr += _read_fixed_hex_escape(input, 4)
                 elif c == "U":
                     laststr += _read_fixed_hex_escape(input, 8)
+                elif c in _OctalChars:
+                    # Multi-digit octal escape (1-3 digits).  C standard.
+                    laststr += _read_octal_escape(input, c)
                 else:
                     laststr += simple_escape_char(c)
                 state = 25
@@ -1786,6 +1815,9 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     laststr += _read_fixed_hex_escape(input, 4)
                 elif c == "U":
                     laststr += _read_fixed_hex_escape(input, 8)
+                elif c in _OctalChars:
+                    # Multi-digit octal escape (1-3 digits).  C standard.
+                    laststr += _read_octal_escape(input, c)
                 else:
                     laststr += simple_escape_char(c)
                 state = 22
@@ -1806,6 +1838,9 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     laststr += _read_fixed_hex_escape(input, 4)
                 elif c == "U":
                     laststr += _read_fixed_hex_escape(input, 8)
+                elif c in _OctalChars:
+                    # Multi-digit octal escape (1-3 digits).  C standard.
+                    laststr += _read_octal_escape(input, c)
                 else:
                     laststr += simple_escape_char(c)
                 state = 27
@@ -2290,12 +2325,22 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                 # ``=`` triggers early-add), so resolution is reliable.
                 def _resolved_type(o):
                     t = getattr(o, "type", None)
-                    if t is not None:
-                        return t
-                    toks = getattr(o, "_type_tokens", None)
-                    if not toks:
-                        return None
-                    return make_type_from_typetokens(stateStruct, o, toks)
+                    if t is None:
+                        toks = getattr(o, "_type_tokens", None)
+                        if not toks:
+                            return None
+                        t = make_type_from_typetokens(stateStruct, o, toks)
+                    # For functions, ``.type`` is just the RETURN type;
+                    # build a stringly-typed signature (return + args)
+                    # so two functions with the same return but different
+                    # arg lists are recognized as incompatible.
+                    if isinstance(o, CFunc):
+                        sig = "%s(%s)" % (
+                            t,
+                            ", ".join(str(getattr(a, "type", "?")) for a in (o.args or [])),
+                        )
+                        return sig
+                    return t
                 old_type = _resolved_type(old_obj)
                 new_type = _resolved_type(obj)
                 if old_type is None or new_type is None:
@@ -2526,13 +2571,19 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
             elif stateStruct.IndirectSimpleCTypes:
                 # See http://stackoverflow.com/questions/6800827/python-ctypes-structure-how-to-access-attributes-as-if-they-were-ctypes-and-not/6801253#6801253
                 t = wrapCTypeClassIfNeeded(t)
+            # ``py_safe_identifier`` renames Python reserved words
+            # (e.g. ``def`` from ``struct { PyMethodDef def; }`` in
+            # codecs.c) by appending ``_``.  Applied consistently at
+            # struct-field definition AND at every attribute-access
+            # site, so the two sides stay in sync.
+            field_name = py_safe_identifier(str(c.name))
             if hasattr(c, "bitsize"):
                 # Bitfields must use unwrapped types, otherwise ctypes ignores bitsize.
                 if t.__name__.startswith("wrapCTypeClass_"):
                     t = t.__bases__[0]
-                fields += [(str(c.name), t, c.bitsize)]
+                fields += [(field_name, t, c.bitsize)]
             else:
-                fields += [(str(c.name), t)]
+                fields += [(field_name, t)]
         if obj._ctype_is_constructing:
             if anonymous:
                 obj._ctype._anonymous_ = anonymous

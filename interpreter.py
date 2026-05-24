@@ -19,7 +19,7 @@ from collections import OrderedDict
 from . import cparser
 from .cparser import *
 from .cwrapper import CStateWrapper
-from .cparser_utils import long, unicode
+from .cparser_utils import long, unicode, py_safe_identifier
 from .interpreter_utils import ast_bin_op_to_func
 from . import goto
 from .sortedcontainers.sortedset import SortedSet
@@ -223,14 +223,24 @@ class GlobalsWrapper:
         self.__dict__[name] = value
 
     def __getattr__(self, name):
-        decl = self.globalScope.findIdentifier(name)
+        # Translate Python-keyword/dunder-renamed names back to the
+        # C-side identifier so the lookup hits ``state.funcs`` /
+        # ``state.vars`` using the original C name.
+        # ``py_safe_identifier`` appends ``_`` for renamed names;
+        # strip it here when the rename rule says so.
+        c_name = name
+        if c_name.endswith("_"):
+            stripped = c_name[:-1]
+            if py_safe_identifier(stripped) == c_name:
+                c_name = stripped
+        decl = self.globalScope.findIdentifier(c_name)
         if decl is None: raise AttributeError(name)
         if isinstance(decl, CVarDecl):
-            v = self.globalScope.getVar(name)
+            v = self.globalScope.getVar(c_name)
         elif isinstance(decl, CWrapValue):
             v = decl.value
         elif isinstance(decl, CFunc):
-            v = self.globalScope.interpreter.getFunc(name)
+            v = self.globalScope.interpreter.getFunc(c_name)
         elif isinstance(decl, (CTypedef,CStruct,CUnion,CEnum)):
             v = getCType(decl, self.globalScope.stateStruct)
         elif isinstance(decl, CFuncPointerDecl):
@@ -352,7 +362,11 @@ class FuncEnv:
         # we expect this is a global
         name = self.globalScope.findName(varDecl)
         assert name is not None, str(varDecl) + " is expected to be a global var"
-        return getAstNodeAttrib("g", name)
+        # Rename Python reserved words (e.g. ``lambda`` from
+        # ``static identifier lambda`` in symtable.c) so the
+        # generated ``g.lambda_`` is valid Python.  ``GlobalsWrapper``
+        # maps the renamed name back when looking up.
+        return getAstNodeAttrib("g", py_safe_identifier(name))
     def _unregisterVar(self, varName):
         varDecl = self.vars[varName]
         if varDecl is not None:
@@ -647,7 +661,11 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
             if s_arg_ast is not None:
                 field = fields[idx]
                 _s_arg_ast = _makeVal(funcEnv, field.type, s_arg_ast, s_arg_type)
-                return makeAstNodeCall(typeAst, **{str(field.name): _s_arg_ast})
+                # Match the rename done at struct ``_fields_`` time
+                # (in ``_getCTypeStruct``) so the kwarg name is a
+                # valid Python identifier.
+                field_name = py_safe_identifier(str(field.name))
+                return makeAstNodeCall(typeAst, **{field_name: _s_arg_ast})
             else:
                 return makeAstNodeCall(typeAst)
 
@@ -680,7 +698,8 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
             if idx in s_args_map:
                 _s_arg_ast, _s_arg_type = s_args_map[idx]
                 _s_arg_ast = _makeVal(funcEnv, field.type, _s_arg_ast, _s_arg_type)
-                s_args_kwargs[str(field.name)] = _s_arg_ast
+                # Rename to match ``_fields_`` (see ``py_safe_identifier``).
+                s_args_kwargs[py_safe_identifier(str(field.name))] = _s_arg_ast
         return makeAstNodeCall(typeAst, **s_args_kwargs)
 
     elif isinstance(objType, CArrayType):
@@ -1168,6 +1187,12 @@ class Helpers:
             return ord(b.value)
         if isinstance(b, (ctypes.c_void_p, ctypes._SimpleCData)):
             b = b.value
+            # NULL pointer (.value of c_void_p(None)) -> 0
+            if b is None and isinstance(b, type(None)):
+                b = 0
+        if b is None:
+            # ctypes returns None for NULL pointer values; treat as 0
+            b = 0
         return b
 
     def assignGeneric(self, a, bValue):
@@ -1207,7 +1232,13 @@ class Helpers:
         bValue *= ctypes.sizeof(a._type_)
         # Should be safe as long as `a` already contains all the refs.
         aPtr = ctypes.cast(ctypes.pointer(a), ctypes.POINTER(ctypes.c_void_p))
-        aPtr.contents.value = func(aPtr.contents.value, bValue)
+        # NULL pointer arithmetic: in C, ``ptr + 0`` is valid even when
+        # ``ptr`` is NULL.  ctypes represents a NULL ``c_void_p`` as
+        # ``.value == None``; coerce to 0 so ``None + b`` doesn't raise.
+        cur = aPtr.contents.value
+        if cur is None:
+            cur = 0
+        aPtr.contents.value = func(cur, bValue)
         a = self.interpreter._storePtr(a, offset=func(0, bValue))
         return a
 
@@ -1451,12 +1482,15 @@ def astAndTypeForStatement(funcEnv, stmnt):
         assert stmnt.name is not None
         a = ast.Attribute(ctx=ast.Load())
         a.value, t = astAndTypeForStatement(funcEnv, stmnt.base)
-        a.attr = stmnt.name
+        # Field name renamed via ``py_safe_identifier`` to match the
+        # ctypes ``_fields_`` definition (which also goes through the
+        # rename).  Python reserved words get a trailing underscore.
+        a.attr = py_safe_identifier(stmnt.name)
         while isinstance(t, CTypedef):
             t = t.type
         assert isinstance(t, (CStruct,CUnion))
-        attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, a.attr)
-        assert attrDecl is not None, "attrib %r not found in %r" % (a.attr, t)
+        attrDecl = t.findAttrib(funcEnv.globalScope.stateStruct, stmnt.name)
+        assert attrDecl is not None, "attrib %r not found in %r" % (stmnt.name, t)
         if hasattr(attrDecl, "bitsize"):
             return a, CBitfieldType(attrDecl.type)
         return a, attrDecl.type
@@ -1474,7 +1508,13 @@ def astAndTypeForStatement(funcEnv, stmnt):
         if isinstance(stmnt.content, float):
             t = CBuiltinType(("double",))
             return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
-        t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=False)
+        # Allow unsigned types so very large positive literals like
+        # ``SIZE_MAX`` (= 2**64 - 1) get typed as ``uint64_t`` instead
+        # of overflowing into a signed ``int64_t`` whose ``.value`` is
+        # then -1.  ``minCIntTypeForNums`` tries signed types first
+        # anyway, so this only kicks in when the value genuinely
+        # doesn't fit in a signed type.
+        t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=True)
         if t is None: t = "int64_t" # it's an overflow; just take a big type
         t = CStdIntType(t)
         return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
@@ -1521,6 +1561,42 @@ def astAndTypeForStatement(funcEnv, stmnt):
             assert len(stmnt.args) == 1
             a = stmnt.args[0]
             if isinstance(a, CStatement) and not a.isCType():
+                # C ``sizeof(expr)`` does NOT actually evaluate ``expr``
+                # at runtime -- it yields the *type's* size at compile
+                # time.  Special-case ``sizeof(*p)``: the previous
+                # generic translation actually dereferenced ``p`` and
+                # called ``ctypes.sizeof`` on the result, which raises
+                # ``NULL pointer access`` when ``p`` is a freshly-
+                # allocated still-NULL pointer (as is typical for
+                # ``p = malloc(sizeof(*p))``).  Detect this case and
+                # resolve via the pointee type of ``p``.
+                inner = a
+                if (a._op is not None and a._op.content == "*"
+                        and a._leftexpr is None
+                        and a._rightexpr is not None):
+                    operand = a._rightexpr
+                    _, operandType = astAndTypeForStatement(funcEnv, operand)
+                    # Unwrap CTypedef.
+                    while isinstance(operandType, CTypedef):
+                        operandType = operandType.type
+                    pointeeType = None
+                    if isinstance(operandType, CPointerType):
+                        pointeeType = operandType.pointerOf
+                    elif isinstance(operandType, CArrayType):
+                        pointeeType = operandType.arrayOf
+                    if pointeeType is not None:
+                        t = getCType(pointeeType, funcEnv.globalScope.stateStruct)
+                        if t is not None:
+                            s = ctypes.sizeof(t)
+                            sizeAst = makeAstNodeCall(
+                                getAstNodeAttrib("ctypes_wrapped", "c_size_t"),
+                                ast.Num(s))
+                            return sizeAst, CStdIntType("size_t")
+                # General case: evaluate and take ``ctypes.sizeof`` on
+                # the value.  This is correct for ``sizeof(arr)`` where
+                # ``arr`` is a fixed-size array variable (ctypes array
+                # instance has the real array size), and for any other
+                # well-defined value expression.
                 v, _ = astAndTypeForStatement(funcEnv, stmnt.args[0])
                 sizeValueAst = makeAstNodeCall(getAstNodeAttrib("ctypes", "sizeof"), v)
                 sizeAst = makeAstNodeCall(getAstNodeAttrib("ctypes_wrapped", "c_size_t"), sizeValueAst)
@@ -1609,7 +1685,14 @@ def astAndTypeForStatement(funcEnv, stmnt):
             return a, pType.type
     elif isinstance(stmnt, CArrayIndexRef):
         aAst, aType = astAndTypeForStatement(funcEnv, stmnt.base)
-        if isinstance(aType, (CPointerType, CArrayType)) and not isType(stmnt.base):
+        # Unwrap CTypedef so e.g. ``bitset`` (typedef for ``char *``)
+        # is recognized as a pointer here -- otherwise subscripting a
+        # value of typedef'd pointer type was being mis-classified as
+        # the type-array form (``T[N]``).
+        _aType_resolved = aType
+        while isinstance(_aType_resolved, CTypedef):
+            _aType_resolved = _aType_resolved.type
+        if isinstance(_aType_resolved, (CPointerType, CArrayType)) and not isType(stmnt.base):
             assert len(stmnt.args) == 1
             # kind of a hack: create equivalent ptr arithmetic expression
             ptrStmnt = CStatement()
@@ -1890,11 +1973,22 @@ def astAndTypeForCStatement(funcEnv, stmnt):
     elif stmnt._op.content in OpAugAssign:
         return getAstNode_augAssign(funcEnv.globalScope.stateStruct, leftAstNode, leftType, stmnt._op.content, rightAstNode, rightType), leftType
     elif stmnt._op.content in OpBinBool:
+        # C ``&&`` / ``||`` always yield ``int`` (0 or 1); Python's
+        # ``and`` / ``or`` short-circuit and yield the *value* of the
+        # last evaluated operand.  For floats: ``v.value and c_int(...)``
+        # returns the float ``v.value`` when falsy, which then fails to
+        # wrap in ``c_int``.  Coerce each operand to ``bool`` so the
+        # BoolOp result is always a Python bool (True/False), which
+        # ``ctypes.c_int(...)`` accepts as 1/0.
         a = ast.BoolOp()
         a.op = OpBinBool[stmnt._op.content]()
         a.values = [
-            getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True),
-            getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True)]
+            makeAstNodeCall(
+                ast.Name(id="bool", ctx=ast.Load()),
+                getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, leftAstNode, leftType, isPartOfCOp=True)),
+            makeAstNodeCall(
+                ast.Name(id="bool", ctx=ast.Load()),
+                getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, rightAstNode, rightType, isPartOfCOp=True))]
         return getAstNode_newTypeInstance(funcEnv, ctypes.c_int, a), ctypes.c_int
     elif stmnt._op.content in OpBinCmp:
         a = ast.Compare()
@@ -1915,7 +2009,7 @@ def astAndTypeForCStatement(funcEnv, stmnt):
         a.elts = (leftAstNode, rightAstNode)
         b = ast.Subscript(value=a, slice=ast.Num(n=1), ctx=ast.Load())
         return b, rightType
-    elif isPointerType(leftType):
+    elif isPointerType(leftType) and stmnt._op.content in ("+", "-"):
         if isinstance(leftType, CArrayType):
             # The value-AST will be a pointer.
             leftType = CPointerType(ptr=leftType.arrayOf)
@@ -2590,7 +2684,17 @@ class Interpreter:
         if s is None:
             return self._getPtr(0, ctypes.POINTER(ctypes.c_byte))
         if PY3 and isinstance(s, str):
-            s = s.encode("utf8")
+            # C string literals are byte sequences, not Unicode.  An
+            # octal/hex escape like ``\340`` is parsed as Python
+            # ``'\xE0'`` (codepoint 0xE0) and must be stored as the
+            # single byte ``0xE0`` -- not UTF-8 encoded to ``c3 a0``,
+            # which would corrupt e.g. ``_PyParser_Grammar``'s
+            # ``d_first`` bitsets that pack 8 bits per byte.  Use
+            # latin-1 which is a 1:1 codepoint<->byte mapping for
+            # 0-255.  C source containing literal UTF-8 multibyte
+            # chars is already a sequence of latin-1 chars after the
+            # input decode, so this still round-trips correctly.
+            s = s.encode("latin-1")
         if s in self.constStrings:
             return self.constStrings[s]
         # Array so that we have the len info.
@@ -2942,12 +3046,21 @@ class Interpreter:
         if obj is not None:
             self.pointerStorage[ptr_addr] = obj
             return ptr
-        # Note: This can also/esp happen when the ptr was not allocated by us.
-        # Not sure how to handle that yet...
-        raise NotImplementedError(
-            "_storePtr: ptr %r, objs %r, ptr_addr 0x%x, obj_ptr_addrs %s" % (
-                ptr, list(objs), ptr_addr,
-                [hex(_ctype_get_ptr_addr(o) + offset) for o in objs]))
+        # Last-resort: external pointer (allocated outside our interp,
+        # eg. a host CPython PyObject* returned by a host C function
+        # the interp dispatched into).  Wrap the unrecognized address
+        # in a ``c_byte`` view via ``from_address`` (doesn't take
+        # ownership of the underlying memory) and register it in
+        # ``pointerStorage`` only (NOT in ``mallocs`` or as a
+        # ``pointerStorageRange`` -- those imply we own the buffer
+        # and have a known size, neither of which is true for an
+        # external address).  Future ``_storePtr`` calls at interior
+        # offsets will create their own pointerStorage entries; this
+        # is OK because external addresses are typically dereferenced
+        # only at specific known offsets.
+        placeholder = (ctypes.c_byte * 16).from_address(ptr_addr)
+        self.pointerStorage[ptr_addr] = placeholder
+        return ptr
 
     def _getPtr(self, addr, ptr_type=None):
         """
@@ -2989,7 +3102,12 @@ class Interpreter:
         base = FuncEnv(globalScope=self.globalScope)
         assert func.name is not None
         base.func = func
-        base.astNode.name = func.name
+        # ``def`` lines in Python can't use reserved-word names.  If
+        # a C function is named e.g. ``lambda`` we'd generate
+        # ``def lambda(...):`` which is a SyntaxError.  Rename
+        # consistently with ``getAstNodeForVarDecl`` and other access
+        # sites.
+        base.astNode.name = py_safe_identifier(func.name)
         base.pushScope(base.astNode.body)
         for arg in func.args:
             if isinstance(arg.type, CVariadicArgsType):

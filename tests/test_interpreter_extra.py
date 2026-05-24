@@ -2023,6 +2023,130 @@ def test_file_scope_static_collision_would_crash_without_detection():
     #     "stdout:\n%s\nstderr:\n%s" % (p.returncode, out, err))
 
 
+def test_struct_field_named_python_keyword():
+    """C identifiers that collide with Python reserved words
+    (``def``, ``class``, ``lambda``, ``return`` ...) must be renamed
+    by cparser when generating Python.  E.g. ``struct { int def; }``
+    from codecs.c -- without the rename, the generated Python
+    ``T(def=value)`` or ``obj.def`` is a SyntaxError.
+
+    The rename appends ``_`` consistently at struct ``_fields_``
+    definition AND at every attribute-access site.
+    """
+    state = parse('''
+        struct S { int def_field; int class_field; };
+        int get_def(struct S *s) { return s->def_field; }
+        int get_class(struct S *s) { return s->class_field; }
+    ''')
+    # Sanity-check: regular fields work.
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.structs["S"])
+    s = S()
+    s.def_field = 7
+    s.class_field = 11
+    assert interp.getFunc("get_def")(ctypes.pointer(s)) == 7
+    assert interp.getFunc("get_class")(ctypes.pointer(s)) == 11
+
+
+def test_global_var_named_python_dunder():
+    """A static C global named like a Python dunder (``__doc__``,
+    ``__class__``, ``__annotations__`` -- all present on Python's
+    ``object`` class) used to silently shadow our
+    ``GlobalsWrapper.__getattr__`` and return Python's None
+    instead of the C value.  The rename in ``py_safe_identifier``
+    appends ``_`` so the Python name doesn't collide with the
+    inherited class attr.
+    """
+    state = parse('''
+        static int __doc__ = 7;
+        int get(void) { return __doc__; }
+    ''')
+    interp = Interpreter()
+    interp.register(state)
+    # The renamed Python-side name is ``__doc___`` (one extra ``_``).
+    # Access via the renamed name works.
+    g = GlobalsWrapper(interp.globalScope)
+    assert g.__doc___.value == 7
+    # And the generated function looks it up correctly.
+    assert interp.runFunc("get").value == 7
+
+
+def test_struct_field_named_def_real_keyword():
+    """Same as above but with the actual Python keyword ``def`` as
+    the C field name.  This is what triggered the original bug --
+    codecs.c has ``struct { PyMethodDef def; } methods[]``.
+    """
+    state = parse('''
+        struct S { int def; };
+        int get_def(struct S *s) { return s->def; }
+        void set_def(struct S *s, int v) { s->def = v; }
+    ''')
+    interp = Interpreter()
+    interp.register(state)
+    S = interp.getCType(state.structs["S"])
+    s = S()
+    # The renamed field is accessible as ``def_`` on the Python side.
+    assert "def_" in [f[0] for f in S._fields_]
+    setattr(s, "def_", 42)
+    assert interp.getFunc("get_def")(ctypes.pointer(s)) == 42
+    interp.getFunc("set_def")(ctypes.pointer(s), ctypes.c_int(99))
+    assert getattr(s, "def_").value == 99
+
+
+def test_subscript_through_typedef_pointer():
+    """``bitset s; s[i]`` where ``bitset`` is ``typedef char *bitset;``
+    must translate to a pointer-deref (``*(s+i)``), not the type-array
+    form ``s[i] = T[N]``.  Before the fix the subscript handler
+    checked ``isinstance(aType, (CPointerType, CArrayType))`` directly
+    without unwrapping ``CTypedef``, so it fell into the
+    ``isType(aType)`` branch and produced a ctypes array TYPE instead
+    of a value.
+
+    This test passes a struct-wrapping-the-typedef so we can use the
+    interp's own ctypes types end-to-end (avoids host vs. interp
+    pointer-type-class mismatches at the FFI boundary).
+    """
+    state = parse('''
+        typedef char *bitset;
+        struct B { bitset s; };
+        int read_at(struct B *b, int i) {
+            return b->s[i];
+        }
+    ''')
+    interpreter = Interpreter()
+    interpreter.register(state)
+    B = interpreter.getCType(state.structs['B'])
+    buf = (ctypes.c_byte * 4)(5, 0, 0, 0)
+    b = B()
+    # Assign through the interp's wrapped pointer type for the field.
+    b.s = ctypes.cast(buf, type(b.s))
+    assert interpreter.getFunc("read_at")(ctypes.pointer(b), ctypes.c_int(0)) == 5
+    assert interpreter.getFunc("read_at")(ctypes.pointer(b), ctypes.c_int(1)) == 0
+
+
+def test_bitwise_and_on_pointer_typed_expr():
+    """``ptr[i] & mask`` -- in some BinOp paths cparser still sees the
+    LHS as pointer-typed (eg. via a typedef like ``bitset``); the ``&``
+    must NOT be routed to ``ptrArithmetic`` (which asserts
+    ``op in ("+","-")``).  Falls through to the regular BinOp path.
+    """
+    state = parse('''
+        typedef char *bitset;
+        struct B { bitset s; };
+        int masked(struct B *b, int i) {
+            return b->s[i] & 0x0F;
+        }
+    ''')
+    interpreter = Interpreter()
+    interpreter.register(state)
+    B = interpreter.getCType(state.structs['B'])
+    buf = (ctypes.c_byte * 1)(0x25)
+    b = B()
+    b.s = ctypes.cast(buf, type(b.s))
+    assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())
