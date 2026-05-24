@@ -2023,6 +2023,35 @@ def test_file_scope_static_collision_would_crash_without_detection():
     #     "stdout:\n%s\nstderr:\n%s" % (p.returncode, out, err))
 
 
+def test_int_min_comparison_no_false_overflow():
+    """``x < INT_MIN`` must not fire for ``x = 0``.
+
+    Bug: cparser's ``<limits.h>`` wrapper used to define ``INT_MIN``
+    as the literal ``-2147483648``.  The magnitude ``2147483648`` is
+    > ``INT_MAX`` so cparser types it as ``uint32_t``.  Unary-minus
+    on an unsigned wraps modulo 2**32, so the macro silently became
+    ``2147483648U`` -- and every ``x < INT_MIN`` check fired for
+    perfectly normal small ``x``.
+
+    The fix defines ``INT_MIN`` as ``(-INT_MAX - 1)`` (matching
+    real ``<limits.h>``) so the value stays in signed-int range.
+    """
+    state = parse('''
+        #include <limits.h>
+        int below_min(int x) { return x < INT_MIN; }
+    ''', withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    fn = interp.getFunc("below_min")
+    # 0 is not below INT_MIN.
+    assert fn(ctypes.c_int(0)) == 0
+    # Neither is INT_MIN itself.
+    INT_MIN = -(2 ** 31)
+    assert fn(ctypes.c_int(INT_MIN)) == 0
+    # And neither is INT_MAX.
+    assert fn(ctypes.c_int(2 ** 31 - 1)) == 0
+
+
 def test_struct_field_named_python_keyword():
     """C identifiers that collide with Python reserved words
     (``def``, ``class``, ``lambda``, ``return`` ...) must be renamed

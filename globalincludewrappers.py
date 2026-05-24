@@ -152,20 +152,34 @@ class Wrapper:
         state.macros["SCHAR_MAX"] = Macro(rightside="127")
         state.macros["SCHAR_MIN"] = Macro(rightside="-128")
         # short
+        # Signed-MIN macros must stay in signed range.  Writing them
+        # as the literal ``-N`` doesn't work when N exceeds the
+        # type's signed-max: the magnitude is typed as the *unsigned*
+        # variant (per the C-literal-typing rules), and unary-minus
+        # on an unsigned wraps modulo 2**w -- the value comes out as
+        # ``+N`` of the unsigned type.  This made every ``x < INT_MIN``
+        # check (e.g. inside ``_PyLong_AsInt``) fire on perfectly
+        # valid small ``x``, raising a bogus ``OverflowError`` in
+        # ``_install_external_importers``.  Match what real
+        # ``<limits.h>`` does and write ``(-MAX - 1)``, which stays
+        # in signed range throughout.
+        _intmax = 2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1
+        _longmax = 2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1) - 1
+        _llmax = 2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1) - 1
         state.macros["SHRT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_short) * 8 - 1) - 1))
         state.macros["SHRT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_short) * 8 - 1))))
         state.macros["USHRT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ushort) * 8) - 1))
         # int
-        state.macros["INT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1))
-        state.macros["INT_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1))))
+        state.macros["INT_MAX"] = Macro(rightside=str(_intmax))
+        state.macros["INT_MIN"] = Macro(rightside="(-%d - 1)" % _intmax)
         state.macros["UINT_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_uint) * 8) - 1))
         # long
-        state.macros["LONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1) - 1))
-        state.macros["LONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_long) * 8 - 1))))
+        state.macros["LONG_MAX"] = Macro(rightside=str(_longmax))
+        state.macros["LONG_MIN"] = Macro(rightside="(-%dL - 1)" % _longmax)
         state.macros["ULONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulong) * 8) - 1))
         # long long
-        state.macros["LLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1) - 1))
-        state.macros["LLONG_MIN"] = Macro(rightside=str(-(2 ** (ctypes.sizeof(ctypes.c_longlong) * 8 - 1))))
+        state.macros["LLONG_MAX"] = Macro(rightside=str(_llmax))
+        state.macros["LLONG_MIN"] = Macro(rightside="(-%dLL - 1)" % _llmax)
         state.macros["ULLONG_MAX"] = Macro(rightside=str(2 ** (ctypes.sizeof(ctypes.c_ulonglong) * 8) - 1))
 
     def handle_stdio_h(self, state):
