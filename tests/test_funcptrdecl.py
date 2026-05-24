@@ -113,6 +113,40 @@ def test_kr_function_typed_parameter():
         "got: %r" % (arg.type,)
 
 
+def test_cast_to_function_pointer_then_call():
+    """``((int (*)(int))p)(x)`` -- cast a ``void *`` to a function
+    pointer and then call it.  Used in CPython's
+    ``Objects/moduleobject.c:PyModule_ExecDef``:
+
+        ret = ((int (*)(PyObject *))cur_slot->value)(module);
+
+    Before the fix cparser parsed the type-name ``int (*)(int)`` as
+    an expression ``int()(int)`` (chain of function calls), which
+    the interpreter then rejected with
+    "Func ptr call: base ... is not a func ptr".
+    """
+    state = helpers_test.parse('''
+        int call_via_cast(void *p, int x) {
+            return ((int (*)(int))p)(x);
+        }
+    ''')
+    from cparser.interpreter import Interpreter
+    import ctypes
+    interp = Interpreter()
+    interp.register(state)
+    fn = interp.getFunc("call_via_cast")
+    assert fn is not None
+    # Build a real C callback (``doubled``) on the host side, pass
+    # its address as ``void *`` -- the interpreted ``call_via_cast``
+    # casts it to ``int (*)(int)`` and invokes it.
+    CB = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int)
+    cb = CB(lambda v: v * 2)
+    p = ctypes.cast(cb, ctypes.c_void_p)
+    r = fn(p, ctypes.c_int(7))
+    # ``r`` is a Python int (the unwrapped c_int return).
+    assert r == 14, "expected 14, got %r" % (r,)
+
+
 def test_ctypes_type_caching():
     # Fix: Global caching of CFUNCTYPE and POINTER
     state = State()

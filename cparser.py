@@ -573,7 +573,81 @@ def isType(t):
         if issubclass(t, _ctypes._SimpleCData): return True
     except Exception: pass # e.g. typeerror or so
     if isinstance(t, (CStruct,CUnion,CEnum,CTypedef)): return True
+    # ``CFuncPointerDecl`` is a function-pointer type-name (e.g.
+    # ``int (*)(int)`` after parser normalisation -- see
+    # ``CStatement.finalize`` and ``_is_funcptr_typename_misparse``).
+    # Used as a cast target in ``((int (*)(int))p)(x)``.
+    if isinstance(t, CFuncPointerDecl): return True
     return False
+
+
+def _is_funcptr_typename_misparse(node):
+    """Recognise the parser's intermediate shape of a function-
+    pointer type-name and return True.
+
+    Background: C's grammar requires unbounded lookahead to tell
+    ``int (`` apart as the start of a function call vs. a function-
+    pointer type-name ``int (*) (args)`` (used e.g. in
+    ``((int (*)(PyObject *))slot->value)(module)`` in
+    ``Objects/moduleobject.c::PyModule_ExecDef``).
+
+    Our pre-3 statement parser commits to the call interpretation
+    while consuming tokens.  The ``*`` between ``( )`` is then a
+    prefix-op with no operand and falls out, leaving the
+    intermediate shape
+
+        CFuncCall(
+            base = CFuncCall(base = ReturnType, args = []),  # "T()"
+            args = [CStatement(P1), CStatement(P2), ...],    # "(args)"
+        )
+
+    ``CStatement.finalize`` normalises this to a proper
+    ``CFuncPointerDecl`` via ``_funcptr_typename_misparse_to_decl``
+    -- the buggy shape never escapes the parser.  This helper is
+    the detector used by that normalisation.
+    """
+    if not isinstance(node, CFuncCall):
+        return False
+    inner = node.base
+    if not isinstance(inner, CFuncCall):
+        return False
+    if inner.args:
+        # ``T(x)(y)`` -- inner has args, not the ``T()`` empty-call
+        # produced by the dropped ``*``.
+        return False
+    if not isType(inner.base):
+        return False
+    # Every outer arg must itself be a type (the function
+    # pointer's parameter types).
+    for a in node.args:
+        if not isType(a):
+            return False
+    return True
+
+
+def _funcptr_typename_misparse_to_decl(node):
+    """Convert the intermediate parser shape of a function-pointer
+    type-name (see ``_is_funcptr_typename_misparse``) to a proper
+    ``CFuncPointerDecl``.
+    """
+    assert _is_funcptr_typename_misparse(node)
+    inner = node.base
+    return_type = inner.base
+    if isinstance(return_type, CStatement):
+        return_type = return_type.asType()
+    fp = CFuncPointerDecl()
+    fp._type_tokens = [return_type]
+    fp.type = return_type
+    fp.args = []
+    for a in node.args:
+        if isinstance(a, CStatement):
+            t = a.asType()
+        else:
+            t = a
+        arg = CFuncArgDecl()
+        arg.type = t
+        fp.args.append(arg)
+    return fp
 
 
 def getSizeOf(t, stateStruct):
@@ -3282,6 +3356,24 @@ class CStatement(_CBaseWithOptBody):
                 self._pushedErrorForUnknown = True
     def finalize(self, stateStruct, addToContent=None):
         self._handlePushedErrorForUnknown(stateStruct)
+        # Normalise the parser's representation of a function-pointer
+        # type-name.  C's grammar requires unbounded lookahead to tell
+        # ``int (`` apart as the start of a call vs. a function-pointer
+        # type-name ``int (*) (args)``.  Our pre-3 statement parser
+        # commits to the call interpretation and -- because the
+        # ``*`` between ``( )`` is a prefix-op with no operand --
+        # ends up with the shape
+        #
+        #     CFuncCall(base=CFuncCall(base=T, args=[]),
+        #               args=[CStatement(P1), ...])
+        #
+        # i.e. ``T()(P1, ...)``.  At the end of statement parsing,
+        # rewrite this to a proper ``CFuncPointerDecl`` so downstream
+        # code (the cast-detection in ``_cpre3_parse_brackets``, the
+        # interpreter's type machinery, etc.) never sees the
+        # ambiguous shape.
+        if _is_funcptr_typename_misparse(self._leftexpr):
+            self._leftexpr = _funcptr_typename_misparse_to_decl(self._leftexpr)
         _CBaseWithOptBody.finalize(self, stateStruct, addToContent)
     def _cpre3_handle_token(self, stateStruct, token):
         """
