@@ -3011,6 +3011,30 @@ def test_interpret_offsetof_subsubstruct():
     assert r.value == ctypes.sizeof(ctypes.c_long) * 2
 
 
+def test_interpret_offsetof_field_named_like_python_keyword():
+    # ``type`` is a Python soft-keyword; ``py_safe_identifier`` renames
+    # it to ``type_`` in the ctypes ``_fields_`` definition.  The
+    # offsetof handler must apply the same mapping at lookup time --
+    # otherwise it raised AssertionError ("field 'type' not found") on
+    # real CPython source (Objects/typeobject.c superobject).
+    state = parse("""
+    typedef struct {
+        long placeholder;
+        long type;
+        long obj;
+    } superobject;
+    #define offsetof(type, member) ( (int) & ((type*)0) -> member )
+    int f() {
+        int offset = offsetof(superobject, type);
+        return offset;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert r.value == ctypes.sizeof(ctypes.c_long)
+
+
 def test_interpret_ptr_with_offset_in_array():
     state = parse("""
     typedef struct PyHeapTypeObject {

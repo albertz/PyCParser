@@ -1617,7 +1617,11 @@ def astAndTypeForStatement(funcEnv, stmnt):
                 assert isinstance(base, (CStruct, CUnion)), "offsetof: %r is not a struct/union" % base
                 struct_t = getCType(base, funcEnv.globalScope.stateStruct)
                 assert struct_t is not None, "offsetof: unknown struct type %r" % base
-                field_desc = getattr(struct_t, field_name, None)
+                # ``py_safe_identifier`` renames Python keywords/soft-
+                # keywords (e.g. ``type`` -> ``type_``) on the ctypes
+                # struct side; apply the same mapping for the lookup.
+                py_field_name = py_safe_identifier(field_name)
+                field_desc = getattr(struct_t, py_field_name, None)
                 assert field_desc is not None, "offsetof: field %r not found in %r" % (field_name, struct_t)
                 offset += field_desc.offset
                 sub = base.findAttrib(funcEnv.globalScope.stateStruct, field_name)
@@ -1853,7 +1857,10 @@ def _resolveOffsetOf(stateStruct, stmnt):
             base = base.type
         assert isinstance(base, (CStruct, CUnion))
         c_type = getCType(base, stateStruct)
-        field = getattr(c_type, k)
+        # Field is renamed via ``py_safe_identifier`` on the ctypes
+        # side (e.g. ``type`` -> ``type_`` because of the Python soft
+        # keyword); apply the same mapping for the lookup.
+        field = getattr(c_type, py_safe_identifier(k))
         offset += field.offset
         sub = base.findAttrib(stateStruct, k)
         assert isinstance(sub, CVarDecl)
@@ -2578,6 +2585,217 @@ class PointerStorage:
         self.valueRef = ref(value)
 
 
+def _build_ctypes_int_ranges():
+    names = (
+        "c_byte", "c_ubyte", "c_short", "c_ushort", "c_int", "c_uint",
+        "c_long", "c_ulong", "c_longlong", "c_ulonglong",
+        "c_int8", "c_int16", "c_int32", "c_int64",
+        "c_uint8", "c_uint16", "c_uint32", "c_uint64",
+        "c_size_t", "c_ssize_t",
+    )
+    result = {}
+    for n in names:
+        t = getattr(ctypes, n, None)
+        if t is None:
+            continue
+        bits = ctypes.sizeof(t) * 8
+        if t(-1).value == -1:
+            result[n] = (-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+        else:
+            result[n] = (0, (1 << bits) - 1)
+    return result
+
+
+_CTYPES_INT_RANGES = _build_ctypes_int_ranges()
+_CTYPES_INT_TYPE_NAMES = frozenset(_CTYPES_INT_RANGES)
+
+
+def _is_int_literal_num(node):
+    """``ast.Num(n=int)`` or ``ast.Constant(value=int)``."""
+    if isinstance(node, ast.Num) and isinstance(node.n, int):
+        return True
+    if isinstance(node, ast.Constant) and isinstance(node.value, int) \
+            and not isinstance(node.value, bool):
+        return True
+    return False
+
+
+def _num_value(node):
+    if isinstance(node, ast.Num):
+        return node.n
+    return node.value
+
+
+def _is_ctypes_int_wrap_call(node):
+    """Match ``ctypes_wrapped.c_<int-type>(<arg>)``.
+
+    Returns ``(type_name, arg_ast)`` if matched, else ``None``.
+    """
+    if not (isinstance(node, ast.Call)
+            and len(node.args) == 1
+            and not node.keywords):
+        return None
+    f = node.func
+    if not (isinstance(f, ast.Attribute)
+            and isinstance(f.value, ast.Name)
+            and f.value.id == "ctypes_wrapped"
+            and f.attr in _CTYPES_INT_TYPE_NAMES):
+        return None
+    return f.attr, node.args[0]
+
+
+def _is_int_call(node):
+    """Match ``int(<arg>)``.  Returns the arg or None."""
+    if not (isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "int"
+            and len(node.args) == 1
+            and not node.keywords):
+        return None
+    return node.args[0]
+
+
+class _PeepholeOptimizer(ast.NodeTransformer):
+    """Collapse the most common verbose patterns the generic translator
+    produces.
+
+    Generated code wraps and re-extracts ctypes-int values everywhere::
+
+        ctypes_wrapped.c_int(int(<x>)).value
+
+    For literal ``<x>`` this is pure overhead -- a per-evaluation
+    allocation of a ctype instance just to read ``.value`` back out.
+    This pass collapses the obvious cases.
+
+    Implemented patterns (applied bottom-up via ``ast.NodeTransformer``):
+
+    1. ``int(N)`` where ``N`` is an int literal -> ``N``.
+    2. ``int(int(X))`` -> ``int(X)``.
+    3. ``ctypes_wrapped.c_T(N).value`` where ``N`` is an int literal
+       that fits in ``c_T``'s value range -> ``N``.
+    4. ``ctypes_wrapped.c_T(c_T(X).value).value`` (same ``T``) ->
+       ``c_T(X).value`` (idempotent wrap).
+
+    Crucially we do *not* drop the wrap when the inner value's range
+    is unknown -- ``c_uint16(...)`` truncates and that is observable.
+    """
+
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        # int(<int-literal>) -> <int-literal>
+        arg = _is_int_call(node)
+        if arg is not None:
+            if _is_int_literal_num(arg):
+                return arg
+            # int(int(X)) -> int(X)
+            inner = _is_int_call(arg)
+            if inner is not None:
+                node.args[0] = inner
+                return node
+            # int(c_T(...).value) -> c_T(...).value (already an int).
+            if isinstance(arg, ast.Attribute) and arg.attr == "value":
+                if _is_ctypes_int_wrap_call(arg.value) is not None:
+                    return arg
+        # c_T(c_T(X).value) -> c_T(X)  (same T; the inner wrap+.value
+        # already produced a value already-truncated to T's range, so
+        # wrapping it again in c_T is the identity).
+        outer = _is_ctypes_int_wrap_call(node)
+        if outer is not None:
+            outer_t, outer_arg = outer
+            if isinstance(outer_arg, ast.Attribute) and outer_arg.attr == "value":
+                inner = _is_ctypes_int_wrap_call(outer_arg.value)
+                if inner is not None and inner[0] == outer_t:
+                    return outer_arg.value
+        return node
+
+    def visit_Attribute(self, node):
+        self.generic_visit(node)
+        # ctypes_wrapped.c_<int>(<arg>).value -> simplified form.
+        if node.attr != "value":
+            return node
+        matched = _is_ctypes_int_wrap_call(node.value)
+        if matched is None:
+            return node
+        type_name, inner_arg = matched
+        lo, hi = _CTYPES_INT_RANGES[type_name]
+        # Literal that fits exactly in T -> the literal.
+        if _is_int_literal_num(inner_arg):
+            v = _num_value(inner_arg)
+            if lo <= v <= hi:
+                return inner_arg
+            return node
+        # int(<int-literal-that-fits>) -> literal directly (no-op wrap).
+        int_call_arg = _is_int_call(inner_arg)
+        if int_call_arg is not None and _is_int_literal_num(int_call_arg):
+            v = _num_value(int_call_arg)
+            if lo <= v <= hi:
+                return int_call_arg
+        # ``c_T(c_T(X).value).value`` -> ``c_T(X).value`` (same T only).
+        if isinstance(inner_arg, ast.Attribute) and inner_arg.attr == "value":
+            inner_match = _is_ctypes_int_wrap_call(inner_arg.value)
+            if inner_match is not None and inner_match[0] == type_name:
+                return inner_arg
+        return node
+
+
+_peephole_optimizer = _PeepholeOptimizer()
+
+
+class _CtypesWrappedHoister(ast.NodeTransformer):
+    """For each ``ast.FunctionDef`` body, replace repeated
+    ``ctypes_wrapped.<name>`` attribute loads with a single up-front
+    local binding.
+
+    The generated translator emits ``ctypes_wrapped.c_int(...)`` and
+    similar all over a function body.  Each occurrence is an
+    attribute lookup on the ``ctypes_wrapped`` global.  Binding it
+    once to a local at function entry turns subsequent uses into the
+    cheapest possible name lookup (``LOAD_FAST``).
+    """
+
+    def visit_FunctionDef(self, node):
+        self.generic_visit(node)
+        # Collect names used as ``ctypes_wrapped.<name>`` (Load only).
+        used = {}  # ordered: name -> local_alias
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Attribute)
+                    and isinstance(sub.ctx, ast.Load)
+                    and isinstance(sub.value, ast.Name)
+                    and sub.value.id == "ctypes_wrapped"
+                    and isinstance(sub.attr, str)
+                    and sub.attr.isidentifier()):
+                if sub.attr not in used:
+                    used[sub.attr] = "__cw_" + sub.attr
+        if not used:
+            return node
+        # Rewrite Attribute loads -> Name loads.
+        alias = used
+        class _Repl(ast.NodeTransformer):
+            def visit_Attribute(self, n):
+                self.generic_visit(n)
+                if (isinstance(n.ctx, ast.Load)
+                        and isinstance(n.value, ast.Name)
+                        and n.value.id == "ctypes_wrapped"
+                        and n.attr in alias):
+                    return ast.Name(id=alias[n.attr], ctx=ast.Load())
+                return n
+        node.body = [_Repl().visit(s) for s in node.body]
+        # Prepend bindings.
+        bindings = [
+            ast.Assign(
+                targets=[ast.Name(id=local, ctx=ast.Store())],
+                value=ast.Attribute(
+                    value=ast.Name(id="ctypes_wrapped", ctx=ast.Load()),
+                    attr=cname, ctx=ast.Load()))
+            for cname, local in used.items()
+        ]
+        node.body = bindings + node.body
+        return node
+
+
+_ctypes_wrapped_hoister = _CtypesWrappedHoister()
+
+
 class Interpreter:
     def __init__(self):
         self.stateStructs = []
@@ -3141,6 +3359,15 @@ class Interpreter:
     def _compile(self, pyAst, mode="single"):
         # We unparse + parse again for now for better debugging (so we get some code in a backtrace).
         SRC_FILENAME = "<PyCParser_%s>" % getattr(pyAst, "name", "unknown")
+        # Apply peephole optimisations to the AST.  The generic
+        # translator emits ``ctypes_wrapped.c_int(int(<x>)).value``
+        # everywhere -- per-evaluation ctype allocations whose values
+        # are immediately discarded.  Collapsing these makes both
+        # translation (smaller source) and execution (fewer
+        # attribute lookups, allocations) measurably faster.
+        _peephole_optimizer.visit(pyAst)
+        _ctypes_wrapped_hoister.visit(pyAst)
+        ast.fix_missing_locations(pyAst)
         def _unparseAndParse(pyAst):
             src = _unparse(pyAst)
             _set_linecache(SRC_FILENAME, src)

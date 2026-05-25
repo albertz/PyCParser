@@ -168,7 +168,7 @@ def _read_hex_escape(input_stream):
         if nc is None or nc not in _HexChars:
             # Put the non-hex character back so the outer loop sees it next.
             if nc is not None:
-                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+                input_stream.putback_char(nc)
             break
         hexstr += nc
     return chr(int(hexstr, 16)) if hexstr else "\x00"
@@ -191,7 +191,7 @@ def _read_octal_escape(input_stream, first_digit):
         nc = input_stream.next_char()
         if nc is None or nc not in _OctalChars:
             if nc is not None:
-                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+                input_stream.putback_char(nc)
             break
         octstr += nc
     return chr(int(octstr, 8))
@@ -204,7 +204,7 @@ def _read_fixed_hex_escape(input_stream, n_digits):
         nc = input_stream.next_char()
         if nc is None or nc not in _HexChars:
             if nc is not None:
-                input_stream.buffer_stack[-1][1] = nc + input_stream.buffer_stack[-1][1]
+                input_stream.putback_char(nc)
             break
         hexstr += nc
     return chr(int(hexstr, 16)) if hexstr else "\x00"
@@ -713,7 +713,7 @@ class State(object):
         "_Bool": ctypes.c_bool,
         "FILE": ctypes.c_int, # NOTE: not really correct but shouldn't matter unless we directly access it
     }
-    Attribs = [
+    Attribs = frozenset((
         "const",
         "extern",
         "static",
@@ -721,7 +721,7 @@ class State(object):
         "volatile",
         "__inline__",
         "inline",
-    ]
+    ))
 
     def __init__(self):
         self.parent = None
@@ -1730,24 +1730,62 @@ class _Pre2ParseStream:
             input = iter(input)
         self.input = input
         self.macro_blacklist = set()
-        self.buffer_stack = [[None, ""]]  # list[(macroname,buffer)]
+        # Each frame: [macroname_or_None, buffer_str, pos].
+        # We track ``pos`` as an index into ``buffer_str`` instead of
+        # repeatedly slicing the string off its head -- that was
+        # quadratic during large macro expansions.
+        self.buffer_stack = [[None, "", 0]]
+        # LIFO queue of chars that were read but need to be re-emitted
+        # on the next ``next_char`` call (used by escape readers to
+        # "put back" a non-matching char).
+        self._putback = []
 
     def next_char(self):
-        for i in reversed(range(len(self.buffer_stack))):
-            if not self.buffer_stack[i][1]: continue
-            c = self.buffer_stack[i][1][0]
-            self.buffer_stack[i][1] = self.buffer_stack[i][1][1:]
-            # finalize handling will be in finalize_char()
-            return c
+        pb = self._putback
+        if pb:
+            return pb.pop()
+        stack = self.buffer_stack
+        # Fast path: no macro expansion in flight.  ``add_macro`` may
+        # have stashed leftover chars into frame 0, so we still need to
+        # honour that, but we avoid the full reverse loop.
+        if len(stack) == 1:
+            frame = stack[0]
+            pos = frame[2]
+            buf = frame[1]
+            if pos < len(buf):
+                frame[2] = pos + 1
+                return buf[pos]
+            try:
+                return next(self.input)
+            except StopIteration:
+                return None
+        for i in range(len(stack) - 1, -1, -1):
+            frame = stack[i]
+            pos = frame[2]
+            buf = frame[1]
+            if pos < len(buf):
+                frame[2] = pos + 1
+                return buf[pos]
         try:
             return next(self.input)
         except StopIteration:
             return None
 
+    def putback_char(self, c):
+        """Push *c* back so the next ``next_char()`` returns it."""
+        self._putback.append(c)
+
     def add_macro(self, macroname, resolved, c):
-        self.buffer_stack += [[macroname, resolved]]
+        self.buffer_stack.append([macroname, resolved, 0])
         self.macro_blacklist.add(macroname)
-        self.buffer_stack[-2][1] = c + self.buffer_stack[-2][1]
+        # Re-inject ``c`` so it's read *after* ``resolved`` is fully
+        # consumed.  ``c`` is the char that followed the macro name and
+        # must be reprocessed by the outer tokenizer.  We rebuild the
+        # below frame's tail with ``c`` prepended; one-time cost per
+        # macro expansion.
+        below = self.buffer_stack[-2]
+        below[1] = c + below[1][below[2]:]
+        below[2] = 0
 
     def finalize_char(self, laststr):
         # Finalize buffer_stack here. Here because the macro_blacklist needs to be active
@@ -1755,10 +1793,14 @@ class _Pre2ParseStream:
         # Pop ALL exhausted macro buffers in one go.  When macros expand to other macros
         # (e.g. SST → SIZEOF_SIZE_T → 8) both inner buffers may become empty before the
         # next token is started, so a single-level pop is not enough.
-        if not laststr:
-            while len(self.buffer_stack) > 1 and not self.buffer_stack[-1][1]:
-                self.macro_blacklist.remove(self.buffer_stack[-1][0])
-                self.buffer_stack = self.buffer_stack[:-1]
+        stack = self.buffer_stack
+        # Fast path: no macro frames to consider.
+        if len(stack) == 1:
+            return
+        if not laststr and not self._putback:
+            while len(stack) > 1 and stack[-1][2] >= len(stack[-1][1]):
+                self.macro_blacklist.remove(stack[-1][0])
+                stack.pop()
 
 
 def cpre2_parse(stateStruct, input, brackets=None):
