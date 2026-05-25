@@ -4255,7 +4255,15 @@ def cpre3_parse_funcargs(stateStruct, parentCObj, input_iter):
     stateStruct.error("cpre3 parse func args: incomplete, missing ')' on level " + str(parentCObj._bracketlevel))
 
 def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
-    valueStmnt = CStatement()
+    # `parent=curCObj` (the surrounding CVarDecl / CFuncArgDecl /
+    # CFuncPointerDecl) is required so that identifiers inside the
+    # array-bound expression -- e.g. ``Py_off_t`` inside
+    # ``sizeof(Py_off_t)`` reached via a #define macro expansion --
+    # can be resolved against the enclosing scope's typedefs.
+    # Without it, ``findObjInNamespace`` walks an orphan parent chain
+    # that never reaches the State and the typedef lookup silently
+    # fails.
+    valueStmnt = CStatement(parent=curCObj)
     valueStmnt._bracketlevel = curCObj._bracketlevel
     valueStmnt._cpre3_parse_brackets(stateStruct, COpeningBracket("[", brackets=curCObj._bracketlevel), input_iter)
     assert isinstance(valueStmnt._leftexpr, CArrayStatement)

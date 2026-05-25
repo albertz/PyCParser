@@ -1063,5 +1063,33 @@ def test_parse_deref_postinc_bitwise_precedence():
     assert "++" in ops, "expected '++' in left subtree, got ops=%r" % ops
 
 
+def test_parse_typedef_sizeof_in_macro_array_bound():
+    """`sizeof(typedef_name)` inside a macro expansion that lands in an
+    array-bound position must resolve the typedef.
+
+    Reduced from Modules/_io/textio.c::
+
+        typedef off_t Py_off_t;
+        #define COOKIE_BUF_LEN (sizeof(Py_off_t) + 3 * sizeof(int) + sizeof(char))
+        static int textiowrapper_parse_cookie(...) {
+            unsigned char buffer[COOKIE_BUF_LEN];
+            ...
+        }
+
+    The same `Py_off_t` used as a plain field type (``Py_off_t start_pos;``)
+    is found fine; only the macro-expanded sizeof in the array bound
+    raised ``identifier 'Py_off_t' unknown in state 5``.
+    """
+    state = parse("""
+    typedef long Py_off_t;
+    #define COOKIE_BUF_LEN (sizeof(Py_off_t) + 3 * sizeof(int))
+    int f(void) {
+        unsigned char buffer[COOKIE_BUF_LEN];
+        return buffer[0];
+    }
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+
+
 if __name__ == "__main__":
     main(globals())
