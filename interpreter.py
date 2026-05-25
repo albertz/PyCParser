@@ -2050,9 +2050,11 @@ def astForCWhile(funcEnv, stmnt):
     whileAst.test = getAstNode_valueFromObj(funcEnv.globalScope.stateStruct, *astAndTypeForCStatement(funcEnv, stmnt.args[0]), isPartOfCOp=True)
 
     funcEnv.pushScope(whileAst.body)
+    _pushLoopContext(funcEnv, ("loop",))
     if stmnt.body is not None:
         cCodeToPyAstList(funcEnv, stmnt.body)
     if not whileAst.body: whileAst.body.append(ast.Pass())
+    _popLoopContext(funcEnv)
     funcEnv.popScope()
 
     return whileAst
@@ -2094,8 +2096,10 @@ def astForCFor(funcEnv, stmnt):
         whileAst.body.append(ifTestAst)
 
     funcEnv.pushScope(whileAst.body)
+    _pushLoopContext(funcEnv, ("loop",))
     if stmnt.body is not None:
         cCodeToPyAstList(funcEnv, stmnt.body)
+    _popLoopContext(funcEnv)
     funcEnv.popScope() # whileAst / main for-body
 
     funcEnv.popScope() # ifAst
@@ -2159,8 +2163,10 @@ def astForCDoWhile(funcEnv, stmnt):
 
     body_block = []
     funcEnv.pushScope(body_block)
+    _pushLoopContext(funcEnv, ("loop",))
     if stmnt.body is not None:
         cCodeToPyAstList(funcEnv, stmnt.body)
+    _popLoopContext(funcEnv)
     funcEnv.popScope()
 
     rewriter = _DoWhileFlowRewriter(flag_name)
@@ -2220,6 +2226,55 @@ def astForCIf(funcEnv, stmnt):
 
     return ifAst
 
+def _pushLoopContext(funcEnv, entry):
+    """Track enclosing C control structures (loops and switches) so that
+    ``CContinueStatement`` knows whether to emit a plain Python
+    ``continue`` (real loop on top) or a marker-set + break (switch on
+    top, because Python ``continue`` would re-iterate the switch's
+    inner ``while True``).
+
+    Entry is either ``("loop",)`` or ``("switch", marker_var_name)``."""
+    if not hasattr(funcEnv, "_cLoopStack"):
+        funcEnv._cLoopStack = []
+    funcEnv._cLoopStack.append(entry)
+
+
+def _popLoopContext(funcEnv):
+    funcEnv._cLoopStack.pop()
+
+
+def _topLoopContext(funcEnv):
+    stack = getattr(funcEnv, "_cLoopStack", None)
+    return stack[-1] if stack else None
+
+
+def _astForCContinue(funcEnv):
+    """Return the list of AST statements implementing a C ``continue``
+    at the current loop/switch context.
+
+    - Real loop on top of the context stack: plain Python ``continue``.
+    - Switch on top: set the switch's marker var and ``break`` out of
+      the switch's inner ``while True``; the post-switch code emits
+      ``if marker: <continue-for-the-outer-context>`` to propagate.
+    - Empty stack (continue outside any loop -- illegal in C, but the
+      parser may still produce it): empty list, no-op.
+    """
+    top = _topLoopContext(funcEnv)
+    if top is None:
+        return []
+    if top[0] == "loop":
+        return [ast.Continue()]
+    if top[0] == "switch":
+        marker = top[1]
+        return [
+            ast.Assign(
+                targets=[ast.Name(id=marker, ctx=ast.Store())],
+                value=ast.Name(id="True", ctx=ast.Load())),
+            ast.Break(),
+        ]
+    raise ValueError("unknown loop context: %r" % (top,))
+
+
 def astForCSwitch(funcEnv, stmnt):
     assert isinstance(stmnt, CSwitchStatement)
     assert isinstance(stmnt.body, CBody)
@@ -2244,10 +2299,24 @@ def astForCSwitch(funcEnv, stmnt):
     fallthroughVarAst = ast.Name(id=fallthroughVarName, ctx=ast.Load())
     funcEnv.getBody().append(a)
 
+    # Marker for "C ``continue`` inside this switch body wants to skip
+    # to the next iteration of the *outer* loop", not re-iterate the
+    # switch's internal ``while True``.  Initialised to False; case
+    # bodies that contain a C ``continue`` set it to True and break
+    # out of the inner while.  After the inner while we check the
+    # marker and emit a real Python ``continue`` so the outer loop
+    # advances.
+    continueMarkerName = funcEnv.registerNewVar("_switch_continue_outer")
+    a = ast.Assign()
+    a.targets = [ast.Name(id=continueMarkerName, ctx=ast.Store())]
+    a.value = ast.Name(id="False", ctx=ast.Load())
+    funcEnv.getBody().append(a)
+
     # use 'while' AST so that we can just use 'break' as intended
     whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
     funcEnv.getBody().append(whileAst)
     funcEnv.pushScope(whileAst.body)
+    _pushLoopContext(funcEnv, ("switch", continueMarkerName))
 
     curCase = None
     for c in stmnt.body.contentlist:
@@ -2284,7 +2353,20 @@ def astForCSwitch(funcEnv, stmnt):
 
     # finish 'while'
     funcEnv.getBody().append(ast.Break())
+    _popLoopContext(funcEnv)
     funcEnv.popScope()
+
+    # If a case body set the marker (= executed a C ``continue``),
+    # propagate it according to the *now-current* loop context: the
+    # enclosing real loop gets a Python ``continue``; an enclosing
+    # switch gets its own marker+break; no enclosing loop gets a no-op
+    # (C would have rejected such a ``continue`` anyway).
+    propagateBody = _astForCContinue(funcEnv)
+    if propagateBody:
+        funcEnv.getBody().append(ast.If(
+            test=ast.Name(id=continueMarkerName, ctx=ast.Load()),
+            body=propagateBody,
+            orelse=[]))
 
     # finish 'if'
     funcEnv.popScope()
@@ -2370,7 +2452,7 @@ def cStatementToPyAst(funcEnv, c):
     elif isinstance(c, CBreakStatement):
         body.append(ast.Break())
     elif isinstance(c, CContinueStatement):
-        body.append(ast.Continue())
+        body.extend(_astForCContinue(funcEnv))
     elif isinstance(c, CCodeBlock):
         funcEnv.pushScope(body)
         cCodeToPyAstList(funcEnv, c.body)

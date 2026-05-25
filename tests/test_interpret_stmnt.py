@@ -5232,5 +5232,105 @@ def test_deref_postinc_mixed_bitops():
             "%s on 0x%02x: expected 0x%x, got 0x%x" % (fn, b, expected, r)
 
 
+def test_interpret_switch_default_continue_in_while():
+    """``continue`` inside a switch's ``default`` (or any case) must
+    continue the **enclosing loop**, not re-iterate the switch.  The
+    pattern is from Objects/stringlib/unicode_format.h's
+    ``MarkupIterator_next``::
+
+        while (self->str.start < self->str.end) {
+            switch (c = ...) {
+                case '{':
+                case '}':
+                    markup_follows = 1;
+                    break;     // breaks the switch, then outer break below
+                default:
+                    continue;  // SKIP to next iter of the outer while
+            }
+            break;             // exit outer while
+        }
+
+    Before this test, the translator wrapped the switch in a
+    ``while True`` and emitted ``continue`` inside it -- which
+    re-iterated the switch's inner loop forever when no case matched.
+    The fix is to translate switch's ``continue`` so it continues the
+    *enclosing* loop, not the inner switch loop.
+
+    Reduced repro: read array entries until we hit a terminator
+    character (0 or 1).  Anything else is "default" and should skip
+    to the next entry.  Without the fix, the function hangs.
+    """
+    src = (
+        "int scan(int *arr, int n) {\n"
+        "    int i = 0;\n"
+        "    int found = -1;\n"
+        "    while (i < n) {\n"
+        "        switch (arr[i]) {\n"
+        "            case 0:\n"
+        "            case 1:\n"
+        "                found = arr[i];\n"
+        "                break;\n"
+        "            default:\n"
+        "                i = i + 1;\n"
+        "                continue;\n"
+        "        }\n"
+        "        break;\n"
+        "    }\n"
+        "    return found;\n"
+        "}\n"
+    )
+    state = parse(src)
+    interp = Interpreter()
+    interp.register(state)
+    # The previous fix attempt regressed switch-without-enclosing-loop:
+    # emitting ``if marker: continue`` unconditionally after the switch
+    # produced ``continue`` outside any loop -> SyntaxError when
+    # compiling translated functions like BaseException_str.  Verify
+    # that a switch in a non-loop context still compiles by also
+    # parsing a second function.
+    src2 = (
+        "int classify(int x) {\n"
+        "    int r = 0;\n"
+        "    switch (x) {\n"
+        "        case 0: r = 100; break;\n"
+        "        default: r = 999; break;\n"
+        "    }\n"
+        "    return r;\n"
+        "}\n"
+    )
+    state2 = parse(src2)
+    interp2 = Interpreter()
+    interp2.register(state2)
+    # If translation emits a stray `continue`, the Python compile of
+    # `classify` will fail with `SyntaxError: 'continue' not properly
+    # in loop`.
+    r2 = interp2.getFunc("classify")(ctypes.c_int(0))
+    r2v = r2.value if hasattr(r2, "value") else int(r2)
+    assert r2v == 100, "expected 100, got %r" % (r2,)
+
+    arr_t = ctypes.c_int * 5
+    arr = arr_t(7, 8, 9, 1, 2)  # first non-default is `1` at index 3
+    # Use getFunc + a manual timeout via threading -- runFunc's arg
+    # casting doesn't accept a raw LP_c_int pointer.
+    import threading
+    out = [None]
+    exc = [None]
+    def _run():
+        try:
+            out[0] = interp.getFunc("scan")(
+                ctypes.cast(arr, ctypes.POINTER(ctypes.c_int)), ctypes.c_int(5))
+        except BaseException as e:
+            exc[0] = e
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(5)
+    assert not t.is_alive(), "scan() hung in switch/continue loop"
+    if exc[0] is not None:
+        raise exc[0]
+    r = out[0]
+    r_val = r.value if hasattr(r, "value") else int(r)
+    assert r_val == 1, "expected found=1 (arr[3]), got %r" % (r,)
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())
