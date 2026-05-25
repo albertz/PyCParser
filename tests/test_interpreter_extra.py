@@ -2023,6 +2023,59 @@ def test_file_scope_static_collision_would_crash_without_detection():
     #     "stdout:\n%s\nstderr:\n%s" % (p.returncode, out, err))
 
 
+def test_c_integer_literal_typing():
+    """C99 §6.4.4.1: a decimal integer constant without a suffix
+    has type taken from: ``int``, ``long``, ``long long`` -- only
+    signed.  Hex/octal without suffix also tries unsigned.  Suffixes
+    restrict the candidate list.
+
+    Tests via ``cparser.cIntTypeForLiteral`` directly.
+    """
+    from cparser.cparser import cIntTypeForLiteral
+    # Decimal no-suffix: signed only.
+    assert cIntTypeForLiteral(0, "0") == "int32_t"
+    assert cIntTypeForLiteral(2147483647, "2147483647") == "int32_t"
+    # 2^31: doesn't fit int32, goes to int64 (NOT uint32).
+    assert cIntTypeForLiteral(2147483648, "2147483648") == "int64_t"
+    # 2^63: doesn't fit int64; decimal no-suffix has no further type
+    # -- C standard would warn / use extended type.
+    assert cIntTypeForLiteral(2**63, "9223372036854775808") is None
+    # Hex no-suffix: signed first, then unsigned.
+    assert cIntTypeForLiteral(0xFFFFFFFF, "0xFFFFFFFF") == "uint32_t"
+    assert cIntTypeForLiteral(2**63, "0x8000000000000000") == "uint64_t"
+    # ``U`` suffix forces unsigned.
+    assert cIntTypeForLiteral(1, "1U") == "uint32_t"
+    assert cIntTypeForLiteral(0xFFFFFFFF, "4294967295U") == "uint32_t"
+    # ``L`` forces at-least-long.
+    assert cIntTypeForLiteral(1, "1L") == "int64_t"
+    # ``LL`` same on 64-bit.
+    assert cIntTypeForLiteral(1, "1LL") == "int64_t"
+    # ``ULL`` -> uint64_t.
+    assert cIntTypeForLiteral(0xFFFFFFFFFFFFFFFF, "18446744073709551615ULL") == "uint64_t"
+
+
+def test_int_min_literal_works_after_unary_minus():
+    """With C-standard literal typing, ``INT_MIN = -2147483648`` works
+    as expected: the magnitude ``2147483648`` is typed as
+    ``int64_t`` (per C99 §6.4.4.1 candidate list for decimal-no-
+    suffix), so unary-minus stays in signed range.  Previously
+    cparser typed it as ``uint32_t``, which wrapped under unary
+    minus and produced bogus overflows.
+    """
+    state = parse('''
+        #include <limits.h>
+        int below_min(int x) { return x < INT_MIN; }
+        int at_min(int x) { return x == INT_MIN; }
+    ''', withGlobalIncludeWrappers=True)
+    interp = Interpreter()
+    interp.register(state)
+    INT_MIN = -(2 ** 31)
+    assert interp.getFunc("below_min")(ctypes.c_int(0)) == 0
+    assert interp.getFunc("below_min")(ctypes.c_int(INT_MIN)) == 0
+    assert interp.getFunc("at_min")(ctypes.c_int(INT_MIN)) == 1
+    assert interp.getFunc("at_min")(ctypes.c_int(0)) == 0
+
+
 def test_int_min_comparison_no_false_overflow():
     """``x < INT_MIN`` must not fire for ``x = 0``.
 

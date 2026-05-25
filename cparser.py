@@ -2773,6 +2773,79 @@ def minCIntTypeForNums(a, b=None, minBits=32, maxBits=64, useUnsignedTypes=True)
     return None
 
 
+def _parseIntLiteralSuffix(rawstr):
+    """Extract C99 integer-literal suffix info from a lexeme.
+
+    Returns ``(is_unsigned, long_count, is_hex_or_octal)`` where
+    ``long_count`` is 0 for no ``L``, 1 for ``l``/``L``, 2 for ``ll``/``LL``.
+    See C99 §6.4.4.1.
+    """
+    if not rawstr:
+        return False, 0, False
+    s = rawstr
+    # Distinguish bases: hex starts with ``0x``/``0X``; octal starts with
+    # ``0`` followed by another digit; decimal otherwise.  A bare ``0`` is
+    # decimal-or-octal-equivalent (value 0); treat as decimal.
+    is_hex_or_octal = False
+    if len(s) >= 2 and s[0] == "0" and s[1] in "xX":
+        is_hex_or_octal = True
+    elif len(s) >= 2 and s[0] == "0" and s[1].isdigit():
+        is_hex_or_octal = True
+    # Strip suffix chars from the right.  Suffixes (any order):
+    # ``u``/``U`` once; ``l``/``L`` once or twice (must be same case in C99
+    # but be lenient).
+    suffix_chars = ""
+    while s and s[-1] in "uUlL":
+        suffix_chars = s[-1] + suffix_chars
+        s = s[:-1]
+    lc = suffix_chars.lower()
+    is_unsigned = "u" in lc
+    long_count = lc.count("l")
+    return is_unsigned, long_count, is_hex_or_octal
+
+
+def cIntTypeForLiteral(value, rawstr):
+    """Pick the C type of an integer literal per C99 §6.4.4.1.
+
+    For a decimal literal without suffix the candidate list is
+    ``int``, ``long``, ``long long`` -- only signed.  For hex/octal
+    without suffix the list interleaves unsigned variants.  Suffixes
+    restrict the list.
+
+    The picked type is returned as a stdint name (``int32_t``,
+    ``uint32_t``, ``int64_t``, ``uint64_t``).  Assumes 64-bit Unix
+    ABI: ``int``=32, ``long``=``long long``=64.
+    """
+    is_unsigned, long_count, is_hex_or_octal = _parseIntLiteralSuffix(rawstr)
+    # Candidate list per the standard.
+    if long_count == 0 and not is_unsigned:
+        if is_hex_or_octal:
+            candidates = ["int32_t", "uint32_t", "int64_t", "uint64_t"]
+        else:
+            candidates = ["int32_t", "int64_t"]
+    elif long_count == 0 and is_unsigned:
+        # u/U suffix: unsigned int, unsigned long, unsigned long long.
+        candidates = ["uint32_t", "uint64_t"]
+    elif long_count >= 1 and not is_unsigned:
+        # l/L or ll/LL suffix: at-least-long.
+        if is_hex_or_octal:
+            candidates = ["int64_t", "uint64_t"]
+        else:
+            candidates = ["int64_t"]
+    else:  # long_count >= 1 and is_unsigned
+        candidates = ["uint64_t"]
+    for t in candidates:
+        if t.startswith("uint"):
+            bits = int(t[4:-2])
+            if 0 <= value < (1 << bits):
+                return t
+        else:
+            bits = int(t[3:-2])
+            if -(1 << (bits - 1)) <= value < (1 << (bits - 1)):
+                return t
+    return None  # doesn't fit any candidate type
+
+
 class CEnum(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="enums", **kwargs)
     def getNumRange(self):
@@ -3096,11 +3169,12 @@ def getValueType(stateStruct, obj):
     if isinstance(obj, CChar):
         return CBuiltinType(("char",))
     if isinstance(obj, CNumber):
-        # TODO handle typeSpec
         if isinstance(obj.content, float):
             return CBuiltinType(("double",))
-        t = minCIntTypeForNums(obj.content, minBits=32, maxBits=64, useUnsignedTypes=True)
-        assert t, "no int type for %r" % obj
+        # Per C99 §6.4.4.1 -- suffix + base aware.
+        t = cIntTypeForLiteral(obj.content, obj.rawstr)
+        if t is None:
+            t = "int64_t"  # genuine overflow; just take the largest
         return CStdIntType(t)
     if isinstance(obj, CEnumConst):
         enumType = obj.parent

@@ -1504,18 +1504,15 @@ def astAndTypeForStatement(funcEnv, stmnt):
         attrStmnt.name = stmnt.name
         return astAndTypeForStatement(funcEnv, attrStmnt)
     elif isinstance(stmnt, CNumber):
-        # TODO handle stmnt.typeSpec
         if isinstance(stmnt.content, float):
             t = CBuiltinType(("double",))
             return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
-        # Allow unsigned types so very large positive literals like
-        # ``SIZE_MAX`` (= 2**64 - 1) get typed as ``uint64_t`` instead
-        # of overflowing into a signed ``int64_t`` whose ``.value`` is
-        # then -1.  ``minCIntTypeForNums`` tries signed types first
-        # anyway, so this only kicks in when the value genuinely
-        # doesn't fit in a signed type.
-        t = minCIntTypeForNums(stmnt.content, useUnsignedTypes=True)
-        if t is None: t = "int64_t" # it's an overflow; just take a big type
+        # Pick the literal type per C99 §6.4.4.1 (suffix + base aware).
+        # E.g. ``2147483648`` (decimal, no suffix) is ``int64_t`` --
+        # NOT ``uint32_t`` -- so unary-minus stays in signed range and
+        # ``INT_MIN`` defined as the literal ``-2147483648`` works.
+        t = cIntTypeForLiteral(stmnt.content, stmnt.rawstr)
+        if t is None: t = "int64_t" # genuine overflow; just take the largest
         t = CStdIntType(t)
         return getAstNode_newTypeInstance(funcEnv, t, ast.Num(n=stmnt.content)), t
     elif isinstance(stmnt, CEnumConst):
