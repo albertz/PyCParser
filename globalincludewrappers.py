@@ -255,6 +255,73 @@ class Wrapper:
                 name="_exit"
             )
 
+    def handle_dirent_h(self, state):
+        """POSIX <dirent.h>: ``DIR`` opaque type and ``opendir``/``readdir``/``closedir``.
+        """
+        state.macros["HAVE_DIRENT_H"] = Macro(rightside="1")
+        # ``DIR`` is opaque; ``struct dirent`` exposes ``d_name``.
+        # We model DIR as a struct stub; callers only ever take/return
+        # ``DIR *``.
+        if "DIR" not in state.typedefs:
+            DIR_struct = state.structs["DIR_internal"] = CStruct(name="DIR_internal")
+            DIR_struct.body = CBody(parent=DIR_struct)
+            state.typedefs["DIR"] = CTypedef(name="DIR", type=DIR_struct)
+        if "dirent" not in state.structs:
+            dirent_struct = state.structs["dirent"] = CStruct(name="dirent")
+            dirent_struct.body = CBody(parent=dirent_struct)
+            CVarDecl(parent=dirent_struct, name="d_ino",
+                     type=state.typedefs["ino_t"]).finalize(state)
+            CVarDecl(parent=dirent_struct, name="d_name",
+                     type=ctypes.c_char * 256).finalize(state)
+        for _fname, _res, _args in [
+            ("opendir",  ctypes.c_void_p, (ctypes.c_char_p,)),
+            ("readdir",  ctypes.c_void_p, (ctypes.c_void_p,)),
+            ("closedir", ctypes.c_int,    (ctypes.c_void_p,)),
+        ]:
+            if _fname not in state.funcs:
+                wrapCFunc(state, _fname, restype=_res, argtypes=_args)
+
+    def handle_sys_wait_h(self, state):
+        """POSIX <sys/wait.h>: ``wait`` and ``waitpid`` plus the
+        ``W*`` status-decoding macros used by ``posixmodule.c``."""
+        for _fname, _res, _args in [
+            ("wait",    ctypes.c_int, (ctypes.POINTER(ctypes.c_int),)),
+            ("waitpid", ctypes.c_int, (ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_int)),
+        ]:
+            if _fname not in state.funcs:
+                wrapCFunc(state, _fname, restype=_res, argtypes=_args)
+        # Status-decoding macros expand to bit-tests; provide minimal
+        # definitions matching POSIX.
+        for _m, _expr in [
+            ("WNOHANG",    "1"),
+            ("WUNTRACED",  "2"),
+            ("WIFEXITED",  "(((status) & 0x7f) == 0)"),
+            ("WEXITSTATUS", "(((status) & 0xff00) >> 8)"),
+            ("WIFSIGNALED", "(((status) & 0x7f) != 0 && ((status) & 0x7f) != 0x7f)"),
+            ("WTERMSIG",   "((status) & 0x7f)"),
+            ("WIFSTOPPED", "(((status) & 0xff) == 0x7f)"),
+            ("WSTOPSIG",   "(((status) & 0xff00) >> 8)"),
+        ]:
+            if _m in ("WIFEXITED", "WEXITSTATUS", "WIFSIGNALED",
+                      "WTERMSIG", "WIFSTOPPED", "WSTOPSIG"):
+                state.macros[_m] = Macro(args=("status",), rightside=_expr)
+            else:
+                state.macros[_m] = Macro(rightside=_expr)
+
+    def handle_utime_h(self, state):
+        """POSIX <utime.h>: ``struct utimbuf`` + ``utime``."""
+        if "utimbuf" not in state.structs:
+            utimbuf = state.structs["utimbuf"] = CStruct(name="utimbuf")
+            utimbuf.body = CBody(parent=utimbuf)
+            CVarDecl(parent=utimbuf, name="actime",
+                     type=state.typedefs["time_t"]).finalize(state)
+            CVarDecl(parent=utimbuf, name="modtime",
+                     type=state.typedefs["time_t"]).finalize(state)
+        if "utime" not in state.funcs:
+            wrapCFunc(state, "utime",
+                      restype=ctypes.c_int,
+                      argtypes=(ctypes.c_char_p, ctypes.c_void_p))
+
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
         state.macros["EXIT_FAILURE"] = Macro(rightside="1")
