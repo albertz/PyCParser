@@ -62,6 +62,12 @@ def test_interpreter_helloworld():
         os.dup2(pipes[0][0], sys.__stdin__.fileno())
         os.dup2(pipes[1][1], sys.__stdout__.fileno())
         os.dup2(pipes[1][1], sys.__stderr__.fileno())
+        # Pytest replaces ``sys.stdout``/``sys.stderr`` with capture
+        # wrappers that buffer into pytest's own storage instead of
+        # writing to fd 1.  After we ``dup2`` the pipe onto fd 1, the
+        # wrappers still bypass it -- so we restore the real ones.
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
 
         try:
             interp.runFunc("main", 2, ["./test", "abc", None])
