@@ -2113,11 +2113,33 @@ def findIdentifierInBody(body, name):
         return findIdentifierInBody(body.parent, name)
     return None
 
+_TAGGED_BODY_DICTS = {
+    "CStruct": "structs",
+    "CUnion": "unions",
+    "CEnum": "enums",
+}
+
+
 def make_type_from_typetokens(stateStruct, curCObj, type_tokens):
     if not type_tokens:
         return None
     if len(type_tokens) == 1 and isinstance(type_tokens[0], _CBaseWithOptBody):
         t = type_tokens[0]
+        # ``cpre3_parse_funcargs`` creates a fresh bodyless ``CEnum`` /
+        # ``CStruct`` / ``CUnion`` placeholder for tokens like
+        # ``enum NAME``.  If the surrounding scope already has a
+        # full-body declaration with the same tag, use that instead --
+        # downstream code (e.g. ``CEnum.getNumRange``) needs the body.
+        # The placeholder itself is still registered separately by its
+        # own finalize for forward-decl correctness; we just resolve
+        # the *use site* here.
+        if (getattr(t, "body", None) is None and t.name is not None):
+            dict_name = _TAGGED_BODY_DICTS.get(type(t).__name__)
+            if dict_name is not None:
+                resolved = findCObjTypeInNamespace(
+                    stateStruct, curCObj, dict_name, t.name)
+                if resolved is not None and getattr(resolved, "body", None) is not None:
+                    t = resolved
     elif tuple(type_tokens) in stateStruct.CBuiltinTypes:
         t = CBuiltinType(tuple(type_tokens))
     elif len(type_tokens) > 1 and type_tokens[-1] == "*":

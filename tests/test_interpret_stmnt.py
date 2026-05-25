@@ -3947,6 +3947,28 @@ def test_interpret_enum_stmnt_bitor():
     assert r.value == 42
 
 
+def test_interpret_enum_used_as_param_after_forward_decl():
+    # Mirrors CPython's Python/compile.c pattern: an enum is fully
+    # defined at file scope, then forward-declared in a prototype, and
+    # then used as a function parameter type.  The parser used to keep
+    # the bodyless placeholder ``CEnum`` from the parameter list, so
+    # ``getNumRange()`` later hit ``AttributeError`` on ``body=None``.
+    state = parse("""
+    enum fblocktype { LOOP, EXCEPT, FINALLY_TRY, FINALLY_END };
+    static int compiler_push_fblock(enum fblocktype, int);
+    static int compiler_push_fblock(enum fblocktype t, int b) {
+        return (int)t + b;
+    }
+    int f() {
+        return compiler_push_fblock(EXCEPT, 10);
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    r = interpreter.runFunc("f")
+    assert r.value == 11  # EXCEPT = 1, plus b=10.
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;
