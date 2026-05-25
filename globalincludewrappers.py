@@ -800,6 +800,14 @@ class Wrapper:
             st.st_gid = st_res.st_gid
             st.st_rdev = st_res.st_rdev
             st.st_size = st_res.st_size
+            st.st_atime = int(st_res.st_atime)
+            st.st_mtime = int(st_res.st_mtime)
+            st.st_ctime = int(st_res.st_ctime)
+            st.st_atime_nsec = getattr(st_res, "st_atime_ns", 0) % 1_000_000_000
+            st.st_mtime_nsec = getattr(st_res, "st_mtime_ns", 0) % 1_000_000_000
+            st.st_ctime_nsec = getattr(st_res, "st_ctime_ns", 0) % 1_000_000_000
+            st.st_blksize = getattr(st_res, "st_blksize", 0)
+            st.st_blocks = getattr(st_res, "st_blocks", 0)
             return ctypes.c_int(0)
 
         def _fstat(fd, st_ptr):
