@@ -16,7 +16,7 @@ from .cparser_utils import unicode, long, unichr, py_safe_identifier
 if typing.TYPE_CHECKING:
     from . import globalincludewrappers
 
-SpaceChars = " \t"
+SpaceChars = " \t\x0b\x0c"  # space, tab, vertical-tab, form-feed (C99 §5.1.1.2 white space)
 LowercaseLetterChars = "abcdefghijklmnopqrstuvwxyz"
 LetterChars = LowercaseLetterChars + LowercaseLetterChars.upper()
 NumberChars = "0123456789"

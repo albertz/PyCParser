@@ -184,6 +184,22 @@ def test_float_literal_with_f_suffix():
     assert not state._errors, "unexpected errors: %r" % state._errors
 
 
+def test_form_feed_and_vtab_treated_as_whitespace():
+    """Form-feed (\\x0c) and vertical-tab (\\x0b) are whitespace per C99
+    §5.1.1.2.  CPython source occasionally uses form-feed as a section
+    separator between large blocks (e.g. Modules/_io/_iomodule.c,
+    Modules/_io/bufferedio.c).  The cpre2 tokenizer used to bail with
+    ``didn't expected char '\\x0c' in state 0``."""
+    import cparser as _cparser
+    for sep in ("\x0c", "\x0b"):
+        src = "int a = 1;%sint b = 2;\n" % sep
+        state = State()
+        state.autoSetupSystemMacros()
+        _cparser.parse_code(src, state)
+        assert not state._errors, \
+            "src %r unexpected errors: %r" % (src, state._errors)
+
+
 def test_float_literal_trailing_dot():
     """`0.` is a valid C float literal (means 0.0) -- it may be followed
     by any non-digit token (operator, semicolon, comma, ...) and the
