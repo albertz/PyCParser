@@ -5332,5 +5332,109 @@ def test_interpret_switch_default_continue_in_while():
     assert r_val == 1, "expected found=1 (arr[3]), got %r" % (r,)
 
 
+def test_interpret_short_cast_left_shift_int_promotion():
+    """``(short)1 << 15`` must yield 32768 (int), not -32768 (truncated
+    short).  C99 integer promotions promote the ``(short)1`` operand
+    to ``int`` before the shift; the result type is ``int`` and the
+    value fits.
+
+    This is exactly the ``PyLong_MARSHAL_BASE`` macro pattern in
+    ``Python/marshal.c``::
+
+        #define PyLong_MARSHAL_SHIFT 15
+        #define PyLong_MARSHAL_BASE ((short)1 << PyLong_MARSHAL_SHIFT)
+
+    used by ``r_PyLong`` to validate marshal digits.  If the
+    interpreter wraps the cast-then-shift result back into ``c_short``
+    (which truncates 32768 to -32768), the digit-range check
+    ``md > PyLong_MARSHAL_BASE`` is false for *all* positive ``md``,
+    and reading any non-trivial marshalled int aborts with "digit out
+    of range in long".  This bug blocks ``_install_external_importers``
+    when removing the ``pymain_init_python_main`` override.
+    """
+    src = (
+        "int f(void) {\n"
+        "    return ((short)1 << 15);\n"
+        "}\n"
+        "int digit_ok(int md) {\n"
+        "    return md > ((short)1 << 15);\n"
+        "}\n"
+    )
+    state = parse(src)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.getFunc("f")()
+    r_val = r.value if hasattr(r, "value") else int(r)
+    assert r_val == 32768, "expected 32768 (int after promotion), got %d" % r_val
+    # A small positive digit must NOT exceed PyLong_MARSHAL_BASE.
+    r2 = interp.getFunc("digit_ok")(ctypes.c_int(1234))
+    r2_val = r2.value if hasattr(r2, "value") else int(r2)
+    assert r2_val == 0, \
+        "1234 should not exceed 32768; got cmp result %d" % r2_val
+
+
+def test_interpret_arith_with_enum_operand():
+    """C's "usual arithmetic conversions" promote ``enum`` to its
+    underlying integer type before arithmetic.  Mixing an enum with
+    a ``long`` (e.g. ``Py_ssize_t * enum PyUnicode_Kind`` in
+    ``_PyUnicode_FindMaxChar``) must yield ``long`` -- not an assertion
+    inside ``getCommonValueType``.
+    """
+    src = (
+        "enum Kind { K_1 = 1, K_2 = 2, K_4 = 4 };\n"
+        "long offset(long base, enum Kind k, long n) {\n"
+        "    return base + n * k;\n"
+        "}\n"
+    )
+    state = parse(src)
+    interp = Interpreter()
+    interp.register(state)
+    r = interp.getFunc("offset")(
+        ctypes.c_long(100), ctypes.c_int(2), ctypes.c_long(5))
+    r_val = r.value if hasattr(r, "value") else int(r)
+    assert r_val == 110, "expected 100 + 5*2 = 110, got %d" % r_val
+
+
+def test_interpret_nested_ternary_mixed_int_unsigned():
+    """Translating a function whose body returns a nested ternary with
+    branches of mixed ``int`` and ``unsigned int`` types must not
+    assert.  This is the ``PyUnicode_MAX_CHAR_VALUE`` macro pattern,
+    used by ``_PyUnicode_FindMaxChar`` in unicodeobject.c::
+
+        return (cond ?
+                (0x7f) :
+                (cond2 ?
+                 (0xffU) :
+                 (cond3 ?
+                  (0xffffU) :
+                  (0x10ffffU))));
+
+    Outer ternary mixes ``int`` (0x7f) and ``unsigned int`` (inner).
+    Per C usual arithmetic conversions the result is ``unsigned int``;
+    cparser used to fall through to the bottom-of-getCommonValueType
+    ``assert isSameType`` because of how the literals are typed.
+    """
+    src = (
+        "unsigned int max_char(int kind, int is_ascii) {\n"
+        "    return (is_ascii ?\n"
+        "            (0x7f) :\n"
+        "            (kind == 1 ?\n"
+        "             (0xffU) :\n"
+        "             (kind == 2 ?\n"
+        "              (0xffffU) :\n"
+        "              (0x10ffffU))));\n"
+        "}\n"
+    )
+    state = parse(src)
+    interp = Interpreter()
+    interp.register(state)
+    # Just translating + calling the function exercises the type-merge
+    # path that failed.
+    r = interp.getFunc("max_char")(ctypes.c_int(1), ctypes.c_int(0))
+    r_val = r.value if hasattr(r, "value") else int(r)
+    # kind=1 / not-ascii -> 0xff
+    assert r_val == 0xff, "expected 0xff, got 0x%x" % r_val
+
+
 if __name__ == '__main__':
     helpers_test.main(globals())

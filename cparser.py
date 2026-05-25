@@ -3358,9 +3358,63 @@ def getCommonValueType(stateStruct, t1, t2):
     if isinstance(t1, CStdIntType) and isinstance(t2, CBuiltinType):
         t1 = getBuiltinTypeForStdIntType(stateStruct, t1)
         return getCommonValueType(stateStruct, t1, t2)
+    # C's "usual arithmetic conversions" promote ``enum`` to its
+    # underlying integer type before combining with another arithmetic
+    # operand.  The standard leaves the exact underlying type
+    # implementation-defined but compatible with char / signed int /
+    # unsigned int; in practice (and on the ABIs we target) it is
+    # ``int``.  Substitute ``int`` and recurse so e.g. ``Py_ssize_t *
+    # (enum PyUnicode_Kind)`` resolves to ``long`` instead of asserting.
+    if isinstance(t1, CEnum):
+        return getCommonValueType(stateStruct, CBuiltinType(("int",)), t2)
+    if isinstance(t2, CEnum):
+        return getCommonValueType(stateStruct, t1, CBuiltinType(("int",)))
     # Not a basic type.
-    assert isSameType(stateStruct, t1, t2)
+    assert isSameType(stateStruct, t1, t2), \
+        "getCommonValueType: incompatible non-basic types: t1=%r t2=%r" % (t1, t2)
     return t1
+
+
+def _integerPromote(t):
+    """Apply C99 §6.3.1.1 "integer promotions" to a type.
+
+    Types of rank lower than ``int`` (``char``, ``short``, ``_Bool``,
+    enum, bit-fields whose type is one of those) are promoted to
+    ``int`` if ``int`` can represent all values of the original type,
+    otherwise to ``unsigned int``.  Larger ranks (``int``, ``long``,
+    ``long long``, and their unsigned variants) are unchanged.  On
+    the ABIs we target (LP64), ``int`` represents all values of
+    ``signed char``, ``unsigned char``, ``signed short``, ``unsigned
+    short`` and ``_Bool``, so the promotion is uniformly to ``int``.
+
+    Returns ``t`` unchanged for non-arithmetic / non-integer types.
+    """
+    if isinstance(t, CEnum):
+        return CBuiltinType(("int",))
+    if isinstance(t, CBuiltinType):
+        tup = t.builtinType
+        # Anything that's already (un)signed int/long/long-long stays.
+        if "long" in tup:
+            return t
+        if tup in (("int",), ("signed",), ("signed", "int"),
+                   ("unsigned",), ("unsigned", "int")):
+            return t
+        # Smaller integer types -> int.
+        if tup in (("char",), ("signed", "char"), ("unsigned", "char"),
+                   ("short",), ("signed", "short"), ("short", "int"),
+                   ("signed", "short", "int"),
+                   ("unsigned", "short"), ("unsigned", "short", "int"),
+                   ("_Bool",), ("bool",)):
+            return CBuiltinType(("int",))
+        # Floats / unknown integer shapes: leave alone.
+        return t
+    if isinstance(t, CStdIntType):
+        # int8/16 -> int, others (int32/64, uint32/64, size_t, ...) stay.
+        if t.name in ("int8_t", "uint8_t", "int16_t", "uint16_t",
+                      "byte", "wchar_t"):
+            return CBuiltinType(("int",))
+        return t
+    return t
 
 
 def getStdIntTypeForCType(stateStruct, c_type):
@@ -3991,7 +4045,18 @@ class CStatement(_CBaseWithOptBody):
             return CBuiltinType(("char",))  # 0 or 1, not sure
         elif self._op.content in ("&&","||"):
             return CBuiltinType(("char",))  # 0 or 1, not sure
-        elif self._op.content in ("<<",">>","<<=",">>="):  # compare
+        elif self._op.content in ("<<",">>"):
+            # C99 §6.5.7: integer promotions are performed on each
+            # operand; the result has the type of the *promoted* left
+            # operand.  Without the promotion, ``(short)1 << 15`` (the
+            # ``PyLong_MARSHAL_BASE`` macro in Python/marshal.c) would
+            # wrap the result back to ``c_short`` and truncate 32768 to
+            # -32768, breaking ``r_PyLong``'s digit-range check.
+            return _integerPromote(v1)
+        elif self._op.content in ("<<=", ">>="):
+            # Compound assignment: result type is the (un-promoted)
+            # type of the lvalue; the promotion happens for the
+            # arithmetic only.  Keep v1.
             return v1
         elif self._op.content in ("=","*=","-=","+=","/=","%=","&=","^=","|="):  # assign
             return v1
