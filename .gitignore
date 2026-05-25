@@ -1,8 +1,7 @@
 /.idea
 *.pyc
-
-# VIM buffer
 .*.swp
+.history*
 
 # for caching. see caching.py
 .cparser_caching
