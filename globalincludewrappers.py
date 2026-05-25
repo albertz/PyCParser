@@ -855,6 +855,9 @@ class Wrapper:
             ("gid_t", ("unsigned", "int")),
             ("off_t", ("long",)),
             ("pid_t", ("int",)),
+            # time_t is technically from <time.h> but <sys/types.h>
+            # also exposes it on POSIX; struct stat needs it.
+            ("time_t", ("long",)),
         ]:
             if _name not in state.typedefs:
                 state.typedefs[_name] = CTypedef(name=_name, type=CBuiltinType(_ctype_name))
