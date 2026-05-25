@@ -229,6 +229,22 @@ class Wrapper:
             ("getcwd", ctypes.c_char_p,  (ctypes.c_char_p, ctypes.c_size_t)),
             ("getpid", ctypes.c_int,     ()),
             ("lseek",  ctypes.c_long,    (ctypes.c_int, ctypes.c_long, ctypes.c_int)),
+            ("access", ctypes.c_int,     (ctypes.c_char_p, ctypes.c_int)),
+            ("chdir",  ctypes.c_int,     (ctypes.c_char_p,)),
+            ("rmdir",  ctypes.c_int,     (ctypes.c_char_p,)),
+            ("unlink", ctypes.c_int,     (ctypes.c_char_p,)),
+            ("ttyname", ctypes.c_char_p, (ctypes.c_int,)),
+            ("system", ctypes.c_int,     (ctypes.c_char_p,)),
+            ("umask",  ctypes.c_int,     (ctypes.c_int,)),
+            ("fork",   ctypes.c_int,     ()),
+            ("getegid", ctypes.c_int,    ()),
+            ("geteuid", ctypes.c_int,    ()),
+            ("getgid",  ctypes.c_int,    ()),
+            ("getppid", ctypes.c_int,    ()),
+            ("getuid",  ctypes.c_int,    ()),
+            ("execv",  ctypes.c_int,     (ctypes.c_char_p, ctypes.c_void_p)),
+            ("execve", ctypes.c_int,     (ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p)),
+            ("pipe",   ctypes.c_int,     (ctypes.POINTER(ctypes.c_int),)),
         ]:
             if _fname not in state.funcs:
                 wrapCFunc(state, _fname, restype=_res, argtypes=_args)
