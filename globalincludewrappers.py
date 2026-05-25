@@ -822,6 +822,14 @@ class Wrapper:
 
         state.funcs["fstat"] = CWrapValue(_fstat, name="fstat", returnType=ctypes.c_int)
         state.funcs["stat"] = CWrapValue(_stat, name="stat", returnType=ctypes.c_int)
+        # chmod/mkdir live in <sys/stat.h> on POSIX.
+        for _fname, _res, _args in [
+            ("chmod", ctypes.c_int, (ctypes.c_char_p, ctypes.c_int)),
+            ("mkdir", ctypes.c_int, (ctypes.c_char_p, ctypes.c_int)),
+            ("lstat", ctypes.c_int, (ctypes.c_char_p, ctypes.c_void_p)),
+        ]:
+            if _fname not in state.funcs:
+                wrapCFunc(state, _fname, restype=_res, argtypes=_args)
         state.macros["S_IFMT"] = Macro(rightside="0170000")
         state.macros["S_IFDIR"] = Macro(rightside="0040000")
         state.macros["S_IFREG"] = Macro(rightside="0100000")
