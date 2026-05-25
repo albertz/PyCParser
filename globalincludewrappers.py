@@ -780,7 +780,14 @@ class Wrapper:
             CVarDecl(parent=struct_stat, name="st_gid", type=state.typedefs["gid_t"]).finalize(state)
             CVarDecl(parent=struct_stat, name="st_rdev", type=state.typedefs["dev_t"]).finalize(state)
             CVarDecl(parent=struct_stat, name="st_size", type=state.typedefs["off_t"]).finalize(state)
-            # ... add more if needed
+            CVarDecl(parent=struct_stat, name="st_atime", type=state.typedefs["time_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_mtime", type=state.typedefs["time_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_ctime", type=state.typedefs["time_t"]).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_atime_nsec", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_mtime_nsec", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_ctime_nsec", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_blksize", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=struct_stat, name="st_blocks", type=CBuiltinType(("long",))).finalize(state)
         def _fill_stat_struct(st_ptr, st_res):
             if not st_ptr:
                 return ctypes.c_int(-1)
