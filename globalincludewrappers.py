@@ -698,6 +698,10 @@ class Wrapper:
         state.macros["SIG_IGN"] = Macro(rightside="((sig_t)1)")
         state.macros["SIG_ERR"] = Macro(rightside="((sig_t)-1)")
         wrapCFunc(state, "raise", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
+        # ``kill`` is technically declared in <signal.h> on POSIX.
+        if "kill" not in state.funcs:
+            wrapCFunc(state, "kill", restype=ctypes.c_int,
+                      argtypes=(ctypes.c_int, ctypes.c_int))
     def handle_locale_h(self, state):
         import locale as _locale
         struct_lconv = state.structs["lconv"] = CStruct(name="lconv") # TODO
