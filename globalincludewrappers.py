@@ -543,6 +543,11 @@ class Wrapper:
         state.macros["O_APPEND"] = Macro(rightside="0x0008")
         state.macros["O_NONBLOCK"] = Macro(rightside="0x0004")
         state.macros["O_CLOEXEC"] = Macro(rightside="0x01000000")
+        # Linux value; needed by Modules/_io/fileio.c for the 'x'
+        # (exclusive-create) open mode.  Values differ across OSes
+        # but the precise integer is unimportant for our interpreter
+        # path -- we never actually pass it to a real ``open(2)``.
+        state.macros["O_EXCL"] = Macro(rightside="0x0080")
         # F_* command codes for fcntl()
         state.macros["F_GETFD"] = Macro(rightside="1")
         state.macros["F_SETFD"] = Macro(rightside="2")
