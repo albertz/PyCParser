@@ -745,6 +745,21 @@ class State(object):
         self._global_include_wrapper = None  # type: typing.Optional[globalincludewrappers.Wrapper]
         self._global_include_list = []
         self._construct_struct_type_stack = []  # via _getCTypeStruct
+        # Per-TU bookkeeping for the file-scope-static rename pass in
+        # ``cparser.parse``: while set to a list (vs ``None``),
+        # ``_addToParent`` appends ``(dictName, name)`` whenever a
+        # state-level dict entry is newly bound to a different object.
+        # Lets the post-parse rename iterate only this TU's changes
+        # instead of walking all of ``state.*`` (O(state size) per
+        # parse otherwise).
+        self._tu_changed_decls = None
+        # Companion list of decls orphaned during this TU -- when a
+        # state-level dict entry is overwritten (eg. forward decl ->
+        # definition for the same name), the OLD object is no longer
+        # in the dict but call sites parsed in the interim still
+        # reference it.  Recording it here lets the rename pass update
+        # ``old.name`` directly instead of walking bodies to find it.
+        self._tu_orphans = None
 
     @classmethod
     def getDictNameForType(cls, objType):
@@ -843,19 +858,17 @@ class State(object):
 
         try:
             import codecs
-            f = codecs.open(fullfilename, "r", self.encoding)
+            with codecs.open(fullfilename, "r", self.encoding) as f:
+                content = f.read()
         except Exception as e:
             self.error("cannot open local include-file '" + filename + "': " + str(e))
             return "", None
 
-        def reader():
-            while True:
-                c = f.read(1)
-                if len(c) == 0: break
-                yield c
-        reader = reader()
-
-        return reader, fullfilename
+        # ``iter(content)`` yields characters one at a time at C speed.
+        # Reading the whole file once (vs ``f.read(1)`` per char) cuts
+        # ~8s out of CPython parse -- ``codecs.read`` was being hit 8M
+        # times and is expensive per call.
+        return iter(content), fullfilename
 
     def readGlobalInclude(self, filename):
         """
@@ -2509,8 +2522,8 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                            sibling_name[:-1], other,
                            dictName[:-1], obj))
 
+        old_obj = d.get(obj.name)  # may be None if first time
         if obj.name in d:
-            old_obj = d[obj.name]
             old_has_body = getattr(old_obj, "body", None) is not None
             new_has_body = getattr(obj, "body", None) is not None
 
@@ -2697,6 +2710,24 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                     stateStruct.error("finalize " + str(obj) + ": a previous equally named declaration exists: " + str(d[obj.name]))
         else:
             d[obj.name] = obj
+
+        # Record this dict touch for the post-parse static-rename pass.
+        # We only care about state-level dicts (``obj.parent.body is
+        # stateStruct``); function-body-scope statics live elsewhere
+        # and aren't subject to the auto-scoping rename.  Recording
+        # ``(dictName, obj.name)`` whenever the dict's current entry IS
+        # ``obj`` captures both "first add" and "overwrite with new
+        # body" cases without misfiring on the
+        # keep-the-old-pre-decl branches.  Also track ``old_obj`` (if
+        # it existed and is now displaced) as an orphan so the rename
+        # pass can update its ``.name`` directly without walking
+        # bodies to find it.
+        if stateStruct._tu_changed_decls is not None \
+                and obj.parent.body is stateStruct \
+                and d.get(obj.name) is obj:
+            stateStruct._tu_changed_decls.append((dictName, obj.name))
+            if old_obj is not None and old_obj is not obj:
+                stateStruct._tu_orphans.append((dictName, old_obj))
     else:
         assert listName is not None
         d.append(obj)
@@ -5419,23 +5450,18 @@ def parse(filename, state=None):
         state = State()
         state.autoSetupSystemMacros()
 
-    # Snapshot pre-parse object identities.  Lets the post-parse
-    # rename pass identify decls whose object identity is new or
-    # replaced this parse (the roots that can contain orphan refs)
-    # and stop descent at pre-existing decls' bodies.
-    pre_ids = {}
-    pre_id_set = set()
-    for dn in _STATIC_SCOPE_DICTS:
-        for name, obj in getattr(state, dn).items():
-            pre_ids[(dn, name)] = id(obj)
-            pre_id_set.add(id(obj))
-
-    preprocessed = state.preprocess_file(filename, local=True)
-    tokens = cpre2_parse(state, preprocessed)
-    cpre3_parse(state, tokens)
-
-    _rename_tu_statics(state, pre_ids, pre_id_set,
-                       _scope_prefix_from_filename(filename))
+    prev_tracker = state._tu_changed_decls
+    prev_orphans = state._tu_orphans
+    state._tu_changed_decls = []
+    state._tu_orphans = []
+    try:
+        preprocessed = state.preprocess_file(filename, local=True)
+        tokens = cpre2_parse(state, preprocessed)
+        cpre3_parse(state, tokens)
+        _rename_tu_statics(state, _scope_prefix_from_filename(filename))
+    finally:
+        state._tu_changed_decls = prev_tracker
+        state._tu_orphans = prev_orphans
 
     return state
 
@@ -5608,7 +5634,7 @@ def _scope_prefix_from_filename(filename):
     return re.sub(r"\W", "_", base)
 
 
-def _rename_tu_statics(state, pre_ids, pre_id_set, scope_prefix):
+def _rename_tu_statics(state, scope_prefix):
     """After parsing a translation unit, rename any newly-added file-scope
     ``static`` declarations so they cannot collide with another TU's
     same-named statics.
@@ -5627,72 +5653,52 @@ def _rename_tu_statics(state, pre_ids, pre_id_set, scope_prefix):
     Subtlety: a forward decl followed by a definition produces TWO
     distinct ``CFunc`` objects with the same name.  The dict entry
     gets overwritten with the definition, but call sites parsed in
-    between hold a pointer to the orphan forward-decl object.  We walk
-    new-this-parse decl subtrees to rename those orphans too.
+    between hold a pointer to the orphan forward-decl object.
+    ``_addToParent`` records each orphan into ``state._tu_orphans`` at
+    the moment it's displaced, so we can update ``old.name`` directly
+    instead of walking bodies to find it.
 
-    Cost: ``pre_ids`` (``(dn, name) -> id(obj)``) and ``pre_id_set``
-    (set of all pre-parse object ids) let us:
-      1. Use new-or-replaced decls as the walk roots -- those are the
-         only places this parse's orphan refs can live.
-      2. Stop descending at pre-existing decls -- their bodies were
-         parsed earlier and can't contain orphans of this parse's
-         renames, which avoids re-walking all of ``state`` per parse.
+    Cost: O(changed-this-parse + orphans-this-parse).  No state-wide
+    scans, no AST walk.
     """
-    type_to_dict = {
-        CFunc: "funcs", CVarDecl: "vars", CTypedef: "typedefs",
-        CStruct: "structs", CUnion: "unions", CEnum: "enums",
-    }
+    changed = state._tu_changed_decls
+    if not changed:
+        return
+
+    seen = set()
     rename_map = {}  # (dict_name, bare_name) -> mangled
-    new_roots = []
-    for dn in _STATIC_SCOPE_DICTS:
+    for entry in changed:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        dn, name = entry
         d = getattr(state, dn)
-        for name, obj in d.items():
-            if pre_ids.get((dn, name)) == id(obj):
-                continue  # unchanged this parse
-            new_roots.append(obj)
-            if "static" in getattr(obj, "attribs", ()):
-                rename_map[(dn, name)] = "_static_%s_%s" % (scope_prefix, name)
+        obj = d.get(name)
+        if obj is None:
+            continue
+        if "static" in getattr(obj, "attribs", ()):
+            rename_map[entry] = "_static_%s_%s" % (scope_prefix, name)
     if not rename_map:
         return
-    name_to_mangled = {name: mangled for (_dn, name), mangled in rename_map.items()}
 
-    visited = set()
-    stack = list(new_roots)
-    target_types = (CFunc, CVarDecl, CTypedef, CStruct, CUnion, CEnum)
-    while stack:
-        node = stack.pop()
-        nid = id(node)
-        if nid in visited:
-            continue
-        visited.add(nid)
-        if isinstance(node, target_types):
-            name = getattr(node, "name", None)
-            if name in name_to_mangled \
-                    and "static" in getattr(node, "attribs", ()):
-                dn = type_to_dict.get(type(node))
-                if dn is not None and (dn, name) in rename_map:
-                    node.name = name_to_mangled[name]
-            # Stop descending at pre-existing decls -- their bodies were
-            # parsed before this TU and can't reference orphans created
-            # this parse.  Without this guard the walk fans out across
-            # the whole callgraph and becomes O(parsed size) per parse.
-            if nid in pre_id_set:
-                continue
-        if isinstance(node, (list, tuple)):
-            stack.extend(node)
-        elif isinstance(node, dict):
-            stack.extend(node.values())
-        elif hasattr(node, "__dict__"):
-            for k, v in vars(node).items():
-                if k == "parent":
-                    continue
-                if v is None or isinstance(v, (int, float, str, bool, bytes)):
-                    continue
-                stack.append(v)
-
+    # Rename the dict-resident decls in place.  Within-TU references
+    # hold the same object pointer, so updating ``obj.name``
+    # propagates automatically.
     for (dn, bare_name), mangled in rename_map.items():
         d = getattr(state, dn)
-        d[mangled] = d.pop(bare_name)
+        obj = d.pop(bare_name)
+        obj.name = mangled
+        d[mangled] = obj
+
+    # Rename orphans displaced during this parse (forward-decl objects
+    # overwritten by a later definition).  References captured before
+    # the overwrite still point to them, so updating ``.name`` keeps
+    # those references resolvable at code-gen time.
+    for dn, old in state._tu_orphans:
+        bare = getattr(old, "name", None)
+        mangled = rename_map.get((dn, bare))
+        if mangled is not None and "static" in getattr(old, "attribs", ()):
+            old.name = mangled
 
 
 if __name__ == '__main__':
