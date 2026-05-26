@@ -1006,11 +1006,40 @@ class Wrapper:
         ]:
             if _fname not in state.funcs:
                 wrapCFunc(state, _fname, restype=_res, argtypes=_args)
-        state.macros["S_IFMT"] = Macro(rightside="0170000")
-        state.macros["S_IFDIR"] = Macro(rightside="0040000")
-        state.macros["S_IFREG"] = Macro(rightside="0100000")
-        state.macros["S_ISDIR"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFDIR)")
-        state.macros["S_ISREG"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFREG)")
+        # POSIX file-type bits (sys/stat.h octal constants).
+        state.macros["S_IFMT"]   = Macro(rightside="0170000")
+        state.macros["S_IFSOCK"] = Macro(rightside="0140000")
+        state.macros["S_IFLNK"]  = Macro(rightside="0120000")
+        state.macros["S_IFREG"]  = Macro(rightside="0100000")
+        state.macros["S_IFBLK"]  = Macro(rightside="0060000")
+        state.macros["S_IFDIR"]  = Macro(rightside="0040000")
+        state.macros["S_IFCHR"]  = Macro(rightside="0020000")
+        state.macros["S_IFIFO"]  = Macro(rightside="0010000")
+        # Set-user-ID / set-group-ID / sticky bits.
+        state.macros["S_ISUID"]  = Macro(rightside="0004000")
+        state.macros["S_ISGID"]  = Macro(rightside="0002000")
+        state.macros["S_ISVTX"]  = Macro(rightside="0001000")
+        # User / group / other permission bits.
+        state.macros["S_IRWXU"]  = Macro(rightside="00700")
+        state.macros["S_IRUSR"]  = Macro(rightside="00400")
+        state.macros["S_IWUSR"]  = Macro(rightside="00200")
+        state.macros["S_IXUSR"]  = Macro(rightside="00100")
+        state.macros["S_IRWXG"]  = Macro(rightside="00070")
+        state.macros["S_IRGRP"]  = Macro(rightside="00040")
+        state.macros["S_IWGRP"]  = Macro(rightside="00020")
+        state.macros["S_IXGRP"]  = Macro(rightside="00010")
+        state.macros["S_IRWXO"]  = Macro(rightside="00007")
+        state.macros["S_IROTH"]  = Macro(rightside="00004")
+        state.macros["S_IWOTH"]  = Macro(rightside="00002")
+        state.macros["S_IXOTH"]  = Macro(rightside="00001")
+        # Type-test macros.
+        state.macros["S_ISDIR"]  = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFDIR)")
+        state.macros["S_ISCHR"]  = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFCHR)")
+        state.macros["S_ISBLK"]  = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFBLK)")
+        state.macros["S_ISREG"]  = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFREG)")
+        state.macros["S_ISFIFO"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFIFO)")
+        state.macros["S_ISLNK"]  = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFLNK)")
+        state.macros["S_ISSOCK"] = Macro(args=("m",), rightside="(((m) & S_IFMT) == S_IFSOCK)")
 
     def handle_sys_types_h(self, state):
         """Provide basic POSIX scalar typedefs from <sys/types.h>."""
