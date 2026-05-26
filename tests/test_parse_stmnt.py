@@ -1140,6 +1140,23 @@ def test_two_function_scope_statics_in_different_functions_no_warning():
     """)
 
 
+def test_for_loop_init_with_multiple_declarators():
+    """``for (T a = 0, b = 1; ...; ...)`` must register BOTH ``a`` and
+    ``b`` in the loop's scope.  Real-world hit: CPython's peephole.c:144
+    ``for (Py_ssize_t i = 0, pos = c_start; i < n; i++, pos++)`` --
+    cparser used to register only ``i`` and report 7 follow-on errors
+    for ``pos`` being unknown."""
+    parse("""
+    int f(int n) {
+        int sum = 0;
+        for (int i = 0, pos = 100; i < n; i++, pos++) {
+            sum += pos;
+        }
+        return sum;
+    }
+    """)
+
+
 def test_file_and_function_scope_same_name_static_no_error():
     """File-scope ``static int X`` and function-scope ``static int X``
     in another function are SEPARATE C objects (different scopes,

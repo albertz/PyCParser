@@ -2229,6 +2229,30 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_for_loop_init_with_multiple_declarators_runtime():
+    """``for (int i = 0, pos = start; ...)`` must initialize and update
+    BOTH ``i`` and ``pos`` at runtime.  Mirrors CPython's
+    peephole.c:144 ``for (Py_ssize_t i = 0, pos = c_start; i < n; i++,
+    pos++)``."""
+    state = parse("""
+    int f(int n, int start) {
+        int sum = 0;
+        for (int i = 0, pos = start; i < n; i++, pos++) {
+            sum += pos;
+        }
+        return sum;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # sum of 3 iterations starting at 10: 10 + 11 + 12 = 33.
+    assert interp.runFunc("f", 3, 10).value == 33
+    # sum of 0 iterations: 0 (loop body never runs).
+    assert interp.runFunc("f", 0, 99).value == 0
+    # sum of 5 iterations starting at -2: -2 + -1 + 0 + 1 + 2 = 0.
+    assert interp.runFunc("f", 5, -2).value == 0
+
+
 def test_file_and_function_scope_same_name_static_are_distinct_at_runtime():
     """File-scope ``static int X`` and function-scope ``static int X``
     are separate C objects.  The interpreter mangles function-scope

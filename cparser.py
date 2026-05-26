@@ -4628,6 +4628,13 @@ CControlStructures = dict(map(lambda c: (c.Keyword, c), [
 def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToList, input_iter):
     brackets = list(parentCObj._bracketlevel)
     curCObj = _CBaseWithOptBody(parent=parentCObj)
+    # For C99 for-init ``for (T a = 0, b = 1; ...; ...)``: when ``,``
+    # separates additional declarators sharing the same type, we
+    # accumulate the earlier ones here so we can bundle ALL the init
+    # declarators as a single list-valued entry in ``addToList`` when
+    # ``;`` arrives.  ``astForCFor`` knows how to unpack a list-valued
+    # ``args[0]``.
+    pending_init_vars = []
     def _make_statement(o):
         assert not o.isDerived()
         CStatement.overtake(o)
@@ -4699,7 +4706,14 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
             stateStruct.error("cpre3 parse statements in brackets: unexpected closing bracket '" + token.content + "' after " + str(curCObj) + " at bracket level " + str(brackets))
         elif token == sepToken:
             _finalizeCObj(curCObj)
-            addToList.append(curCObj)
+            if isinstance(sepToken, CSemicolon) and pending_init_vars:
+                # Multi-declarator for-init: emit the pending list +
+                # the just-finalized current obj as ONE addToList entry.
+                pending_init_vars.append(curCObj)
+                addToList.append(pending_init_vars)
+                pending_init_vars = []
+            else:
+                addToList.append(curCObj)
             # For C99 for-loop init (sepToken=semicolon): make declared vars visible
             # in subsequent statements (condition and increment parts).
             if isinstance(sepToken, CSemicolon) and isinstance(curCObj, CVarDecl) and curCObj.name:
@@ -4711,6 +4725,34 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
                         break
                     p = getattr(p, 'parent', None)
             curCObj = _CBaseWithOptBody(parent=parentCObj)
+        elif (isinstance(sepToken, CSemicolon)
+              and token == COp(",")
+              and isinstance(curCObj, CVarDecl)
+              and curCObj.name):
+            # Multi-declarator separator inside a for-loop init:
+            # ``for (T a = 0, b = 1; ...; ...)`` -- finalize ``a``,
+            # make it visible to subsequent statements, then start a
+            # fresh declarator carrying the same type tokens for ``b``.
+            # Copy BEFORE finalize so the new declarator inherits the
+            # type tokens but NOT ``_finalized=True`` (mirrors the
+            # body-parser ``,`` handling around line ~5028).
+            oldObj = curCObj
+            newObj = oldObj.copy()
+            newObj._already_added = False
+            oldObj.finalize(stateStruct, addToContent=False)
+            newObj.clearDeclForNextVar()
+            newObj.name = None
+            newObj.body = None
+            newObj.parent = parentCObj
+            p = parentCObj
+            while p is not None:
+                if hasattr(p, 'body') and isinstance(p.body, CBody):
+                    if oldObj.name not in p.body.vars:
+                        p.body.vars[oldObj.name] = oldObj
+                    break
+                p = getattr(p, 'parent', None)
+            pending_init_vars.append(oldObj)
+            curCObj = newObj
         elif isinstance(token, CSemicolon): # if the sepToken is not the semicolon, we don't expect it at all
             stateStruct.error("cpre3 parse statements in brackets: ';' not expected, separator should be " + str(sepToken))
         elif (token == COp("*") and isinstance(sepToken, CSemicolon)

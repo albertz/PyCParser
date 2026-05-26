@@ -2074,7 +2074,15 @@ def astForCFor(funcEnv, stmnt):
     a.value = ast.Name(id="True", ctx=ast.Load())
     ifAst.body.append(a)
     if stmnt.args[0]:  # could be empty
-        cStatementToPyAst(funcEnv, stmnt.args[0])
+        init = stmnt.args[0]
+        # Multi-declarator for-init -- ``for (T a = 0, b = 1; ...)`` --
+        # arrives as a list bundled by cpre3_parse_statements_in_brackets.
+        # Unpack and emit each declarator separately.
+        if isinstance(init, list):
+            for sub in init:
+                cStatementToPyAst(funcEnv, sub)
+        else:
+            cStatementToPyAst(funcEnv, init)
 
     whileAst = ast.While(body=[], orelse=[], test=ast.Name(id="True", ctx=ast.Load()))
     ifAst.body.append(whileAst)
