@@ -1172,5 +1172,60 @@ def test_file_and_function_scope_same_name_static_no_error():
     """)
 
 
+# ---------------------------------------------------------------------------
+# _CBaseWithOptBody._copy: classes and callables as field values.
+#
+# When the parser copies a CObj (e.g. during multi-declarator parsing
+# such as ``int *a = ..., *b = ...;``), it walks every field via
+# ``vars()`` and recursively copies each value.  Fields can hold
+# classes (e.g. ``CWrapValue.returnType = CVoidType`` -- the class
+# itself, as a sentinel) or Python callables (e.g. the function
+# backing a ``CWrapValue`` set up by ``handle_assert_h``).  Both
+# are immutable references -- ``_copy`` must return them as-is rather
+# than crashing.
+#
+# Real-world trigger seen in cpython.py: parsing arraymodule.c after
+# the global include wrappers register things like
+# ``state.funcs["assert"] = CWrapValue(assert_wrap,
+# returnType=CVoidType, ...)``.  Reproducing that end-to-end requires
+# the full multi-file CPython parse state; the unit tests below
+# construct the same data shape directly and assert that ``copy()``
+# survives.
+# ---------------------------------------------------------------------------
+
+def test_copy_with_class_field_value():
+    """``_copy`` must accept a class object as a field value (the
+    ``CWrapValue.returnType = CVoidType`` sentinel pattern) and
+    return it unchanged."""
+    from cparser.cparser import CWrapValue, CVoidType, CVarDecl, CBuiltinType
+    # Use a callable as ``.value`` to avoid CWrapValue's int->c_int
+    # auto-wrapping (which would hit a separate ctypes-instance case).
+    # The point of this test is the *class* in ``returnType``.
+    wrap = CWrapValue(value=lambda: None, name="dummy", returnType=CVoidType)
+    decl = CVarDecl(parent=None, name="x", type=CBuiltinType(("int",)))
+    decl._type_tokens = [wrap]
+    new = decl.copy()
+    assert new is not decl
+    assert len(new._type_tokens) == 1
+    assert new._type_tokens[0] is not wrap  # was copied
+    # The class field is preserved by identity (no copy).
+    assert new._type_tokens[0].returnType is CVoidType
+
+
+def test_copy_with_callable_field_value():
+    """``_copy`` must accept a Python callable as a field value (the
+    function backing a ``CWrapValue``, e.g. ``handle_assert_h``'s
+    ``assert_wrap``) and return it unchanged."""
+    from cparser.cparser import CWrapValue, CVarDecl, CBuiltinType
+    def my_callable(*args):
+        pass
+    wrap = CWrapValue(value=my_callable, name="my_func")
+    decl = CVarDecl(parent=None, name="x", type=CBuiltinType(("int",)))
+    decl._type_tokens = [wrap]
+    new = decl.copy()
+    # The callable is preserved by identity (no copy).
+    assert new._type_tokens[0].value is my_callable
+
+
 if __name__ == "__main__":
     main(globals())

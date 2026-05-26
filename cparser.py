@@ -2286,6 +2286,15 @@ class _CBaseWithOptBody(object):
     def _copy(self, value, parent=None, name=None, leave_out_attribs=()):
         if isinstance(value, (int, long, float, str, unicode)) or value is None:
             return value
+        elif isinstance(value, type) or callable(value):
+            # ``value`` is a class or callable (e.g. ``CVoidType`` as a
+            # sentinel, a ctypes class like ``c_int``, or the Python
+            # callable backing a ``CWrapValue``).  These are
+            # immutable references; no copy needed.  Without this
+            # case, e.g. ``CWrapValue(assert_wrap, ...)`` would crash
+            # ``_copy`` when a wrapping CVarDecl is copied during
+            # multi-declarator parsing.
+            return value
         elif isinstance(value, list):
             return [self._copy(v, parent=parent) for v in value]
         elif isinstance(value, tuple):
