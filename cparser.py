@@ -2283,7 +2283,7 @@ class _CBaseWithOptBody(object):
             assert isinstance(self.body, CBody)
             self.body.contentlist.append(obj)
 
-    def _copy(self, value, parent=None, name=None, leave_out_attribs=()):
+    def _copy(self, value, parent=None, name=None, leave_out_attribs=(), visited=None):
         if isinstance(value, (int, long, float, str, unicode)) or value is None:
             return value
         elif isinstance(value, type) or callable(value):
@@ -2295,30 +2295,63 @@ class _CBaseWithOptBody(object):
             # ``_copy`` when a wrapping CVarDecl is copied during
             # multi-declarator parsing.
             return value
-        elif isinstance(value, list):
-            return [self._copy(v, parent=parent) for v in value]
+        elif isinstance(value, (ctypes._SimpleCData, ctypes._Pointer, ctypes.Array, ctypes.Structure, ctypes.Union)):
+            # ctypes value instances (e.g. ``c_int(0)`` or a
+            # ``POINTER(c_int)`` instance like ``LP_c_int``) are
+            # opaque memory cells; sharing them is the desired
+            # behavior since they back actual storage.
+            return value
+        if visited is None:
+            visited = {}
+        # Cycle / shared-reference detection.  The object graph
+        # routinely contains cycles (e.g. self-referencing structs
+        # ``struct s { struct s *next; }``) and shared subgraphs
+        # (e.g. a struct referenced from two field types).  Without
+        # this, ``_copy`` recurses infinitely and allocates until OOM.
+        # Real-world hit: parsing ``Modules/arraymodule.c`` blew up to
+        # 13+ GB before a watchdog killed it.
+        vid = id(value)
+        cached = visited.get(vid)
+        if cached is not None:
+            return cached
+        if isinstance(value, list):
+            new = []
+            visited[vid] = new
+            new.extend(self._copy(v, parent=parent, visited=visited) for v in value)
+            return new
         elif isinstance(value, tuple):
-            return tuple([self._copy(v, parent=parent) for v in value])
+            # Tuples are immutable -- we have to build the contents
+            # first, so cycles through a tuple aren't fully cycle-safe;
+            # but in practice the cycles we see go through mutable
+            # containers (lists, _CBaseWithOptBody objects).
+            new_t = tuple(self._copy(v, parent=parent, visited=visited) for v in value)
+            visited[vid] = new_t
+            return new_t
         elif isinstance(value, dict):
-            return {k: self._copy(v, parent=parent) for (k, v) in value.items()}
+            new_d = {}
+            visited[vid] = new_d
+            for k, v in value.items():
+                new_d[k] = self._copy(v, parent=parent, visited=visited)
+            return new_d
         elif isinstance(value, (CSizeofSymbol, COffsetofSymbol)):
             # These are simple marker sentinels with no attributes; a fresh instance suffices.
             return value.__class__()
         elif isinstance(value, (_CBase, _CBaseWithOptBody, CType, CBody)):
             new = value.__class__.__new__(value.__class__)
+            visited[vid] = new
             for k, v in vars(value).items():
                 if k in leave_out_attribs:
                     continue
                 if k == "parent":
                     new.parent = parent
                 else:
-                    setattr(new, k, self._copy(v, parent=new, name=k))
+                    setattr(new, k, self._copy(v, parent=new, name=k, visited=visited))
             return new
         else:
             assert False, "dont know how to handle %r %r (%s)" % (name, value, value.__class__)
 
     def copy(self, leave_out_attribs=("body",)):
-        return self._copy(self, parent=self.parent, leave_out_attribs=leave_out_attribs)
+        return self._copy(self, parent=self.parent, leave_out_attribs=leave_out_attribs, visited={})
 
     def depth(self):
         if self.parent is None: return 1
