@@ -2229,6 +2229,37 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_consecutive_large_struct_locals_no_pointer_overlap():
+    """Repeated calls into a C function with a large local struct
+    must not register overlapping pointer-storage ranges.  Reproduces
+    the ``_addPointerStorageRange: partial left overlap`` assertion
+    seen in cpython.py's override-off path when ``list_sort_impl``
+    (which has a ~4152-byte stack-local ``MergeState ms;``) is called
+    multiple times in a row during AST compilation."""
+    state = parse("""
+    /* A large stack-local struct -- comparable in size to MergeState
+       (~4152 bytes).  Each call to ``f`` allocates a fresh one. */
+    typedef struct {
+        long buf[520];
+    } big_t;
+    long do_work(big_t *ms, long v) {
+        return ms->buf[0] = v;
+    }
+    long f(long v) {
+        big_t ms;
+        return do_work(&ms, v);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # Repeatedly call f -- each call creates a fresh stack-local ms.
+    # If pointer-storage tracking botches the stale-cleanup, we'd hit
+    # the partial-overlap assertion here.
+    for i in range(50):
+        r = interp.runFunc("f", i)
+        assert r.value == i, "iteration %d: got %r" % (i, r.value)
+
+
 def test_designated_array_initializer_with_holes():
     """C99 designated initializers can skip indices, leaving zero-
     initialized holes.  Real-world hit: ast_opt.c::fold_unaryop has

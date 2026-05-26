@@ -3248,14 +3248,18 @@ class Interpreter:
             # the new range) is a real bug: the caller is registering
             # a range that disagrees with an alive earlier
             # registration on memory layout.  Assert.
-            assert not (pred_end > start > pred_start), (
-                "_addPointerStorageRange: partial left overlap; "
-                "new=[0x%x, 0x%x) (size=%d), existing=[0x%x, 0x%x) "
-                "(size=%d).  Both ranges' pointerStorage entries "
-                "are alive -- their underlying objs disagree on "
-                "memory layout." % (
-                    start, end, size,
-                    pred_start, pred_end, pred_size))
+            if pred_end > start > pred_start:
+                pred_obj = self.pointerStorage.get(pred_start)
+                pred_obj_repr = "%s" % type(pred_obj).__name__ if pred_obj is not None else "<dead>"
+                raise AssertionError(
+                    "_addPointerStorageRange: partial left overlap; "
+                    "new=[0x%x, 0x%x) (size=%d), existing=[0x%x, 0x%x) "
+                    "(size=%d, type=%s, overlap=%d bytes).  Both "
+                    "ranges' pointerStorage entries are alive -- "
+                    "their underlying objs disagree on memory layout." % (
+                        start, end, size,
+                        pred_start, pred_end, pred_size,
+                        pred_obj_repr, pred_end - start))
             # else: predecessor doesn't reach into new, OR same start
             # with smaller end (handled in Step 4 below).
 
