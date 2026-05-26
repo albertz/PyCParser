@@ -256,12 +256,28 @@ class Wrapper:
             )
 
     def handle_dirent_h(self, state):
-        """POSIX <dirent.h>: ``DIR`` opaque type and ``opendir``/``readdir``/``closedir``.
+        """POSIX <dirent.h>: ``DIR`` opaque type, ``struct dirent`` and
+        ``opendir``/``readdir``/``closedir``.
+
+        We do NOT bind to libc's ``opendir``/``readdir``/``closedir``,
+        because libc's ``struct dirent`` layout varies across glibc /
+        musl / macOS / *BSD / 32-bit vs 64-bit -- any mismatch between
+        our declared struct and the real one corrupts memory at every
+        ``readdir`` call (libc writes the real layout into our buffer;
+        we then read it via our offsets).  Earlier symptom: on glibc
+        x86_64 our struct put ``d_name`` at offset 8 instead of 19, so
+        ``ep->d_name`` returned the first 4 bytes of ``d_off`` --
+        garbage filenames, importlib's PathFinder couldn't find any
+        on-disk module.
+
+        Instead we use host Python's ``os.scandir()`` and allocate our
+        OWN ``struct dirent`` buffer per ``readdir`` call.  Because we
+        control both ends (we write the buffer, the parsed C code
+        reads it through our struct definition), the layout only has
+        to be self-consistent -- it does not have to match libc.
         """
         state.macros["HAVE_DIRENT_H"] = Macro(rightside="1")
-        # ``DIR`` is opaque; ``struct dirent`` exposes ``d_name``.
-        # We model DIR as a struct stub; callers only ever take/return
-        # ``DIR *``.
+        self.handle_sys_types_h(state)  # ino_t etc.
         if "DIR" not in state.typedefs:
             DIR_struct = state.structs["DIR_internal"] = CStruct(name="DIR_internal")
             DIR_struct.body = CBody(parent=DIR_struct)
@@ -269,37 +285,92 @@ class Wrapper:
         if "dirent" not in state.structs:
             dirent_struct = state.structs["dirent"] = CStruct(name="dirent")
             dirent_struct.body = CBody(parent=dirent_struct)
-            # Linux glibc layout: must include d_off / d_reclen /
-            # d_type BEFORE d_name, otherwise ``ep->d_name`` reads at
-            # offset 8 (where d_off lives) instead of offset 19 --
-            # garbage bytes, no real filename.  posixmodule.c's
-            # ``_posix_listdir`` then returns directory contents as
-            # binary garbage, and importlib's PathFinder can't find
-            # encodings or any other on-disk module.
-            #   struct dirent (Linux x86_64):
-            #     ino_t          d_ino;     // 8
-            #     off_t          d_off;     // 8
-            #     unsigned short d_reclen;  // 2
-            #     unsigned char  d_type;    // 1
-            #     char           d_name[256];
+            # OUR layout -- only what posixmodule.c reads.  No need to
+            # match libc since we never call libc's readdir.
             CVarDecl(parent=dirent_struct, name="d_ino",
                      type=state.typedefs["ino_t"]).finalize(state)
-            CVarDecl(parent=dirent_struct, name="d_off",
-                     type=state.typedefs["off_t"]).finalize(state)
-            CVarDecl(parent=dirent_struct, name="d_reclen",
-                     type=CBuiltinType(("unsigned", "short"))).finalize(state)
-            CVarDecl(parent=dirent_struct, name="d_type",
-                     type=CBuiltinType(("unsigned", "char"))).finalize(state)
             CVarDecl(parent=dirent_struct, name="d_name",
                      type=CArrayType(arrayOf=CBuiltinType(("char",)),
                                      arrayLen=CNumber(256))).finalize(state)
-        for _fname, _res, _args in [
-            ("opendir",  ctypes.c_void_p, (ctypes.c_char_p,)),
-            ("readdir",  ctypes.c_void_p, (ctypes.c_void_p,)),
-            ("closedir", ctypes.c_int,    (ctypes.c_void_p,)),
-        ]:
-            if _fname not in state.funcs:
-                wrapCFunc(state, _fname, restype=_res, argtypes=_args)
+
+        # Per-state handle table; integer handle -> {entries iterator,
+        # last-returned dirent buffer kept alive until next readdir /
+        # closedir}.  POSIX ``readdir`` semantics permit the returned
+        # pointer to become invalid on the next call, so reusing one
+        # buffer per stream matches the contract.
+        state._py_dirent_handles = {}
+        state._py_dirent_next_handle = [1]
+        _handles = state._py_dirent_handles
+        _next = state._py_dirent_next_handle
+
+        # Defer the ctype lookup to call time -- handle_* runs at
+        # parse-time before the interpreter has constructed the cached
+        # ctype classes.
+        def _dirent_ctype():
+            return getCType(state.structs["dirent"], state)
+
+        def _opendir(name_ptr):
+            try:
+                name = ctypes.cast(name_ptr, ctypes.c_char_p).value
+                if name is None:
+                    return ctypes.c_void_p(0)
+                path = name.decode("utf-8", "surrogateescape")
+                entries = os.scandir(path)
+            except OSError:
+                return ctypes.c_void_p(0)
+            h = _next[0]
+            _next[0] += 1
+            _handles[h] = {"it": iter(entries), "scandir": entries, "buf": None}
+            return ctypes.c_void_p(h)
+
+        def _readdir(dirp):
+            h = ctypes.cast(dirp, ctypes.c_void_p).value
+            info = _handles.get(h or 0)
+            if info is None:
+                return ctypes.c_void_p(0)
+            try:
+                entry = next(info["it"])
+            except StopIteration:
+                return ctypes.c_void_p(0)
+            except OSError:
+                return ctypes.c_void_p(0)
+            buf = _dirent_ctype()()
+            try:
+                buf.d_ino = entry.inode()
+            except (OSError, AttributeError):
+                buf.d_ino = 0
+            name_bytes = entry.name.encode("utf-8", "surrogateescape")[:255]
+            for i, b in enumerate(name_bytes):
+                buf.d_name[i] = b
+            buf.d_name[len(name_bytes)] = 0  # NUL terminate
+            info["buf"] = buf  # keep alive until next readdir / closedir
+            return ctypes.cast(ctypes.pointer(buf), ctypes.c_void_p)
+
+        def _closedir(dirp):
+            h = ctypes.cast(dirp, ctypes.c_void_p).value
+            info = _handles.pop(h or 0, None)
+            if info is not None:
+                try:
+                    info["scandir"].close()
+                except Exception:
+                    pass
+            return ctypes.c_int(0)
+
+        if "opendir" not in state.funcs:
+            state.funcs["opendir"] = CWrapValue(
+                _opendir, name="opendir",
+                returnType=CPointerType(CBuiltinType(("void",))),
+                argTypes=[CPointerType(CBuiltinType(("char",)))])
+        if "readdir" not in state.funcs:
+            state.funcs["readdir"] = CWrapValue(
+                _readdir, name="readdir",
+                returnType=CPointerType(state.structs["dirent"]),
+                argTypes=[CPointerType(CBuiltinType(("void",)))])
+        if "closedir" not in state.funcs:
+            state.funcs["closedir"] = CWrapValue(
+                _closedir, name="closedir",
+                returnType=CBuiltinType(("int",)),
+                argTypes=[CPointerType(CBuiltinType(("void",)))])
 
     def handle_sys_wait_h(self, state):
         """POSIX <sys/wait.h>: ``wait`` and ``waitpid`` plus the
@@ -329,7 +400,15 @@ class Wrapper:
                 state.macros[_m] = Macro(rightside=_expr)
 
     def handle_utime_h(self, state):
-        """POSIX <utime.h>: ``struct utimbuf`` + ``utime``."""
+        """POSIX <utime.h>: ``struct utimbuf`` + ``utime``.
+
+        We do NOT bind to libc's ``utime``: libc reads ``sizeof(struct
+        utimbuf)`` bytes from our pointer using its own ``time_t`` size,
+        which may differ from ours (e.g. 32-bit Linux with
+        ``_TIME_BITS=64``).  Instead we read our struct ourselves and
+        delegate to host Python's ``os.utime``.  See handle_dirent_h
+        for the same memory-safety pattern.
+        """
         if "utimbuf" not in state.structs:
             utimbuf = state.structs["utimbuf"] = CStruct(name="utimbuf")
             utimbuf.body = CBody(parent=utimbuf)
@@ -337,10 +416,27 @@ class Wrapper:
                      type=state.typedefs["time_t"]).finalize(state)
             CVarDecl(parent=utimbuf, name="modtime",
                      type=state.typedefs["time_t"]).finalize(state)
+
+        def _utime(path, buf_ptr):
+            path_b = ctypes.cast(path, ctypes.c_char_p).value
+            if not path_b:
+                return ctypes.c_int(-1)
+            path_s = path_b.decode("utf-8", "surrogateescape")
+            try:
+                buf_addr = ctypes.cast(buf_ptr, ctypes.c_void_p).value
+                if not buf_addr:
+                    os.utime(path_s, None)
+                else:
+                    utimbuf_ct = getCType(state.structs["utimbuf"], state)
+                    u = ctypes.cast(buf_ptr, ctypes.POINTER(utimbuf_ct)).contents
+                    os.utime(path_s, (int(u.actime), int(u.modtime)))
+            except OSError:
+                return ctypes.c_int(-1)
+            return ctypes.c_int(0)
+
         if "utime" not in state.funcs:
-            wrapCFunc(state, "utime",
-                      restype=ctypes.c_int,
-                      argtypes=(ctypes.c_char_p, ctypes.c_void_p))
+            state.funcs["utime"] = CWrapValue(
+                _utime, name="utime", returnType=ctypes.c_int)
 
     def handle_stdlib_h(self, state):
         state.macros["EXIT_SUCCESS"] = Macro(rightside="0")
@@ -724,11 +820,42 @@ class Wrapper:
                       argtypes=(ctypes.c_int, ctypes.c_int))
     def handle_locale_h(self, state):
         import locale as _locale
-        struct_lconv = state.structs["lconv"] = CStruct(name="lconv") # TODO
+        struct_lconv = state.structs["lconv"] = CStruct(name="lconv")
         struct_lconv.body = CBody(parent=struct_lconv)
-        CVarDecl(parent=struct_lconv, name="grouping", type=ctypes.c_char_p).finalize(state)
-        CVarDecl(parent=struct_lconv, name="thousands_sep", type=ctypes.c_char_p).finalize(state)
-        wrapCFunc(state, "localeconv", restype=struct_lconv, argtypes=())
+        # OUR layout -- only the fields CPython source actually reads.
+        # We do NOT bind to libc's ``localeconv``: libc returns a
+        # pointer to *its* lconv (which on glibc starts with
+        # ``decimal_point`` and has ~20 fields), so reading our 2-field
+        # struct at libc's pointer mis-aligns every field.  Instead we
+        # allocate our own struct and fill it from host Python's
+        # ``locale.localeconv()``.  See handle_dirent_h for the same
+        # memory-safety pattern.
+        CVarDecl(parent=struct_lconv, name="grouping",
+                 type=CPointerType(CBuiltinType(("char",)))).finalize(state)
+        CVarDecl(parent=struct_lconv, name="thousands_sep",
+                 type=CPointerType(CBuiltinType(("char",)))).finalize(state)
+        # Keep references on the state so the c_char_p buffers stay
+        # alive between calls (CPython holds the returned pointer
+        # across many uses).
+        state._py_lconv_cache = {"buf": None, "strs": []}
+
+        def _localeconv():
+            d = _locale.localeconv()
+            buf = getCType(state.structs["lconv"], state)()
+            grouping_bytes = bytes(d.get("grouping") or [])
+            sep_bytes = (d.get("thousands_sep") or "").encode(
+                "utf-8", "surrogateescape")
+            g_buf = ctypes.create_string_buffer(grouping_bytes)
+            s_buf = ctypes.create_string_buffer(sep_bytes)
+            buf.grouping = ctypes.cast(g_buf, ctypes.c_char_p)
+            buf.thousands_sep = ctypes.cast(s_buf, ctypes.c_char_p)
+            state._py_lconv_cache["buf"] = buf
+            state._py_lconv_cache["strs"] = [g_buf, s_buf]
+            return ctypes.pointer(buf)
+
+        state.funcs["localeconv"] = CWrapValue(
+            _localeconv, name="localeconv",
+            returnType=CPointerType(state.structs["lconv"]))
         state.macros["LC_ALL"] = Macro(rightside=str(_locale.LC_ALL))
         state.macros["LC_CTYPE"] = Macro(rightside=str(_locale.LC_CTYPE))
         state.macros["LC_COLLATE"] = Macro(rightside=str(_locale.LC_COLLATE))
@@ -848,13 +975,29 @@ class Wrapper:
                 return ctypes.c_int(-1)
             return _fill_stat_struct(st_ptr, st_res)
 
+        def _lstat(path, st_ptr):
+            # Custom wrapper -- do NOT bind to libc's lstat directly,
+            # because that would write libc's ``struct stat`` layout
+            # (varies across glibc / musl / macOS / *BSD / 32-bit) into
+            # the buffer we then read through our own field offsets.
+            # See handle_dirent_h for the same hazard with readdir.
+            path_b = ctypes.cast(path, ctypes.c_char_p).value
+            if not path_b:
+                return ctypes.c_int(-1)
+            try:
+                st_res = os.lstat(path_b.decode("utf8"))
+            except OSError:
+                return ctypes.c_int(-1)
+            return _fill_stat_struct(st_ptr, st_res)
+
         state.funcs["fstat"] = CWrapValue(_fstat, name="fstat", returnType=ctypes.c_int)
         state.funcs["stat"] = CWrapValue(_stat, name="stat", returnType=ctypes.c_int)
-        # chmod/mkdir live in <sys/stat.h> on POSIX.
+        state.funcs["lstat"] = CWrapValue(_lstat, name="lstat", returnType=ctypes.c_int)
+        # chmod/mkdir live in <sys/stat.h> on POSIX -- they take only
+        # scalar / char* args, so libc bindings are safe.
         for _fname, _res, _args in [
             ("chmod", ctypes.c_int, (ctypes.c_char_p, ctypes.c_int)),
             ("mkdir", ctypes.c_int, (ctypes.c_char_p, ctypes.c_int)),
-            ("lstat", ctypes.c_int, (ctypes.c_char_p, ctypes.c_void_p)),
         ]:
             if _fname not in state.funcs:
                 wrapCFunc(state, _fname, restype=_res, argtypes=_args)

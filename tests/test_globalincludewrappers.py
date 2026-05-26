@@ -604,5 +604,75 @@ def test_int8_t_pointer_arithmetic():
     assert r.value == 30, "int8_t pointer arithmetic: expected 30, got %r" % r
 
 
+# ---------------------------------------------------------------------------
+# dirent.h: opendir / readdir / closedir (custom Python wrappers)
+# ---------------------------------------------------------------------------
+# These wrappers must NOT depend on libc's struct dirent layout -- we
+# implement them via host Python's ``os.scandir`` and own both the
+# fill and the read.  See cparser/globalincludewrappers.py
+# handle_dirent_h for the memory-safety rationale.
+
+def test_dirent_opendir_readdir_closedir_lists_files():
+    """Walk a tmp directory through our opendir/readdir/closedir and
+    verify the d_name entries match what os.listdir reports."""
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="pycp_scandir_") as tmp:
+        for name in ("alpha.txt", "beta.txt", "gamma.txt"):
+            open(os.path.join(tmp, name), "w").close()
+        os.mkdir(os.path.join(tmp, "subdir"))
+        expected = set(os.listdir(tmp))
+
+        src = ("""
+        #include <dirent.h>
+        #include <string.h>
+        #include <stdio.h>
+        /* Use a static char buffer to collect names separated by NUL. */
+        static char OUT[1024];
+        static int OUT_LEN;
+        int f() {
+            OUT_LEN = 0;
+            DIR *dp = opendir("%s");
+            if (dp == 0) return -1;
+            struct dirent *ep;
+            while ((ep = readdir(dp)) != 0) {
+                int n = (int)strlen(ep->d_name);
+                if (OUT_LEN + n + 1 > (int)sizeof(OUT)) break;
+                memcpy(OUT + OUT_LEN, ep->d_name, n);
+                OUT_LEN += n;
+                OUT[OUT_LEN++] = '\\n';
+            }
+            closedir(dp);
+            return OUT_LEN;
+        }
+        """ % tmp.replace("\\", "\\\\"))
+        state = _parse(src)
+        interp = Interpreter()
+        interp.register(state)
+        r = interp.runFunc("f")
+        n = r.value
+        assert n > 0, "f() returned %r (expected > 0)" % n
+
+        # Read OUT buffer through the interpreter's globals.
+        g = interp.globalsWrapper
+        out_arr = g.OUT
+        raw = bytes(out_arr)[:n]
+        names = set(raw.decode("utf-8", "surrogateescape").rstrip("\n").split("\n"))
+        assert names == expected, (
+            "scandir names %r != expected %r" % (names, expected))
+
+
+def test_dirent_opendir_nonexistent_returns_null():
+    """opendir on a missing path must return NULL, not crash."""
+    r = _run("""
+    #include <dirent.h>
+    int f() {
+        DIR *dp = opendir("/this/path/does/not/exist/xyz123");
+        return dp == 0;
+    }
+    """)
+    assert r.value == 1, "opendir('missing') did not return NULL"
+
+
 if __name__ == "__main__":
     helpers_test.main(globals())
