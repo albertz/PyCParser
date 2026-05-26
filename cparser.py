@@ -5419,13 +5419,23 @@ def parse(filename, state=None):
         state = State()
         state.autoSetupSystemMacros()
 
-    pre_keys = {dn: set(getattr(state, dn)) for dn in _STATIC_SCOPE_DICTS}
+    # Snapshot pre-parse object identities.  Lets the post-parse
+    # rename pass identify decls whose object identity is new or
+    # replaced this parse (the roots that can contain orphan refs)
+    # and stop descent at pre-existing decls' bodies.
+    pre_ids = {}
+    pre_id_set = set()
+    for dn in _STATIC_SCOPE_DICTS:
+        for name, obj in getattr(state, dn).items():
+            pre_ids[(dn, name)] = id(obj)
+            pre_id_set.add(id(obj))
 
     preprocessed = state.preprocess_file(filename, local=True)
     tokens = cpre2_parse(state, preprocessed)
     cpre3_parse(state, tokens)
 
-    _rename_tu_statics(state, pre_keys, _scope_prefix_from_filename(filename))
+    _rename_tu_statics(state, pre_ids, pre_id_set,
+                       _scope_prefix_from_filename(filename))
 
     return state
 
@@ -5598,38 +5608,7 @@ def _scope_prefix_from_filename(filename):
     return re.sub(r"\W", "_", base)
 
 
-def _iter_decl_objs(roots):
-    """Yield every reachable ``CFunc`` / ``CVarDecl`` / ``CTypedef`` /
-    ``CStruct`` / ``CUnion`` / ``CEnum`` object in the parsed AST rooted
-    at ``roots`` (an iterable of root objects).  Cycle-safe via an
-    id-keyed visited set -- the parsed graph routinely contains cycles
-    (self-referential structs, etc.).
-    """
-    visited = set()
-    stack = list(roots)
-    target_types = (CFunc, CVarDecl, CTypedef, CStruct, CUnion, CEnum)
-    while stack:
-        node = stack.pop()
-        nid = id(node)
-        if nid in visited:
-            continue
-        visited.add(nid)
-        if isinstance(node, target_types):
-            yield node
-        if isinstance(node, (list, tuple)):
-            stack.extend(node)
-        elif isinstance(node, dict):
-            stack.extend(node.values())
-        elif hasattr(node, "__dict__"):
-            for k, v in vars(node).items():
-                if k == "parent":
-                    continue
-                if v is None or isinstance(v, (int, float, str, bool, bytes)):
-                    continue
-                stack.append(v)
-
-
-def _rename_tu_statics(state, pre_keys, scope_prefix):
+def _rename_tu_statics(state, pre_ids, pre_id_set, scope_prefix):
     """After parsing a translation unit, rename any newly-added file-scope
     ``static`` declarations so they cannot collide with another TU's
     same-named statics.
@@ -5645,51 +5624,72 @@ def _rename_tu_statics(state, pre_keys, scope_prefix):
     in-TU references automatically (the runtime lookup goes through
     ``decl.name`` at code-gen time).
 
-    A subtlety: a forward decl followed by a definition produces TWO
-    distinct ``CFunc`` objects with the same name -- the dict entry
+    Subtlety: a forward decl followed by a definition produces TWO
+    distinct ``CFunc`` objects with the same name.  The dict entry
     gets overwritten with the definition, but call sites parsed in
-    between still hold a pointer to the orphan forward-decl object.
-    Renaming only the dict entry would leave those orphans pointing to
-    the bare name, which no longer exists in ``state.funcs``.  So we
-    walk all newly-parsed bodies and rename ALL ``CFunc`` / ``CVarDecl``
-    objects whose name appears in the rename map.
+    between hold a pointer to the orphan forward-decl object.  We walk
+    new-this-parse decl subtrees to rename those orphans too.
+
+    Cost: ``pre_ids`` (``(dn, name) -> id(obj)``) and ``pre_id_set``
+    (set of all pre-parse object ids) let us:
+      1. Use new-or-replaced decls as the walk roots -- those are the
+         only places this parse's orphan refs can live.
+      2. Stop descending at pre-existing decls -- their bodies were
+         parsed earlier and can't contain orphans of this parse's
+         renames, which avoids re-walking all of ``state`` per parse.
     """
-    rename_map = {}  # (dict_name, bare_name) -> mangled
-    for dn in _STATIC_SCOPE_DICTS:
-        d = getattr(state, dn)
-        for name in set(d) - pre_keys[dn]:
-            obj = d[name]
-            if "static" not in getattr(obj, "attribs", ()):
-                continue
-            rename_map[(dn, name)] = "_static_%s_%s" % (scope_prefix, name)
-    if not rename_map:
-        return
-    name_to_mangled = {name: mangled for (_dn, name), mangled in rename_map.items()}
     type_to_dict = {
         CFunc: "funcs", CVarDecl: "vars", CTypedef: "typedefs",
         CStruct: "structs", CUnion: "unions", CEnum: "enums",
     }
-    # Walk every reachable decl: orphan ``CFunc`` / ``CVarDecl`` objects
-    # (created by an earlier forward decl, then overwritten in the
-    # dict) may be reached only through the body of a decl whose dict
-    # KEY existed before this parse -- e.g. ``PyThread_init_thread``
-    # has a pre-existing extern forward decl that gets replaced with
-    # the real definition during this parse.  Walking only ``new_keys``
-    # would miss its body.  Walking everything is bounded by the size
-    # of the parsed program and the visited-set keeps it cheap.
-    roots = []
+    rename_map = {}  # (dict_name, bare_name) -> mangled
+    new_roots = []
     for dn in _STATIC_SCOPE_DICTS:
-        roots.extend(getattr(state, dn).values())
-    for node in _iter_decl_objs(roots):
-        if getattr(node, "name", None) in name_to_mangled \
-                and "static" in getattr(node, "attribs", ()):
-            # Make sure this object actually belongs to the same dict
-            # category as its rename entry (e.g. don't rename a
-            # CVarDecl when only a CFunc was registered for renaming).
-            dn = type_to_dict.get(type(node))
-            if dn is not None and (dn, node.name) in rename_map:
-                node.name = name_to_mangled[node.name]
-    # Now update the dict keys.
+        d = getattr(state, dn)
+        for name, obj in d.items():
+            if pre_ids.get((dn, name)) == id(obj):
+                continue  # unchanged this parse
+            new_roots.append(obj)
+            if "static" in getattr(obj, "attribs", ()):
+                rename_map[(dn, name)] = "_static_%s_%s" % (scope_prefix, name)
+    if not rename_map:
+        return
+    name_to_mangled = {name: mangled for (_dn, name), mangled in rename_map.items()}
+
+    visited = set()
+    stack = list(new_roots)
+    target_types = (CFunc, CVarDecl, CTypedef, CStruct, CUnion, CEnum)
+    while stack:
+        node = stack.pop()
+        nid = id(node)
+        if nid in visited:
+            continue
+        visited.add(nid)
+        if isinstance(node, target_types):
+            name = getattr(node, "name", None)
+            if name in name_to_mangled \
+                    and "static" in getattr(node, "attribs", ()):
+                dn = type_to_dict.get(type(node))
+                if dn is not None and (dn, name) in rename_map:
+                    node.name = name_to_mangled[name]
+            # Stop descending at pre-existing decls -- their bodies were
+            # parsed before this TU and can't reference orphans created
+            # this parse.  Without this guard the walk fans out across
+            # the whole callgraph and becomes O(parsed size) per parse.
+            if nid in pre_id_set:
+                continue
+        if isinstance(node, (list, tuple)):
+            stack.extend(node)
+        elif isinstance(node, dict):
+            stack.extend(node.values())
+        elif hasattr(node, "__dict__"):
+            for k, v in vars(node).items():
+                if k == "parent":
+                    continue
+                if v is None or isinstance(v, (int, float, str, bool, bytes)):
+                    continue
+                stack.append(v)
+
     for (dn, bare_name), mangled in rename_map.items():
         d = getattr(state, dn)
         d[mangled] = d.pop(bare_name)
