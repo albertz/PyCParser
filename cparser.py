@@ -4714,14 +4714,22 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
                 pending_init_vars = []
             else:
                 addToList.append(curCObj)
-            # For C99 for-loop init (sepToken=semicolon): make declared vars visible
-            # in subsequent statements (condition and increment parts).
+            # For C99 for-loop init (sepToken=semicolon): make declared
+            # vars visible in subsequent statements (condition and
+            # increment parts).  ALWAYS overwrite any existing entry --
+            # if a previous for-loop in the same function declared the
+            # same name (e.g. ``for (int i ...) {} for (int i ...) {}``),
+            # the stale CVarDecl would otherwise leak into our second
+            # loop's cond/inc lookup and the interpreter would fail to
+            # find the local var (``CVarDecl 'i' expected to be a
+            # global var``).  Side effect: the for-init var still
+            # leaks past the loop end into the function scope, but
+            # well-formed C code never references it there.
             if isinstance(sepToken, CSemicolon) and isinstance(curCObj, CVarDecl) and curCObj.name:
                 p = parentCObj
                 while p is not None:
                     if hasattr(p, 'body') and isinstance(p.body, CBody):
-                        if curCObj.name not in p.body.vars:
-                            p.body.vars[curCObj.name] = curCObj
+                        p.body.vars[curCObj.name] = curCObj
                         break
                     p = getattr(p, 'parent', None)
             curCObj = _CBaseWithOptBody(parent=parentCObj)
@@ -4747,8 +4755,7 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
             p = parentCObj
             while p is not None:
                 if hasattr(p, 'body') and isinstance(p.body, CBody):
-                    if oldObj.name not in p.body.vars:
-                        p.body.vars[oldObj.name] = oldObj
+                    p.body.vars[oldObj.name] = oldObj
                     break
                 p = getattr(p, 'parent', None)
             pending_init_vars.append(oldObj)

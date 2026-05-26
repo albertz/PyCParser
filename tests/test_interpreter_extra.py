@@ -2229,6 +2229,52 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_two_for_loops_same_name_in_same_function():
+    """Two sequential ``for (int i = ...; ...; ...)`` loops in the
+    same function must each reference their OWN ``i`` in their own
+    cond/inc/body.  Previously the second loop's parser would resolve
+    ``i`` to the FIRST loop's stale CVarDecl (still cached in the
+    function-body vars dict), and translation would fail with
+    ``CVarDecl 'i' expected to be a global var``.  Real-world hit:
+    Python/ast_opt.c::make_const_tuple."""
+    state = parse("""
+    int two_loops(int n) {
+        int sum = 0;
+        for (int i = 0; i < n; i++) {
+            sum += i;
+        }
+        for (int i = 0; i < n; i++) {
+            sum += i * 10;
+        }
+        return sum;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # n=3: first loop sum=0+1+2=3; second loop sum+=0+10+20=30; total=33.
+    assert interp.runFunc("two_loops", 3).value == 33
+
+
+def test_sizeof_of_array_index_on_null_pointer():
+    """``sizeof(p[0])`` must resolve to the element type size at
+    translation time, NOT dereference ``p`` at runtime.  Real-world
+    hit: Objects/call.c::_PyStack_UnpackDict line 1369 ``(size_t)nargs
+    > PY_SSIZE_T_MAX / sizeof(stack[0]) - ...`` -- ``stack`` is still
+    NULL when this bound check runs."""
+    state = parse("""
+    /* sizeof(p[0]) when p is NULL -- the dereference must NOT
+       actually happen.  Pre-fix this would NULL-deref. */
+    int f(void) {
+        int *p = 0;  /* NULL */
+        return (int)sizeof(p[0]);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    import ctypes as _ct
+    assert interp.runFunc("f").value == _ct.sizeof(_ct.c_int)
+
+
 def test_chained_assign_to_bitfield_fields():
     """``a.bf1 = a.bf2 = 1`` where ``bf1`` and ``bf2`` are bitfields
     must translate to nested helper calls so the inner assignment is

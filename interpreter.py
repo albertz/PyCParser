@@ -1569,19 +1569,27 @@ def astAndTypeForStatement(funcEnv, stmnt):
             if isinstance(a, CStatement) and not a.isCType():
                 # C ``sizeof(expr)`` does NOT actually evaluate ``expr``
                 # at runtime -- it yields the *type's* size at compile
-                # time.  Special-case ``sizeof(*p)``: the previous
-                # generic translation actually dereferenced ``p`` and
-                # called ``ctypes.sizeof`` on the result, which raises
-                # ``NULL pointer access`` when ``p`` is a freshly-
-                # allocated still-NULL pointer (as is typical for
-                # ``p = malloc(sizeof(*p))``).  Detect this case and
-                # resolve via the pointee type of ``p``.
-                inner = a
+                # time.  Special-case the two common pointer-dereference
+                # forms ``sizeof(*p)`` and ``sizeof(p[0])``: the generic
+                # translation actually dereferences ``p`` and calls
+                # ``ctypes.sizeof`` on the result, which raises ``NULL
+                # pointer access`` when ``p`` is still NULL (typical
+                # for ``p = malloc(sizeof(*p))`` or the bound check
+                # ``nargs > PY_SSIZE_T_MAX / sizeof(stack[0]) - ...``
+                # in Objects/call.c::_PyStack_UnpackDict).  Detect
+                # both forms and resolve via the pointee type.
+                deref_operand = None
+                # Form 1: ``sizeof(*p)`` -- prefix-`*` expression.
                 if (a._op is not None and a._op.content == "*"
                         and a._leftexpr is None
                         and a._rightexpr is not None):
-                    operand = a._rightexpr
-                    _, operandType = astAndTypeForStatement(funcEnv, operand)
+                    deref_operand = a._rightexpr
+                # Form 2: ``sizeof(p[0])`` -- array-index ref.
+                elif (a._op is None and a._rightexpr is None
+                        and isinstance(a._leftexpr, CArrayIndexRef)):
+                    deref_operand = a._leftexpr.base
+                if deref_operand is not None:
+                    _, operandType = astAndTypeForStatement(funcEnv, deref_operand)
                     # Unwrap CTypedef.
                     while isinstance(operandType, CTypedef):
                         operandType = operandType.type
