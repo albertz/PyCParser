@@ -269,10 +269,30 @@ class Wrapper:
         if "dirent" not in state.structs:
             dirent_struct = state.structs["dirent"] = CStruct(name="dirent")
             dirent_struct.body = CBody(parent=dirent_struct)
+            # Linux glibc layout: must include d_off / d_reclen /
+            # d_type BEFORE d_name, otherwise ``ep->d_name`` reads at
+            # offset 8 (where d_off lives) instead of offset 19 --
+            # garbage bytes, no real filename.  posixmodule.c's
+            # ``_posix_listdir`` then returns directory contents as
+            # binary garbage, and importlib's PathFinder can't find
+            # encodings or any other on-disk module.
+            #   struct dirent (Linux x86_64):
+            #     ino_t          d_ino;     // 8
+            #     off_t          d_off;     // 8
+            #     unsigned short d_reclen;  // 2
+            #     unsigned char  d_type;    // 1
+            #     char           d_name[256];
             CVarDecl(parent=dirent_struct, name="d_ino",
                      type=state.typedefs["ino_t"]).finalize(state)
+            CVarDecl(parent=dirent_struct, name="d_off",
+                     type=state.typedefs["off_t"]).finalize(state)
+            CVarDecl(parent=dirent_struct, name="d_reclen",
+                     type=CBuiltinType(("unsigned", "short"))).finalize(state)
+            CVarDecl(parent=dirent_struct, name="d_type",
+                     type=CBuiltinType(("unsigned", "char"))).finalize(state)
             CVarDecl(parent=dirent_struct, name="d_name",
-                     type=ctypes.c_char * 256).finalize(state)
+                     type=CArrayType(arrayOf=CBuiltinType(("char",)),
+                                     arrayLen=CNumber(256))).finalize(state)
         for _fname, _res, _args in [
             ("opendir",  ctypes.c_void_p, (ctypes.c_char_p,)),
             ("readdir",  ctypes.c_void_p, (ctypes.c_void_p,)),
