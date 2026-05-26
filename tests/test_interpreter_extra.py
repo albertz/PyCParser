@@ -2229,6 +2229,38 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_designated_array_initializer_with_holes():
+    """C99 designated initializers can skip indices, leaving zero-
+    initialized holes.  Real-world hit: ast_opt.c::fold_unaryop has
+    ``static const unary_op ops[] = { [Invert] = ..., [Not] = ..., ...};``
+    where ``Invert=1, Not=2, UAdd=3, USub=4`` -- index 0 is an
+    unused hole.  If the translator fills indices 0..3 instead of
+    1..4, calling ``ops[1]`` returns the wrong function pointer (or
+    NULL) and crashes."""
+    state = parse("""
+    int v_a(int x) { return x + 10; }
+    int v_b(int x) { return x + 20; }
+    int v_c(int x) { return x + 30; }
+    int v_d(int x) { return x + 40; }
+    typedef int (*fn_t)(int);
+    int dispatch(int op) {
+        static const fn_t ops[] = {
+            [1] = v_a,
+            [2] = v_b,
+            [3] = v_c,
+            [4] = v_d,
+        };
+        return ops[op](0);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    assert interp.runFunc("dispatch", 1).value == 10
+    assert interp.runFunc("dispatch", 2).value == 20
+    assert interp.runFunc("dispatch", 3).value == 30
+    assert interp.runFunc("dispatch", 4).value == 40
+
+
 def test_two_for_loops_same_name_in_same_function():
     """Two sequential ``for (int i = ...; ...; ...)`` loops in the
     same function must each reference their OWN ``i`` in their own

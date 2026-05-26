@@ -4718,6 +4718,33 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
                     else:
                         CVarDecl.overtake(curCObj)
         elif isinstance(token, COpeningBracket):
+            # C99 §6.7.8 designated array initializer ``[N] = value``:
+            # detect a fresh ``[`` at the start of an init-list arg
+            # BEFORE falling into the generic bracket-handling path
+            # below (which would treat the brackets as array-indexing
+            # on an empty subject and lose the designator).  Real-world
+            # hit: ast_opt.c::fold_unaryop's ``static const unary_op
+            # ops[] = {[Invert] = ..., [Not] = ..., ...}``.
+            if (token.content == "["
+                    and not curCObj.isDerived()
+                    and not curCObj):
+                indexStmt = CStatement(parent=curCObj)
+                indexStmt._bracketlevel = list(token.brackets)
+                indexStmt._cpre3_parse_brackets(stateStruct, token, input_iter)
+                indexStmt.finalize(stateStruct)
+                curCObj.designators.append(indexStmt)
+                # Expect ``=`` (or another designator) next.  We
+                # consume tokens until we see ``=`` -- ``[a][b] = ...``
+                # and ``[a].field = ...`` are theoretically allowed
+                # but rare; we currently support only simple ``[N] =``.
+                next_tok = next(input_iter)
+                if not (isinstance(next_tok, COp) and next_tok.content == "="):
+                    stateStruct.error(
+                        "expected '=' after [N] designator, got " + str(next_tok))
+                    continue
+                # Fall through to value parsing (next loop iteration
+                # consumes the value tokens that follow ``=``).
+                continue
             if isinstance(curCObj, CStatement):
                 curCObj._cpre3_parse_brackets(stateStruct, token, input_iter)
             elif isinstance(curCObj.body, CStatement):
@@ -4819,8 +4846,17 @@ def cpre3_parse_statements_in_brackets(stateStruct, parentCObj, sepToken, addToL
         elif isinstance(curCObj, CVarDecl) and token == COp("="):
             curCObj.body = CStatement(parent=curCObj)
         else:
-            # Handle C99 designated initializer syntax: .fieldname = value or [index] = value
-            if (isinstance(token, COp) and token.content in (".", "[")
+            # Handle C99 designated initializer syntax: ``.fieldname =
+            # value`` (struct) or ``[index] = value`` (array).  ``.``
+            # is a COp; ``[`` is a COpeningBracket -- both must be
+            # recognized here.  Without the bracket case, the parser
+            # falls through to the regular ``[`` handling, and the
+            # designator gets lost -- e.g. ``[Invert] = PyNumber_Invert``
+            # in ast_opt.c::fold_unaryop produces an off-by-one array
+            # of function pointers, leading to a NULL-call SIGSEGV when
+            # ``compile()`` invokes the AST optimizer at runtime.
+            if (((isinstance(token, COp) and token.content == ".")
+                    or (isinstance(token, COpeningBracket) and token.content == "["))
                     and not curCObj.isDerived() and not curCObj):
                 while True:
                     if isinstance(token, COp) and token.content == ".":

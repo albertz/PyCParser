@@ -113,10 +113,32 @@ class GlobalScope:
                 assert isinstance(arrayLen, (int, long))
                 assert arrayLen > 0
             if isinstance(bodyType, (tuple, list)):
-                if arrayLen:
-                    assert arrayLen >= len(bodyType)
+                # Compute needed array length.  Common case: no
+                # designators -> ``len(bodyType)`` (fast).  Designated
+                # case: ``[N] = value`` can skip indices, so the array
+                # length is max-designator-index + 1, not just the
+                # number of initializers.  Without this, e.g. ``ops[]
+                # = {[Invert] = ..., [Not] = ..., ...}`` (enum
+                # constants 1..4) gives 4 initializers but the array
+                # must be size 5.
+                has_designator = any(d for (d, _) in bodyType)
+                if not has_designator:
+                    needed = len(bodyType)
                 else:
-                    arrayLen = len(bodyType)
+                    needed = 0
+                    cur_idx = 0
+                    for designators, _ in bodyType:
+                        if designators:
+                            v = getConstValue(self.stateStruct, designators[0])
+                            if isinstance(v, int):
+                                cur_idx = v
+                        if cur_idx + 1 > needed:
+                            needed = cur_idx + 1
+                        cur_idx += 1
+                if arrayLen:
+                    assert arrayLen >= needed
+                else:
+                    arrayLen = needed
                     assert arrayLen > 0
             elif isinstance(bodyType, CArrayType):
                 _arrayLen = getConstValue(self.stateStruct, bodyType.arrayLen)
@@ -454,7 +476,17 @@ def getAstNodeForVarType(funcEnv, t):
     elif isinstance(t, CTypedef):
         if t in funcEnv.localTypes:
             return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
-        return getAstNodeAttrib("g", t.name)
+        # If the typedef is registered globally, refer by name via
+        # ``g.<name>``.  Otherwise it's a function-local typedef being
+        # referenced from outside its function (typically a
+        # function-scope static that's been promoted to global storage
+        # and is now being materialised by the global scope's empty
+        # FuncEnv -- e.g. ast_opt.c::fold_unaryop defines ``typedef
+        # ... unary_op`` then declares ``static const unary_op
+        # ops[]``).  Inline the underlying type in that case.
+        if t.name is not None and t.name in funcEnv.globalScope.stateStruct.typedefs:
+            return getAstNodeAttrib("g", t.name)
+        return getAstNodeForVarType(funcEnv, t.type)
     elif isinstance(t, CStruct):
         if t in funcEnv.localTypes:
             return ast.Name(id=funcEnv.localTypes[t], ctx=ast.Load())
@@ -712,15 +744,40 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
         for i, (designators, s_arg_type) in enumerate(argType):
             s_arg_ast = argAst.elts[i]
             if designators:
-                # TODO support [index]
-                pass
+                # Per C99 §6.7.8: ``[N] = ...`` sets the current index
+                # to N; subsequent initializers without designators
+                # continue from there.  Real-world hit:
+                # ast_opt.c::fold_unaryop's ``static const unary_op
+                # ops[] = {[Invert] = ..., [Not] = ..., ...}`` where
+                # the enum constants are 1..4 (index 0 is an unused
+                # zero-init hole).  Without this, the array is sized
+                # by element-count rather than by max-designator+1 and
+                # the function-pointer table is off by one -> NULL-call
+                # SIGSEGV at runtime when ``compile()`` is invoked.
+                # Multiple designators on one initializer (e.g.
+                # ``[N].field``) aren't supported yet.
+                designator = designators[0]
+                v = getConstValue(stateStruct, designator)
+                if not isinstance(v, int):
+                    stateStruct.error(
+                        "array designator %r is not a constant int" % designator)
+                else:
+                    cur_idx = v
             s_args_map[cur_idx] = (s_arg_ast, s_arg_type)
             cur_idx += 1
 
-        if arrayLen is None:
-            arrayLen = max(s_args_map.keys()) + 1 if s_args_map else 0
-            objType.arrayLen = CNumber(arrayLen)
-            typeAst = ast.BinOp(left=getAstNodeForVarType(funcEnv, objType.arrayOf), op=ast.Mult(), right=ast.Num(n=arrayLen))
+        # Re-derive arrayLen from the highest filled index.  The
+        # earlier estimate (in ``getAstNode_newTypeInstance``) used
+        # ``len(argType)``, which is wrong when designators skip
+        # indices.
+        if s_args_map:
+            needed = max(s_args_map.keys()) + 1
+            if arrayLen is None or needed > arrayLen:
+                arrayLen = needed
+                objType.arrayLen = CNumber(arrayLen)
+                typeAst = ast.BinOp(
+                    left=getAstNodeForVarType(funcEnv, objType.arrayOf),
+                    op=ast.Mult(), right=ast.Num(n=arrayLen))
 
         s_args = []
         for idx in range(arrayLen):
@@ -811,7 +868,24 @@ def getAstNode_newTypeInstance(funcEnv, objType, argAst=None, argType=None):
             # Handle array type extra here for the case when array-len is not specified.
             assert argType is not None
             if isinstance(argType, (tuple, list)):
-                arrayLen = len(argType)
+                # Common case: no designators -> ``len(argType)``.
+                # Designated: ``[N] = ...`` can skip indices, so the
+                # array length is max-designator-index + 1.  See
+                # _getDeclTypeBodyAstAndType for the full motivation.
+                if not any(d for (d, _) in argType):
+                    arrayLen = len(argType)
+                else:
+                    arrayLen = 0
+                    cur_idx = 0
+                    stateStruct = interpreter.globalScope.stateStruct
+                    for designators, _ in argType:
+                        if designators:
+                            v = getConstValue(stateStruct, designators[0])
+                            if isinstance(v, int):
+                                cur_idx = v
+                        if cur_idx + 1 > arrayLen:
+                            arrayLen = cur_idx + 1
+                        cur_idx += 1
             else:
                 assert isinstance(argType, CArrayType)
                 arrayLen = getConstValue(interpreter.globalScope.stateStruct, argType.arrayLen)
