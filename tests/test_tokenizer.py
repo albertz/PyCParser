@@ -200,6 +200,80 @@ def test_form_feed_and_vtab_treated_as_whitespace():
             "src %r unexpected errors: %r" % (src, state._errors)
 
 
+def test_float_literal_fractional_part_with_leading_zeros():
+    """A float literal like ``6.075`` has a fractional part starting
+    with ``0`` followed by digits.  Earlier our tokenizer split this
+    into ``[6, ., 075]`` and the trailing ``075`` got parsed as the
+    OCTAL integer 61 -- so ``CNumber.content`` of the fractional token
+    was 61 instead of 75.  ``_combine_float_parts`` still rebuilt the
+    float correctly (it uses ``rawstr``), but consumers of the bare
+    ``CNumber.content`` got wrong values, and behavior was
+    inconsistent: ``6.095`` (invalid octal, contains 9) would parse
+    one way and ``6.075`` (valid octal but a fractional part) another.
+
+    The fix is to absorb the ``.`` and the fractional digits into a
+    single ``CNumber`` token whose content is the FULL float value.
+    """
+    import cparser as _cparser
+    cases = [
+        # rawstr, expected_value
+        ("6.075",                       6.075),
+        ("6.095",                       6.095),
+        ("0.025",                       0.025),
+        ("0.075",                       0.075),
+        ("0.095",                       0.095),
+        ("1.5",                         1.5),
+        ("0.5",                         0.5),
+        # Verify the byte-level test case from the original report.
+        ("6.024680040776729583740234375",
+         6.024680040776729583740234375),
+    ]
+    for raw, expected in cases:
+        state = State()
+        state.autoSetupSystemMacros()
+        # Trailing ``;`` so the tokenizer's state-10 emits the number.
+        tokens = list(cpre2_parse(state, raw + ";"))
+        assert not state._errors, \
+            "src %r unexpected errors: %r" % (raw, state._errors)
+        nums = [t for t in tokens if isinstance(t, CNumber)]
+        # The float MUST tokenize as exactly ONE CNumber covering the
+        # whole literal -- not split as [int, ".", int].
+        assert len(nums) == 1, (
+            "src %r: expected a single CNumber, got %d tokens: %r"
+            % (raw, len(nums), tokens))
+        # The CNumber's content must be the correct float value
+        # (so any consumer that reads ``.content`` gets the right
+        # number, not e.g. the octal-misinterpretation of the
+        # fractional part).
+        assert isinstance(nums[0].content, float), (
+            "src %r: expected float content, got %r" % (raw, nums[0].content))
+        assert abs(nums[0].content - expected) < 1e-15 * max(abs(expected), 1), (
+            "src %r: content %r != expected %r" % (raw, nums[0].content, expected))
+
+
+def test_float_literal_fractional_part_correct_value_at_runtime():
+    """End-to-end check: a function returning ``6.075`` must actually
+    return 6.075 (not 6.61, which it would if the fractional part was
+    incorrectly parsed as octal and somehow leaked through)."""
+    import cparser as _cparser
+    from cparser.interpreter import Interpreter
+    state = State()
+    state.autoSetupSystemMacros()
+    _cparser.parse_code("""
+    double f075(void) { return 6.075; }
+    double f095(void) { return 6.095; }
+    double f025(void) { return 0.025; }
+    double flong(void) { return 6.024680040776729583740234375; }
+    """, state)
+    assert not state._errors, "parse errors: %r" % state._errors
+    interp = Interpreter()
+    interp.register(state)
+    assert abs(interp.runFunc("f075").value - 6.075) < 1e-15
+    assert abs(interp.runFunc("f095").value - 6.095) < 1e-15
+    assert abs(interp.runFunc("f025").value - 0.025) < 1e-15
+    assert abs(interp.runFunc("flong").value - 6.024680040776729583740234375) < 1e-12
+
+
 def test_float_literal_trailing_dot():
     """`0.` is a valid C float literal (means 0.0) -- it may be followed
     by any non-digit token (operator, semicolon, comma, ...) and the

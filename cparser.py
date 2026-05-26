@@ -1863,11 +1863,29 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     stateStruct.error("cpre2 parse: didn't expected char %r in state %i" % (c, state))
                 # Just ignore it in any case.
                 state = 0
-            elif state == 10: # number (no correct float handling, will be [number, op("."), number])
+            elif state == 10: # number
                 if c in NumberChars: laststr += c
                 elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
                 elif c in "+-" and laststr and laststr[-1] in "eE":
                     # Scientific notation exponent sign: 1e-6, 1E+3, etc.
+                    laststr += c
+                elif c == "." and "." not in laststr and "e" not in laststr.lower():
+                    # Decimal point in a float literal: ``6.075``,
+                    # ``0.5``, etc.  Absorb it into the current token
+                    # so the whole float stays a single ``CNumber``.
+                    # Without this, the tokenizer would split into
+                    # ``[6, ., 075]`` and the fractional part ``075``
+                    # would then be parsed as an octal integer (61
+                    # instead of 75) -- inconsistent with how an 8/9
+                    # in the same position would parse.  ``_combine_\
+                    # float_parts`` reassembles the float from the
+                    # rawstr so the float VALUE was correct, but the
+                    # intermediate ``CNumber.content`` was wrong, and
+                    # the inconsistency leaked into any other consumer
+                    # of that token.  Note we only absorb the FIRST
+                    # ``.`` (a second one terminates) and only when no
+                    # ``e/E`` has appeared yet (after the exponent,
+                    # ``.`` ends the literal).
                     laststr += c
                 else:
                     yield CNumber(cpre2_parse_number(stateStruct, laststr), laststr)
