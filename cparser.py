@@ -3292,6 +3292,15 @@ def getCommonValueType(stateStruct, t1, t2):
         t1 = t1.type
     while isinstance(t2, CTypedef):
         t2 = t2.type
+    # ``getValueType`` for ``CSizeofSymbol`` / ``COffsetofSymbol``
+    # returns a synthetic ``CFunc(type=size_t)``.  Unwrap to the
+    # return type so arithmetic between a pointer and ``sizeof(...)``
+    # behaves like pointer + size_t (rather than tripping the
+    # ``isinstance(t2, (CBuiltinType, CStdIntType))`` assert below).
+    if isinstance(t1, CFunc):
+        t1 = t1.type
+    if isinstance(t2, CFunc):
+        t2 = t2.type
     if isclass(t1) and issubclass(t1, ctypes._SimpleCData):
         t1 = getBuiltinTypeForCType(stateStruct, t1)
     if isclass(t2) and issubclass(t2, ctypes._SimpleCData):
@@ -3313,6 +3322,10 @@ def getCommonValueType(stateStruct, t1, t2):
         return getCommonValueType(stateStruct, t2, t1)
     if isinstance(t1, CPointerType):
         if isinstance(t2, CPointerType):
+            if not isSameType(stateStruct, t1.pointerOf, t2.pointerOf):
+                import sys as _sys
+                print("[debug getCommonValueType pointers differ] t1.pointerOf=%r t2.pointerOf=%r"
+                      % (t1.pointerOf, t2.pointerOf), file=_sys.stderr)
             assert isSameType(stateStruct, t1.pointerOf, t2.pointerOf)
             return t1
         if isinstance(t2, CArrayType):
@@ -3694,6 +3707,19 @@ class CStatement(_CBaseWithOptBody):
                     subStatement._leftexpr = self._leftexpr
                     subStatement._op = token
                     self._leftexpr = subStatement
+                elif isinstance(self._leftexpr, (CSizeofSymbol, COffsetofSymbol)):
+                    # ``sizeof EXPR`` (no parens) per C99 6.5.3.4: the
+                    # operand is a unary expression.  Wrap into the
+                    # same CFuncCall(base=CSizeofSymbol, args=[EXPR])
+                    # shape that the parenthesized ``sizeof(EXPR)``
+                    # form produces -- the bare-identifier path below
+                    # already does this via ``_create_cast_call``; we
+                    # extend it to also handle ``sizeof *p``,
+                    # ``sizeof &x``, etc.  Routes via state 40 so
+                    # subsequent tokens continue parsing the unary
+                    # operand inside args[0].
+                    self._leftexpr = _create_cast_call(stateStruct, self, self._leftexpr, token)
+                    self._state = 40
                 else:
                     self._op = token
                     self._state = 6
@@ -3857,7 +3883,11 @@ class CStatement(_CBaseWithOptBody):
             else:
                 stateStruct.error("statement parsing: didn't expected token " + str(token) + " after " + str(self._leftexpr) + " in state " + str(self._state))
         elif self._state == 40: # after cast_call((expr) x)
-            if self._leftexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
+            # The argument's expression is "complete" in any of the
+            # value-state codes (5/7/9/50/51); state 5 alone misses the
+            # state-9 case for unary-prefix expressions (e.g. ``sizeof
+            # *fb`` leaves args[0] in state 9 after the operand).
+            if self._leftexpr.args[0]._state not in (5, 7, 9, 50, 51):
                 self._leftexpr.args[0]._cpre3_handle_token(stateStruct, token)
             elif token in (COp("."), COp("->"), COp("++"), COp("--")):
                 # Postfix operators (`.`, `->`, `++`, `--`) bind to the
@@ -3873,7 +3903,7 @@ class CStatement(_CBaseWithOptBody):
                 self._state = 5
                 self._cpre3_handle_token(stateStruct, token) # redo handling
         elif self._state == 45: # after expr + op + cast_call((expr) x)
-            if self._rightexpr.args[0]._state != 5:  # something is unfinished, like a previous "->"
+            if self._rightexpr.args[0]._state not in (5, 7, 9, 50, 51):
                 self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)
             elif token in (COp("."), COp("->"), COp("++"), COp("--")):
                 self._rightexpr.args[0]._cpre3_handle_token(stateStruct, token)

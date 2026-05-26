@@ -2255,6 +2255,49 @@ def test_two_for_loops_same_name_in_same_function():
     assert interp.runFunc("two_loops", 3).value == 33
 
 
+def test_sizeof_unary_form_without_parens():
+    """``sizeof *p`` -- without parentheses -- must work like
+    ``sizeof(*p)`` per C99 6.5.3.4.  Real-world hit:
+    Objects/memoryobject.c line 992
+    ``PyMem_Malloc(sizeof *fb + 3 * src->ndim * (sizeof *fb->array))``.
+
+    cparser mis-parses ``sizeof *p`` as the binary expression
+    ``CSizeofSymbol * p``; both the runtime path (astAndTypeForCStatement)
+    and the type-inference path (CStatement.getValueType) detect and
+    rewrite to the unary form.
+    """
+    state = parse("""
+    int f(void) {
+        int *p = 0;
+        return (int)(sizeof *p);
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    import ctypes as _ct
+    assert interp.runFunc("f").value == _ct.sizeof(_ct.c_int)
+
+
+def test_sizeof_unary_in_arithmetic_with_pointer():
+    """Exact shape of memoryobject.c::PyBuffer_ToContiguous line 992:
+    ``sizeof *fb + 3 * src->ndim * (sizeof *fb->array)`` where ``fb``
+    and ``fb->array`` are pointers.  Type inference must say the
+    result is ``size_t``, not (incorrectly) some pointer type."""
+    state = parse("""
+    typedef struct { long array[8]; } fb_t;
+    long f(long ndim) {
+        fb_t *fb = 0;
+        return (long)(sizeof *fb + 3 * ndim * (sizeof *fb->array));
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    import ctypes as _ct
+    expected = _ct.sizeof(_ct.c_long) * 8 + 3 * 2 * _ct.sizeof(_ct.c_long)
+    r = interp.runFunc("f", 2).value
+    assert r == expected, "expected %d got %d" % (expected, r)
+
+
 def test_sizeof_of_array_index_on_null_pointer():
     """``sizeof(p[0])`` must resolve to the element type size at
     translation time, NOT dereference ``p`` at runtime.  Real-world
