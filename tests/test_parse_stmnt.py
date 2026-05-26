@@ -1091,5 +1091,69 @@ def test_parse_typedef_sizeof_in_macro_array_bound():
     assert not state._errors, "unexpected errors: %r" % state._errors
 
 
+# ---------------------------------------------------------------------------
+# Cross-dict (vars vs funcs) collision warning (task #18).
+# See _addToParent in cparser.py.
+# ---------------------------------------------------------------------------
+
+def _parse_no_assert(src):
+    """Like helpers_test.parse but does NOT assert _errors empty --
+    for tests that inspect the errors list directly."""
+    import cparser
+    state = cparser.State()
+    state.autoSetupSystemMacros()
+    cparser.parse_code(src, state)
+    return state
+
+
+def test_crossdict_collision_var_vs_func_warns():
+    """A name used as both a CFunc and a CVarDecl in the same scope must
+    be flagged at parse time -- lookup order would otherwise silently
+    pick one or the other."""
+    state = _parse_no_assert("""
+    int X(void);     /* prototype -- goes into state.funcs */
+    static int X;    /* variable  -- goes into state.vars */
+    """)
+    errors = " ".join(state._errors)
+    assert "cross-dict name collision" in errors, (
+        "expected cross-dict warning, got: %r" % state._errors)
+    assert "'X'" in errors
+
+
+def test_crossdict_collision_dedup():
+    """The warning must fire AT MOST once per name per state."""
+    state = _parse_no_assert("""
+    int X(void);
+    static int X;
+    int X(void);     /* second prototype shouldn't re-trigger */
+    """)
+    n = sum(1 for e in state._errors if "cross-dict name collision" in e)
+    assert n == 1, "expected exactly 1 warning, got %d: %r" % (n, state._errors)
+
+
+def test_two_function_scope_statics_in_different_functions_no_warning():
+    """Same-named function-scope statics in DIFFERENT functions are
+    legal C -- the parse should produce NO errors at all."""
+    parse("""
+    int foo(void) { static int X = 1; return X; }
+    int bar(void) { static int X = 2; return X; }
+    """)
+
+
+def test_file_and_function_scope_same_name_static_no_error():
+    """File-scope ``static int X`` and function-scope ``static int X``
+    in another function are SEPARATE C objects (different scopes,
+    different lifetimes).  The parser must accept both without any
+    error -- the interpreter's name mangling
+    (``<funcname>__<varname>``) keeps them distinct at runtime."""
+    parse("""
+    static int X = 1;
+    int foo(void) {
+        static int X = 2;
+        return X;
+    }
+    """)
+
+
 if __name__ == "__main__":
     main(globals())

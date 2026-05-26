@@ -2229,6 +2229,53 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_file_and_function_scope_same_name_static_are_distinct_at_runtime():
+    """File-scope ``static int X`` and function-scope ``static int X``
+    are separate C objects.  The interpreter mangles function-scope
+    statics to ``<funcname>__<varname>`` to keep them distinct.
+
+    This test exercises the scenario from a prior PyCPython incident:
+    one file declares ``static int initialized`` at file scope (used
+    as a guard), another function in the same parsed program has a
+    function-scope ``static int initialized`` (used for a different
+    purpose).  In a correct interpreter the two are independent --
+    modifying one must NOT affect the other.
+    """
+    state = parse("""
+    static int initialized = 7;
+    int read_file_scope(void) { return initialized; }
+    int set_file_scope(int v) { initialized = v; return initialized; }
+    int inc_func_scope(void) {
+        static int initialized = 0;
+        initialized = initialized + 10;
+        return initialized;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+
+    # File-scope starts at 7.
+    assert interp.runFunc("read_file_scope").value == 7
+
+    # First call into inc_func_scope returns 10 (function-local
+    # static initialized to 0, then += 10).
+    assert interp.runFunc("inc_func_scope").value == 10
+    # File-scope unchanged -- this is the load-bearing assertion: if
+    # the interpreter confuses the two, this would be 10 instead of 7.
+    assert interp.runFunc("read_file_scope").value == 7
+
+    # Second call -- function-local must persist across calls (static
+    # storage duration) and reach 20.
+    assert interp.runFunc("inc_func_scope").value == 20
+    assert interp.runFunc("read_file_scope").value == 7
+
+    # Mutate the file-scope side; function-local must remain unaffected.
+    interp.runFunc("set_file_scope", 99)
+    assert interp.runFunc("read_file_scope").value == 99
+    # Function-local should still be at 20 from before; +=10 -> 30.
+    assert interp.runFunc("inc_func_scope").value == 30
+
+
 if __name__ == "__main__":
     import helpers_test
     helpers_test.main(globals())

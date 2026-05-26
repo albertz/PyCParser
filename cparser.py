@@ -2400,6 +2400,9 @@ class CFuncPointerDecl(_CBaseWithOptBody, CFuncPointerBase):
         return indent + asCCode(self.type) + "(*" + self.name + ") (" + ", ".join(map(asCCode, self.args)) + ")"
 
 
+_SIBLING_DICT = {"vars": "funcs", "funcs": "vars"}
+
+
 def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=True):
     assert dictName or listName
     assert hasattr(obj.parent, "body")
@@ -2408,6 +2411,41 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
         if obj.name is None:
             # might be part of a typedef, so don't error
             return
+
+        # -----------------------------------------------------
+        # Cross-dict collision detection (``vars`` vs ``funcs``).
+        # -----------------------------------------------------
+        # When the same name appears once as a CFunc and once as a
+        # CVarDecl in the same scope, our parser stores them in two
+        # separate dicts on the same body (``body.vars`` and
+        # ``body.funcs``).  Downstream lookup paths usually consult
+        # one dict first and silently fall back to the other, so the
+        # "winner" depends on lookup order -- a fragile contract that
+        # has masked real bugs in the past (e.g. a file-scope ``static
+        # int X`` shadowed by an earlier prototype ``int X(void)``).
+        #
+        # Warn at parse time so the collision can't reach the
+        # interpreter unnoticed.  We only warn ONCE per name per state.
+        sibling_name = _SIBLING_DICT.get(dictName)
+        if sibling_name is not None:
+            sibling_dict = getattr(obj.parent.body, sibling_name, None)
+            if sibling_dict and obj.name in sibling_dict:
+                if not hasattr(stateStruct, "_reported_crossdict_collisions"):
+                    stateStruct._reported_crossdict_collisions = set()
+                key = (id(obj.parent.body), obj.name)
+                if key not in stateStruct._reported_crossdict_collisions:
+                    stateStruct._reported_crossdict_collisions.add(key)
+                    other = sibling_dict[obj.name]
+                    stateStruct.error(
+                        "*** WARNING: cross-dict name collision ***\n"
+                        "  %r exists as a %s and as a %s in the same scope.\n"
+                        "    existing %s: %s\n"
+                        "    new %s: %s\n"
+                        "  Lookup order decides which one wins; rename one "
+                        "side via a preprocessor macro before parsing."
+                        % (obj.name, sibling_name[:-1], dictName[:-1],
+                           sibling_name[:-1], other,
+                           dictName[:-1], obj))
 
         if obj.name in d:
             old_obj = d[obj.name]
