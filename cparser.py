@@ -2580,62 +2580,96 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                 old_type = _resolved_type(old_obj)
                 new_type = _resolved_type(obj)
                 if old_type is None or new_type is None:
-                    types_match = True  # can't compare reliably
+                    type_kind = "unknown"
                 elif str(old_type) == str(new_type):
-                    types_match = True
+                    type_kind = "same"
                 elif (isinstance(old_type, CArrayType)
                         and isinstance(new_type, CArrayType)
                         and str(old_type.arrayOf) == str(new_type.arrayOf)):
                     # Arrays of the SAME element type but different
-                    # lengths.  This is technically a type-mismatch per
-                    # ISO C, but in practice always benign read-only
-                    # data: doc strings, method tables, etc.  Both
-                    # files have their own `static char doc[N] = "..."`
-                    # with N varying.  No size-mismatch corruption
-                    # risk because the data is just READ (printed),
-                    # never written through.  Don't error on this.
-                    types_match = True
+                    # lengths.  Common in CPython: `static char doc[N]`.
+                    # No corruption risk in practice (read-only), but
+                    # still a semantic divergence from real C.
+                    type_kind = "array_same_elem"
                 else:
-                    types_match = False
+                    type_kind = "mismatch"
                 # Dedupe so the error fires at most ONCE per name.
                 if not hasattr(stateStruct,
                                "_reported_static_collisions"):
                     stateStruct._reported_static_collisions = set()
                 already = obj.name in stateStruct._reported_static_collisions
                 if (old_file and new_file and old_file != new_file
-                        and not types_match
-                        and not already):
+                        and not already
+                        and type_kind != "unknown"):
                     stateStruct._reported_static_collisions.add(obj.name)
-                    stateStruct.error(
-                        "*** WARNING: TYPE-CONFUSION MEMORY CORRUPTION RISK ***\n"
-                        "  Two file-scope ``static`` declarations of "
-                        "%r have INCOMPATIBLE TYPES across translation "
-                        "units:\n"
-                        "    old:  %s\n"
-                        "          type=%r\n"
-                        "    new:  %s\n"
-                        "          type=%r\n"
-                        "  Per ISO C, file-scope ``static`` has "
-                        "internal linkage -- these MUST be separate "
-                        "variables.  cparser merges all translation "
-                        "units into one ``state.vars`` and would "
-                        "silently overwrite the older entry.  Code "
-                        "in the older file would then read/write the "
-                        "newer file's variable through a "
-                        "mismatched-type pointer; in the interpreter "
-                        "this manifests as SIGSEGV / silent heap "
-                        "corruption (this was the root cause of the "
-                        "shutdown-gc segfault in cpython.py; see "
-                        "SEGFAULT_INVESTIGATION.md).\n"
-                        "  Fix: rename one side via a preprocessor "
-                        "macro before parsing it, e.g.\n"
-                        "    state.macros[%r] = cparser.Macro("
-                        "rightside=%r)\n"
-                        "    cparser.parse(<the other file>, state)"
-                        % (obj.name,
-                           old_file, old_type,
-                           new_file, new_type,
-                           obj.name, obj.name + "_2"))
+                    if type_kind == "mismatch":
+                        stateStruct.error(
+                            "*** ERROR: TYPE-CONFUSION MEMORY CORRUPTION RISK ***\n"
+                            "  Two file-scope ``static`` declarations of "
+                            "%r have INCOMPATIBLE TYPES across translation "
+                            "units:\n"
+                            "    old:  %s\n"
+                            "          type=%r\n"
+                            "    new:  %s\n"
+                            "          type=%r\n"
+                            "  Per ISO C, file-scope ``static`` has "
+                            "internal linkage -- these MUST be separate "
+                            "variables.  cparser merges all translation "
+                            "units into one ``state.vars`` and would "
+                            "silently overwrite the older entry.  Code "
+                            "in the older file would then read/write the "
+                            "newer file's variable through a "
+                            "mismatched-type pointer; in the interpreter "
+                            "this manifests as SIGSEGV / silent heap "
+                            "corruption (this was the root cause of the "
+                            "shutdown-gc segfault in cpython.py; see "
+                            "SEGFAULT_INVESTIGATION.md).\n"
+                            "  Fix: rename one side via a preprocessor "
+                            "macro before parsing it, e.g.\n"
+                            "    state.macros[%r] = cparser.Macro("
+                            "rightside=%r)\n"
+                            "    cparser.parse(<the other file>, state)"
+                            % (obj.name,
+                               old_file, old_type,
+                               new_file, new_type,
+                               obj.name, obj.name + "_2"))
+                    else:
+                        # Same type (or arrays of same element type).
+                        # Per ISO C the two are still SEPARATE
+                        # variables; merging them silently means the
+                        # interpreter sees one file's writes through the
+                        # other file's lens.  Type-confusion risk is
+                        # low, but semantic behavior diverges from real
+                        # C, which the project explicitly aims to
+                        # match.
+                        detail = (" (array element types match but "
+                                  "lengths differ: %s vs %s)" %
+                                  (old_type, new_type)
+                                  if type_kind == "array_same_elem" else "")
+                        stateStruct.error(
+                            "*** ERROR: file-scope ``static`` name "
+                            "collision across translation units ***\n"
+                            "  %r is declared ``static`` in both:\n"
+                            "    old:  %s\n"
+                            "    new:  %s\n"
+                            "  type=%r%s\n"
+                            "  Per ISO C, file-scope ``static`` has "
+                            "internal linkage -- these MUST be separate "
+                            "variables.  cparser merges all translation "
+                            "units into one ``state.vars``, so the new "
+                            "decl silently overwrites the old one and "
+                            "code in the first file ends up reading the "
+                            "second file's variable.  Semantics diverge "
+                            "from real C even though the types match.\n"
+                            "  Fix: rename one side via a preprocessor "
+                            "macro before parsing it, e.g.\n"
+                            "    state.macros[%r] = cparser.Macro("
+                            "rightside=%r)\n"
+                            "    cparser.parse(<the other file>, state)"
+                            % (obj.name,
+                               old_file, new_file,
+                               old_type, detail,
+                               obj.name, obj.name + "_2"))
 
             if new_has_body:
                 # Always overwrite if the new one has a body.

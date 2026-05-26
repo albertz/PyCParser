@@ -1967,7 +1967,7 @@ def test_file_scope_static_collision_would_crash_without_detection():
                 cparser.parse(os.path.join(tmpdir, basename), state)
 
         # Sanity: cparser MUST have detected the collision.
-        coll = [e for e in state._errors if "WARNING: TYPE-CONFUSION MEMORY CORRUPTION RISK" in e]
+        coll = [e for e in state._errors if "TYPE-CONFUSION MEMORY CORRUPTION RISK" in e]
         if not coll:
             print("FAIL: cparser did not detect the static collision",
                   file=sys.stderr)
