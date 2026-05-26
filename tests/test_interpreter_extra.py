@@ -2229,6 +2229,32 @@ def test_bitwise_and_on_pointer_typed_expr():
     assert interpreter.getFunc("masked")(ctypes.pointer(b), ctypes.c_int(0)) == 5
 
 
+def test_chained_assign_to_bitfield_fields():
+    """``a.bf1 = a.bf2 = 1`` where ``bf1`` and ``bf2`` are bitfields
+    must translate to nested helper calls so the inner assignment is
+    a valid Python expression.  Real-world hit: CPython's
+    Modules/_io/fileio.c line 330 ``self->readable = self->writable
+    = 1;`` (both fields are ``unsigned int : 1``)."""
+    state = parse("""
+    typedef struct {
+        unsigned int created : 1;
+        unsigned int readable : 1;
+        unsigned int writable : 1;
+        unsigned int appending : 1;
+    } flags_t;
+    int f(void) {
+        flags_t f;
+        f.created = f.readable = f.writable = f.appending = 0;
+        f.readable = f.writable = 1;
+        return (f.created << 3) | (f.readable << 2) | (f.writable << 1) | f.appending;
+    }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # created=0, readable=1, writable=1, appending=0  ->  0*8 + 1*4 + 1*2 + 0 = 6
+    assert interp.runFunc("f").value == 6
+
+
 def test_for_loop_init_with_multiple_declarators_runtime():
     """``for (int i = 0, pos = start; ...)`` must initialize and update
     BOTH ``i`` and ``pos`` at runtime.  Mirrors CPython's

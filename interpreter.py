@@ -1123,6 +1123,15 @@ class Helpers:
         setattr(obj, attr, val)
         return val
 
+    def assignBitfield(self, obj, attr, bValue):
+        """Like ``assign`` but for bitfields: ctypes won't let us take
+        a pointer to a bitfield, so we set the attribute directly.
+        Returns ``bValue`` (as a Python int) so chained assignments --
+        e.g. ``a->bf1 = a->bf2 = 1;`` -- work."""
+        self._checkAborted()
+        setattr(obj, attr, bValue)
+        return bValue
+
     def copy(self, a):
         self._checkAborted()
         if isinstance(a, ctypes.c_void_p):
@@ -1729,9 +1738,18 @@ def getAstNode_assign(stateStruct, aAst, aType, bAst, bType):
         bAst = makeAstNodeCall(getAstNodeAttrib("intp", "_storePtr"), bAst)
     bValueAst = getAstNode_valueFromObj(stateStruct, bAst, bType, isPartOfCOp=True)
     if isinstance(aType, CBitfieldType):
-        # Bitfields must use direct Python assignment because ctypes does not
-        # support taking a pointer to a bitfield (which helpers.assign needs).
-        return ast.Assign(targets=[aAst], value=bValueAst, ctx=ast.Store())
+        # Bitfields must go through a helper because ctypes does not
+        # support taking a pointer to a bitfield (which helpers.assign
+        # needs).  Use an EXPRESSION form -- ``helpers.assignBitfield(
+        # obj, attr, value)`` -- so chained assignments like
+        # ``a->bf1 = a->bf2 = 1;`` translate as a nested call rather
+        # than an ``ast.Assign`` statement (which is not a valid
+        # expression and trips a SyntaxError in our translator).
+        assert isinstance(aAst, ast.Attribute), \
+            "bitfield target must be an Attribute access, got %r" % aAst
+        return makeAstNodeCall(
+            getAstNodeAttrib("helpers", "assignBitfield"),
+            aAst.value, ast.Str(s=aAst.attr), bValueAst)
     if isPointerType(aType, alsoFuncPtr=True):
         return makeAstNodeCall(Helpers.assignPtr, aAst, bValueAst)
     return makeAstNodeCall(Helpers.assign, aAst, bValueAst)
