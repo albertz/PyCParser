@@ -634,11 +634,16 @@ class Wrapper:
         wrapCFunc(state, "memcmp", restype=ctypes.c_int, argtypes=(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t))
     def handle_time_h(self, state):
         state.typedefs["time_t"] = CTypedef(name="time_t", type=CBuiltinType(("int",)))
+        state.typedefs["clock_t"] = CTypedef(name="clock_t", type=CBuiltinType(("long",)))
         if "timespec" not in state.structs:
             s = state.structs["timespec"] = CStruct(name="timespec")
             s.body = CBody(parent=s)
             CVarDecl(parent=s, name="tv_sec", type=CBuiltinType(("long",))).finalize(state)
             CVarDecl(parent=s, name="tv_nsec", type=CBuiltinType(("long",))).finalize(state)
+        # CLOCKS_PER_SEC -- POSIX standard value (1,000,000 on Linux).
+        state.macros["CLOCKS_PER_SEC"] = Macro(rightside="1000000")
+        if "clock" not in state.funcs:
+            wrapCFunc(state, "clock", restype=ctypes.c_long, argtypes=())
     def handle_ctype_h(self, state):
         wrapCFunc(state, "isalpha", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
