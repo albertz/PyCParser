@@ -2520,34 +2520,63 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
         # When the same name appears once as a CFunc and once as a
         # CVarDecl in the same scope, our parser stores them in two
         # separate dicts on the same body (``body.vars`` and
-        # ``body.funcs``).  Downstream lookup paths usually consult
-        # one dict first and silently fall back to the other, so the
-        # "winner" depends on lookup order -- a fragile contract that
-        # has masked real bugs in the past (e.g. a file-scope ``static
-        # int X`` shadowed by an earlier prototype ``int X(void)``).
+        # ``body.funcs``).  Downstream lookup paths consult one dict
+        # first and silently fall back to the other, so the "winner"
+        # depends on lookup order -- a fragile contract that has
+        # masked real bugs (eg. a file-scope ``static int X`` shadowed
+        # by an earlier prototype ``int X(void)``).
         #
-        # Warn at parse time so the collision can't reach the
-        # interpreter unnoticed.  We only warn ONCE per name per state.
+        # Warn ONLY when both sides are from the SAME TU -- per real
+        # C scoping that's a genuine bug (you can't have both a func
+        # and a var of the same name in one TU).  For cross-TU
+        # collisions ``getObjInBody`` consults ``_tu_local_lookup``
+        # before falling through to the global dicts, so the current
+        # TU's decl correctly shadows the other TU's, and the warning
+        # is a false positive (eg. ``clinic/structseq.c.h``'s static
+        # ``structseq_new`` function vs ``posixmodule.c``'s
+        # same-named static newfunc variable -- legal C, isolated by
+        # per-TU lookup).  Warn once per name per state.
         sibling_name = _SIBLING_DICT.get(dictName)
         if sibling_name is not None:
             sibling_dict = getattr(obj.parent.body, sibling_name, None)
             if sibling_dict and obj.name in sibling_dict:
-                if not hasattr(stateStruct, "_reported_crossdict_collisions"):
-                    stateStruct._reported_crossdict_collisions = set()
-                key = (id(obj.parent.body), obj.name)
-                if key not in stateStruct._reported_crossdict_collisions:
-                    stateStruct._reported_crossdict_collisions.add(key)
-                    other = sibling_dict[obj.name]
-                    stateStruct.error(
-                        "*** WARNING: cross-dict name collision ***\n"
-                        "  %r exists as a %s and as a %s in the same scope.\n"
-                        "    existing %s: %s\n"
-                        "    new %s: %s\n"
-                        "  Lookup order decides which one wins; rename one "
-                        "side via a preprocessor macro before parsing."
-                        % (obj.name, sibling_name[:-1], dictName[:-1],
-                           sibling_name[:-1], other,
-                           dictName[:-1], obj))
+                other = sibling_dict[obj.name]
+                # Same-TU check: compare the source files of the two
+                # decls.  If different, this is a cross-TU collision
+                # which per-TU local lookup handles correctly.
+                same_tu = True
+                new_pos = getattr(obj, "defPos", None) or ""
+                old_pos = getattr(other, "defPos", None) or ""
+                if new_pos and old_pos \
+                        and new_pos not in ("<out-of-scope>", "<unknown>") \
+                        and old_pos not in ("<out-of-scope>", "<unknown>"):
+                    new_file = new_pos.rsplit(":", 2)[0]
+                    old_file = old_pos.rsplit(":", 2)[0]
+                    # ``<x>.c`` and ``clinic/<x>.c.h`` count as the
+                    # same TU (clinic-generated header is included by
+                    # exactly its matching ``.c``).
+                    new_base = os.path.basename(new_file)
+                    old_base = os.path.basename(old_file)
+                    if new_base != old_base \
+                            and new_base + ".h" != old_base \
+                            and old_base + ".h" != new_base:
+                        same_tu = False
+                if same_tu:
+                    if not hasattr(stateStruct, "_reported_crossdict_collisions"):
+                        stateStruct._reported_crossdict_collisions = set()
+                    key = (id(obj.parent.body), obj.name)
+                    if key not in stateStruct._reported_crossdict_collisions:
+                        stateStruct._reported_crossdict_collisions.add(key)
+                        stateStruct.error(
+                            "*** WARNING: cross-dict name collision ***\n"
+                            "  %r exists as a %s and as a %s in the same scope.\n"
+                            "    existing %s: %s\n"
+                            "    new %s: %s\n"
+                            "  Lookup order decides which one wins; rename one "
+                            "side via a preprocessor macro before parsing."
+                            % (obj.name, sibling_name[:-1], dictName[:-1],
+                               sibling_name[:-1], other,
+                               dictName[:-1], obj))
 
         old_obj = d.get(obj.name)  # may be None if first time
         if obj.name in d:
