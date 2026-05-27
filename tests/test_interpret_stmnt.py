@@ -5099,6 +5099,60 @@ def test_flexible_array_member_address():
     assert res.value == 42, "flexible array member read: expected 42, got %r" % res
 
 
+def test_flexible_array_member_type_materialization():
+    """``getAstNodeForVarType`` must handle a C99 flexible array
+    member (``T arr[];``) -- it carries a ``CArrayStatement`` whose
+    ``_leftexpr`` and ``_rightexpr`` are both ``None`` (the array
+    length is "deferred until allocation").  Without special-casing,
+    the path tries to materialize ``arrayLen`` as a regular
+    expression and asserts ``cannot handle None`` inside
+    ``astAndTypeForStatement``.
+
+    Bug observed during shutdown of cpython.py: ``PyDict_Clear`` ->
+    ``_getVarBodyValueAst(empty_keys_struct)`` walked into the FAM
+    field's type and crashed.  Fix: treat the empty ``arrayLen`` as
+    length 0 directly (FAM contributes 0 bytes to the struct header
+    in the C ABI).
+    """
+    from cparser.cparser import (
+        CArrayType, CArrayStatement, CBuiltinType,
+    )
+    from cparser.interpreter import getAstNodeForVarType, FuncEnv
+
+    state = parse("struct s { int x; char data[]; }; int f() { return 0; }")
+    interp = Interpreter()
+    interp.register(state)
+
+    # Build a CArrayType representing the FAM (``char data[]``) with
+    # an empty CArrayStatement for arrayLen -- exactly the shape the
+    # parser produces for ``char arr[];``.
+    fam_type = CArrayType(arrayOf=CBuiltinType(("char",)),
+                          arrayLen=CArrayStatement())
+    assert not fam_type.arrayLen, (
+        "empty CArrayStatement should be falsy; if this assertion "
+        "fails, the parser shape changed and the FAM detection "
+        "in getAstNodeForVarType needs updating")
+
+    # Materializing the FAM type must NOT raise.  The result is an
+    # AST expression representing ``c_byte * 0`` (the array length
+    # is 0 in our model -- the actual trailing bytes are allocated
+    # by malloc(sizeof(struct) + N) at use-sites).
+    funcEnv = FuncEnv(globalScope=interp.globalScope)
+    ast_node = getAstNodeForVarType(funcEnv, fam_type)
+    assert ast_node is not None
+
+    # Sanity-check the produced AST: it should evaluate to a ctypes
+    # array type with length 0.  Compile and eval the node in the
+    # interpreter's globalsDict to confirm.
+    import ast as ast_mod
+    expr = ast_mod.Expression(body=ast_node)
+    ast_mod.fix_missing_locations(expr)
+    code = compile(expr, "<test_fam_materialization>", "eval")
+    result = eval(code, interp.globalsDict)
+    assert ctypes.sizeof(result) == 0, (
+        "FAM array type should have size 0, got %d" % ctypes.sizeof(result))
+
+
 def test_function_local_static_persists_across_calls():
     """A C function-local `static` variable has program lifetime, NOT
     function lifetime -- its storage must be re-used across calls, not

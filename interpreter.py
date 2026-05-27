@@ -518,6 +518,14 @@ def getAstNodeForVarType(funcEnv, t):
         return getAstNodeAttrib("unions", t.name)
     elif isinstance(t, CArrayType):
         arrayOf = getAstNodeForVarType(funcEnv, t.arrayOf)
+        # C99 flexible array member: ``T x[];`` (e.g. PyDictKeysObject's
+        # trailing ``char dk_indices[]``).  ``t.arrayLen`` is a
+        # ``CArrayStatement`` with no left/right expression -- its
+        # ``__bool__`` returns False.  Layout-wise the FAM contributes
+        # zero bytes to the struct header (the allocator extends the
+        # buffer past the struct), so use length 0 here.
+        if not t.arrayLen:
+            return ast.BinOp(left=arrayOf, op=ast.Mult(), right=ast.Num(n=0))
         v = getConstValue(interpreter.globalScope.stateStruct, t.arrayLen)
         if isinstance(v, (int, long)):
             arrayLen = ast.Num(n=v)
