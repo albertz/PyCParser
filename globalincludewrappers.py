@@ -639,15 +639,60 @@ class Wrapper:
     def handle_time_h(self, state):
         state.typedefs["time_t"] = CTypedef(name="time_t", type=CBuiltinType(("int",)))
         state.typedefs["clock_t"] = CTypedef(name="clock_t", type=CBuiltinType(("long",)))
+        # ``clockid_t`` is an opaque integer ID for ``clock_gettime``.
+        # POSIX leaves the underlying type implementation-defined; on
+        # Linux glibc and musl it's ``int``.
+        state.typedefs["clockid_t"] = CTypedef(name="clockid_t", type=CBuiltinType(("int",)))
         if "timespec" not in state.structs:
             s = state.structs["timespec"] = CStruct(name="timespec")
             s.body = CBody(parent=s)
             CVarDecl(parent=s, name="tv_sec", type=CBuiltinType(("long",))).finalize(state)
             CVarDecl(parent=s, name="tv_nsec", type=CBuiltinType(("long",))).finalize(state)
+        # ``struct tm`` -- POSIX broken-down calendar time used by
+        # localtime_r / gmtime_r / strftime.
+        if "tm" not in state.structs:
+            s = state.structs["tm"] = CStruct(name="tm")
+            s.body = CBody(parent=s)
+            for _field in ("tm_sec", "tm_min", "tm_hour", "tm_mday",
+                           "tm_mon", "tm_year", "tm_wday", "tm_yday",
+                           "tm_isdst"):
+                CVarDecl(parent=s, name=_field, type=CBuiltinType(("int",))).finalize(state)
+            CVarDecl(parent=s, name="tm_gmtoff", type=CBuiltinType(("long",))).finalize(state)
+            CVarDecl(parent=s, name="tm_zone",
+                     type=CPointerType(CBuiltinType(("char",)))).finalize(state)
         # CLOCKS_PER_SEC -- POSIX standard value (1,000,000 on Linux).
         state.macros["CLOCKS_PER_SEC"] = Macro(rightside="1000000")
+        # ``clock_gettime`` clock IDs.  Linux constants (POSIX
+        # standardizes the names but leaves values implementation-
+        # defined; cparser doesn't need the matching libc enum, just
+        # something to use as a placeholder int).
+        state.macros["CLOCK_REALTIME"] = Macro(rightside="0")
+        state.macros["CLOCK_MONOTONIC"] = Macro(rightside="1")
+        state.macros["CLOCK_PROCESS_CPUTIME_ID"] = Macro(rightside="2")
+        state.macros["CLOCK_THREAD_CPUTIME_ID"] = Macro(rightside="3")
+        state.macros["CLOCK_MONOTONIC_RAW"] = Macro(rightside="4")
         if "clock" not in state.funcs:
             wrapCFunc(state, "clock", restype=ctypes.c_long, argtypes=())
+        # ``clock_gettime`` / ``clock_getres`` -- POSIX wall/monotonic
+        # clocks.  Bind to libc directly so pytime.c's monotonic /
+        # realtime helpers actually work.  Pass the underlying struct
+        # by pointer; using ``ctypes.c_void_p`` for the parameter type
+        # keeps the libc binding loose (pytime.c provides the actual
+        # ``struct timespec *`` at the call site).
+        if "clock_gettime" not in state.funcs:
+            wrapCFunc(state, "clock_gettime", restype=ctypes.c_int,
+                      argtypes=(ctypes.c_int, ctypes.c_void_p))
+        if "clock_getres" not in state.funcs:
+            wrapCFunc(state, "clock_getres", restype=ctypes.c_int,
+                      argtypes=(ctypes.c_int, ctypes.c_void_p))
+        # ``localtime_r`` / ``gmtime_r`` -- thread-safe time-to-tm
+        # converters.  Used by pytime.c's pytime_localtime / pytime_gmtime.
+        if "localtime_r" not in state.funcs:
+            wrapCFunc(state, "localtime_r", restype=ctypes.c_void_p,
+                      argtypes=(ctypes.c_void_p, ctypes.c_void_p))
+        if "gmtime_r" not in state.funcs:
+            wrapCFunc(state, "gmtime_r", restype=ctypes.c_void_p,
+                      argtypes=(ctypes.c_void_p, ctypes.c_void_p))
     def handle_ctype_h(self, state):
         wrapCFunc(state, "isalpha", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
         wrapCFunc(state, "isalnum", restype=ctypes.c_int, argtypes=(ctypes.c_int,))
