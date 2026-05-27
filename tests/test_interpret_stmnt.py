@@ -5153,6 +5153,106 @@ def test_flexible_array_member_type_materialization():
         "FAM array type should have size 0, got %d" % ctypes.sizeof(result))
 
 
+def test_helpers_make_struct_with_fam():
+    """``Helpers.make_struct_with_fam`` builds a specialized
+    ``ctypes.Structure`` subclass with the trailing FAM resized.
+    Used by the struct-init AST when the C source provides inline
+    initializers for the FAM (eg. ``static PyDictKeysObject
+    empty_keys_struct = { ..., {DKIX_EMPTY, ...} };``).
+
+    Direct unit test: build a tiny ctypes Structure with a
+    ``c_byte * 0`` trailing field, specialize via the helper, and
+    verify the resulting class has the resized field at the right
+    offset.  Also exercise the cache (same args -> same class).
+    """
+    class Base(ctypes.Structure):
+        _fields_ = [("header", ctypes.c_int), ("data", ctypes.c_byte * 0)]
+
+    state = parse("int x;")
+    interp = Interpreter()
+    interp.register(state)
+    helpers = interp.helpers
+
+    specialized = helpers.make_struct_with_fam(Base, ctypes.c_byte, 4)
+    assert specialized is not Base, "must be a new class"
+    # Layout: header (4 bytes) + 4-byte FAM = 8 bytes total.  The
+    # exact total depends on alignment but the FAM contributes 4 here.
+    assert ctypes.sizeof(specialized) == ctypes.sizeof(Base) + 4, (
+        "expected base+4 bytes, got %d (base=%d)" %
+        (ctypes.sizeof(specialized), ctypes.sizeof(Base)))
+    # The header field is at the same offset.
+    inst = specialized(header=42, data=(ctypes.c_byte * 4)(1, 2, 3, 4))
+    assert inst.header == 42
+    assert list(inst.data) == [1, 2, 3, 4]
+    # Cache hit: same args -> same class object.
+    assert helpers.make_struct_with_fam(Base, ctypes.c_byte, 4) is specialized
+    # Different size or elem -> different class.
+    other = helpers.make_struct_with_fam(Base, ctypes.c_byte, 8)
+    assert other is not specialized
+    assert ctypes.sizeof(other) == ctypes.sizeof(Base) + 8
+
+
+def test_global_struct_with_fam_inline_init():
+    """End-to-end: a static struct global with C99-style inline FAM
+    initializer parses, interprets, and the FAM bytes are readable
+    through a function that accesses the struct.
+
+    Exercises the full chain:
+      * ``getAstNode_curlyArrayArgsInit`` detects FAM-with-init and
+        swaps the struct typeAst for a specialized class.
+      * ``GlobalScope.getVar``'s init step sees the specialized type
+        and replaces the placeholder entry (vs. byte-assigning into
+        a too-small placeholder).
+      * Subsequent accesses to the struct's fixed fields work
+        through the regular field layout (header field is at the
+        same offset in base and specialized).
+
+    This is the construct CPython uses for ``empty_keys_struct`` in
+    dictobject.c.
+    """
+    state = parse("""
+    struct s { int header; char data[]; };
+    static struct s g = { 99, { 11, 22, 33, 44 } };
+    int read_header(void) { return g.header; }
+    """)
+    interp = Interpreter()
+    interp.register(state)
+    # Find the global var.  The static decl was auto-scoped (renamed
+    # with a ``_static_<basename>_`` prefix), so look for either the
+    # bare name or any key ending in ``_g``.  Iterate the underlying
+    # state's vars dict directly (the interp's stateStruct wrapper
+    # has a different iteration protocol).
+    var_name = None
+    if "g" in state.vars:
+        var_name = "g"
+    else:
+        for k in state.vars:
+            if k.endswith("_g"):
+                var_name = k
+                break
+    assert var_name is not None, (
+        "global var ``g`` not in state.vars; keys=%r" % list(state.vars))
+    var_obj = interp.globalScope.getVar(var_name)
+    # The materialized value's ctype class must be a FAM specialization
+    # (its size must include the 4 FAM bytes, not just the base header).
+    assert ctypes.sizeof(var_obj) >= ctypes.sizeof(ctypes.c_int) + 4, (
+        "expected FAM-specialized layout (>=8 bytes), got %d" %
+        ctypes.sizeof(var_obj))
+    # Header readable via the C function.
+    r = interp.runFunc("read_header")
+    assert r.value == 99, "expected header=99, got %r" % r
+    # FAM bytes are present in storage (read via raw byte view at the
+    # struct's address, offset by header size).
+    base_addr = ctypes.addressof(var_obj)
+    raw = (ctypes.c_byte * ctypes.sizeof(var_obj)).from_address(base_addr)
+    # Find where the FAM starts: right after the header field.  Use
+    # the specialized class's offset lookup.
+    data_offset = type(var_obj).data.offset
+    fam_bytes = [raw[data_offset + i] for i in range(4)]
+    assert fam_bytes == [11, 22, 33, 44], (
+        "FAM bytes mismatch: expected [11,22,33,44], got %r" % fam_bytes)
+
+
 def test_function_local_static_persists_across_calls():
     """A C function-local `static` variable has program lifetime, NOT
     function lifetime -- its storage must be re-used across calls, not

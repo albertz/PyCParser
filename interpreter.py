@@ -215,7 +215,24 @@ class GlobalScope:
         bodyValueAst = self._getVarBodyValueAst(decl, decl_type, bodyAst, bodyType)
         if bodyValueAst is not None:
             value = evalValueAst(self, bodyValueAst, "<PyCParser_globalvar_" + name + "_init_value>")
-            self.interpreter.helpers.assign(self.vars[name], value)
+            existing = self.vars[name]
+            if type(value) is type(existing):
+                self.interpreter.helpers.assign(existing, value)
+            else:
+                # The init result has a different ctype than the
+                # placeholder.  Happens when the C source initializes
+                # a struct's trailing flexible-array member inline
+                # (eg. ``static PyDictKeysObject empty_keys_struct =
+                # { ..., {DKIX_EMPTY, ...} };``): the struct-init AST
+                # synthesizes a specialized ctypes.Structure subclass
+                # with the FAM resized from 0 to N (see
+                # ``Helpers.make_struct_with_fam``), so its layout is
+                # ``sizeof(base) + N`` bytes while the placeholder
+                # ``existing`` is only ``sizeof(base)``.  Bytewise
+                # assign would truncate.  Replace the entry with the
+                # specialized value and re-register its storage range.
+                self.vars[name] = value
+                self.interpreter._storePtr(ctypes.pointer(value))
 
         return self.vars[name]
 
@@ -733,6 +750,33 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
             s_args_map[cur_field_idx] = (s_arg_ast, s_arg_type)
             cur_field_idx += 1
 
+        # C99 flexible array member: when the struct's last field is
+        # a FAM (``T arr[];``) AND the initializer provides values for
+        # it, the layout the C compiler emits is sizeof(struct
+        # header) + N*sizeof(T) where N is the init count.  ctypes'
+        # baseline struct class has the FAM at zero length, so
+        # passing an ``arr=(c_byte * N)(...)`` kwarg to the
+        # constructor would mismatch.  Replace ``typeAst`` with a
+        # specialized subclass (FAM resized to N) for this one
+        # initializer.
+        if fields:
+            last_field = fields[-1]
+            last_field_type = last_field.type
+            while isinstance(last_field_type, CTypedef):
+                last_field_type = last_field_type.type
+            last_idx = len(fields) - 1
+            if isinstance(last_field_type, CArrayType) \
+                    and not last_field_type.arrayLen \
+                    and last_idx in s_args_map:
+                _fam_arg_ast, _fam_arg_type = s_args_map[last_idx]
+                if isinstance(_fam_arg_type, (tuple, list)):
+                    fam_count = len(_fam_arg_type)
+                    fam_elem_ast = getAstNodeForVarType(
+                        funcEnv, last_field_type.arrayOf)
+                    typeAst = makeAstNodeCall(
+                        getAstNodeAttrib("helpers", "make_struct_with_fam"),
+                        typeAst, fam_elem_ast, ast.Num(n=fam_count))
+
         s_args_kwargs = {}
         for idx, field in enumerate(fields):
             if idx in s_args_map:
@@ -1113,10 +1157,39 @@ OpBinFuncsByOp = {op: ast_bin_op_to_func(op) for op in OpBin.values()}
 class Helpers:
     def __init__(self, interpreter):
         self.interpreter = interpreter
+        self._fam_specialization_cache = {}
 
     def _checkAborted(self):
         if self.interpreter.aborted:
             raise InterruptedError("Interpreter aborted")
+
+    def make_struct_with_fam(self, base_class, elem_type, fam_size):
+        """Build a specialized ``ctypes.Structure`` subclass where the
+        last field (a C99 flexible array member, normally
+        ``elem_type * 0``) is resized to ``elem_type * fam_size``.
+
+        Used when a struct's static initializer provides inline values
+        for its FAM (eg. ``static PyDictKeysObject empty_keys_struct
+        = { ..., {DKIX_EMPTY, ..., DKIX_EMPTY} };``).  The base class
+        was built by ``_getCTypeStruct`` with a zero-length FAM (it
+        carries no header size); to actually init N FAM values we
+        need a struct whose layout reserves N trailing bytes.
+
+        Cached per (base_class id, elem_type id, fam_size) so the
+        same specialization isn't created twice (ctypes Structure
+        subclasses are non-trivial to construct).
+        """
+        key = (id(base_class), id(elem_type), fam_size)
+        cached = self._fam_specialization_cache.get(key)
+        if cached is not None:
+            return cached
+        fields = list(base_class._fields_)
+        last_name, _last_type = fields[-1]
+        new_fields = fields[:-1] + [(last_name, elem_type * fam_size)]
+        cls_name = "%s_with_fam_%d" % (base_class.__name__, fam_size)
+        new_cls = type(cls_name, (ctypes.Structure,), {"_fields_": new_fields})
+        self._fam_specialization_cache[key] = new_cls
+        return new_cls
 
     def prefixInc(self, a):
         self._checkAborted()
