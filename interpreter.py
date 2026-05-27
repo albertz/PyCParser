@@ -3493,7 +3493,25 @@ class Interpreter:
             if obj is not None:
                 self.pointerStorage[addr] = obj  # cache for future lookups
             if obj is None:
-                raise Exception("invalid pointer access to address 0x%x of type %r" % (addr, ptr_type))
+                # Diagnostic: dump the nearest registered ranges + storage
+                # entries so we can see WHY ``addr`` isn't covered.
+                ranges = list(self.pointerStorageRanges)
+                near = [
+                    (s, sz, s + sz)
+                    for (s, sz) in ranges
+                    if abs(s - addr) < 65536 or abs(s + sz - addr) < 65536
+                ]
+                near.sort()
+                msg = ["invalid pointer access to address 0x%x of type %r"
+                       % (addr, ptr_type),
+                       "  nearby pointerStorageRanges (within 64KiB):"]
+                for s, sz, e in near[:20]:
+                    cur = self.pointerStorage.get(s)
+                    msg.append("    [0x%x, 0x%x) size=%d obj=%s"
+                               % (s, e, sz,
+                                  type(cur).__name__ if cur is not None
+                                  else "<gone>"))
+                raise Exception("\n".join(msg))
         if isinstance(obj, PointerStorage):
             res = obj.ptr
         else:
