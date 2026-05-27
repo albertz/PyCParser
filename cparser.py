@@ -5504,8 +5504,7 @@ def parse(filename, state=None):
         preprocessed = state.preprocess_file(filename, local=True)
         tokens = cpre2_parse(state, preprocessed)
         cpre3_parse(state, tokens)
-        _rename_tu_statics(state, filename,
-                           _scope_prefix_from_filename(filename))
+        _rename_tu_statics(state, filename, _scope_prefix_from_filename(filename))
     finally:
         state._tu_changed_decls = prev_tracker
         state._tu_orphans = prev_orphans
