@@ -144,6 +144,10 @@ class Wrapper:
                 rightside=state.macros["DBL_" + _suffix].rightside)
 
     def handle_limits_h(self, state):
+        # ``CHAR_BIT`` -- bits per byte.  Always 8 on every platform
+        # Python supports (POSIX requires it).  Used e.g. by pytime.c
+        # for overflow checks like ``sizeof(time_t) * CHAR_BIT``.
+        state.macros["CHAR_BIT"] = Macro(rightside="8")
         # char (signed by default on x86/ARM macOS+Linux; 8-bit on every
         # platform Python supports).
         state.macros["UCHAR_MAX"] = Macro(rightside="255")
