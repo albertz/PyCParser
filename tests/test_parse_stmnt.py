@@ -694,6 +694,89 @@ def test_file_scope_static_same_name_same_type_auto_isolated():
     assert "_static_b_doc" in state.vars
 
 
+def test_per_tu_local_lookup_shadows_global_funcs_entry():
+    """``getObjInBody(state, name)`` must consult ``state._tu_local_lookup``
+    before falling through to ``state.funcs`` / ``state.vars``.
+
+    Motivating scenario: a shared header (think ``pydtrace.h``-style)
+    contributes ``static int foo(void)`` during the first including
+    TU's parse.  Our auto-scoping leaves header-defined statics
+    under their bare names so other TUs can still find them.  But
+    a different TU may legitimately declare its own ``static int
+    foo;`` (variable) at file scope -- per ISO C those are SEPARATE
+    symbols.  Without the per-TU lookup the global ``funcs > vars``
+    order would shadow the local variable with the cross-TU
+    function, and references in the local TU's body would bind to
+    the wrong thing.
+    """
+    import cparser as _cparser
+    from cparser.cparser import getObjInBody, CFunc, CVarDecl
+
+    state = _cparser.State()
+
+    # Simulate a header-defined static function ``foo`` left in
+    # ``state.funcs`` under the bare name (the case ``_from_main_tu``
+    # skips renaming).
+    cross_tu_func = CFunc()
+    cross_tu_func.name = "foo"
+    cross_tu_func.attribs = ["static"]
+    state.funcs["foo"] = cross_tu_func
+
+    # Without a TU parse active, the lookup must return the only
+    # entry it sees -- the cross-TU function.
+    assert getObjInBody(state, "foo") is cross_tu_func
+
+    # Now simulate "we're partway through parsing TU-B, which just
+    # declared its own ``static int foo;``".  ``_addToParent``
+    # populates ``_tu_local_lookup`` with the new var.
+    local_var = CVarDecl()
+    local_var.name = "foo"
+    local_var.attribs = ["static"]
+    state._tu_local_lookup = {"foo": local_var}
+
+    # The local decl shadows the cross-TU function: a reference to
+    # ``foo`` parsed in TU-B's body must resolve to TU-B's variable.
+    assert getObjInBody(state, "foo") is local_var
+
+    # Names not in the local map fall through normally.
+    state._tu_local_lookup["bar"] = local_var  # decoy
+    assert getObjInBody(state, "foo") is local_var  # still wins
+    state._tu_local_lookup = {}  # empty map after pop
+    assert getObjInBody(state, "foo") is cross_tu_func  # back to global
+
+    # ``_tu_local_lookup = None`` (outside any parse) must not crash.
+    state._tu_local_lookup = None
+    assert getObjInBody(state, "foo") is cross_tu_func
+
+
+def test_per_tu_local_lookup_reset_between_parses():
+    """``cparser.parse`` must restore the previous ``_tu_local_lookup``
+    on exit so a static declared by TU-A doesn't leak into TU-B's
+    name resolution.  Otherwise TU-B's references to a bare name
+    would erroneously bind to TU-A's local symbols.
+    """
+    src_a = """
+    static int counter = 0;
+    int bump_a(void) { return ++counter; }
+    """
+    src_b = """
+    int read_a_counter(void) { return counter; }
+    """
+    state = _write_two_files_and_parse(src_a, src_b)
+    # TU-A's ``counter`` should be renamed; TU-B's reference should
+    # have resolved to... what?  In real C this would be a linker
+    # error (no ``counter`` in scope for TU-B), but in our merged
+    # model TU-A's mangled entry is the only thing left in
+    # state.vars.  Either way, no bare ``counter`` should remain.
+    assert "counter" not in state.vars
+    assert "_static_a_counter" in state.vars
+    # And TU-B's ``_tu_local_lookup`` was reset to ``{}`` (not
+    # carrying TU-A's mapping) by ``cparser.parse``.  We can check
+    # the post-parse state directly: ``_tu_local_lookup`` is None
+    # outside a parse.
+    assert state._tu_local_lookup is None
+
+
 # ---------------------------------------------------------------------------
 # Ternary operator in variable assignment (listobject.c pattern)
 # ---------------------------------------------------------------------------

@@ -771,6 +771,17 @@ class State(object):
         # reference it.  Recording it here lets the rename pass update
         # ``old.name`` directly instead of walking bodies to find it.
         self._tu_orphans = None
+        # Per-TU name -> obj map used by ``getObjInBody`` to resolve
+        # identifiers in body parsing.  Mimics real-C scoping: when a
+        # TU declares a same-named symbol (e.g. a static variable
+        # whose name happens to also exist as a function in another
+        # TU's shared header), that TU's body should see ITS OWN
+        # decl, not the cross-TU one.  Without this, ``getObjInBody``
+        # consults the global state.* dicts in a fixed order and
+        # silently shadows the local decl, leading to type-mismatch
+        # runtime errors (e.g. ``g.structseq_new`` resolving to a
+        # function from another TU instead of the local variable).
+        self._tu_local_lookup = None
 
     @classmethod
     def getDictNameForType(cls, objType):
@@ -2742,6 +2753,7 @@ def _addToParent(obj, stateStruct, dictName=None, listName=None, allowPredec=Tru
                 and obj.parent.body is stateStruct \
                 and d.get(obj.name) is obj:
             stateStruct._tu_changed_decls.append((dictName, obj.name))
+            stateStruct._tu_local_lookup[obj.name] = obj
             if old_obj is not None and old_obj is not obj:
                 stateStruct._tu_orphans.append((dictName, old_obj))
     else:
@@ -3212,6 +3224,22 @@ def getObjInBody(body, name):
     :type name: str
     :return: object, statement or type
     """
+    # Per-TU local scope first.  Mimics real-C name resolution:
+    # within a translation unit, an identifier resolves to that TU's
+    # own decl before falling through to whatever cparser happens to
+    # have in its globally-merged ``state.*`` dicts.  Without this,
+    # a TU's own static variable can be shadowed by a same-named
+    # function from another TU's shared header (the global dicts are
+    # consulted in a fixed ``funcs > vars`` order and don't know
+    # which TU is currently parsing).  Only applies when ``body`` is
+    # the State itself -- nested function/struct bodies have their
+    # own real lexical scope already.
+    if isinstance(body, State):
+        local = body._tu_local_lookup
+        if local is not None:
+            obj = local.get(name)
+            if obj is not None:
+                return obj
     if name in body.funcs:
         return body.funcs[name]
     elif name in body.typedefs:
@@ -5468,16 +5496,20 @@ def parse(filename, state=None):
 
     prev_tracker = state._tu_changed_decls
     prev_orphans = state._tu_orphans
+    prev_lookup = state._tu_local_lookup
     state._tu_changed_decls = []
     state._tu_orphans = []
+    state._tu_local_lookup = {}
     try:
         preprocessed = state.preprocess_file(filename, local=True)
         tokens = cpre2_parse(state, preprocessed)
         cpre3_parse(state, tokens)
-        _rename_tu_statics(state, _scope_prefix_from_filename(filename))
+        _rename_tu_statics(state, filename,
+                           _scope_prefix_from_filename(filename))
     finally:
         state._tu_changed_decls = prev_tracker
         state._tu_orphans = prev_orphans
+        state._tu_local_lookup = prev_lookup
 
     return state
 
@@ -5650,7 +5682,7 @@ def _scope_prefix_from_filename(filename):
     return re.sub(r"\W", "_", base)
 
 
-def _rename_tu_statics(state, scope_prefix):
+def _rename_tu_statics(state, source_filename, scope_prefix):
     """After parsing a translation unit, rename any newly-added file-scope
     ``static`` declarations so they cannot collide with another TU's
     same-named statics.
@@ -5674,12 +5706,55 @@ def _rename_tu_statics(state, scope_prefix):
     the moment it's displaced, so we can update ``old.name`` directly
     instead of walking bodies to find it.
 
+    Header statics (``static inline`` helpers in ``.h`` files like
+    ``pydtrace.h``) are skipped: cparser's include guards mean the
+    header content is parsed only once across the whole project, so
+    only the *first* including TU sees the decls.  Renaming them
+    would strand every other TU that references them by bare name --
+    those TUs don't re-parse the header, so they can't pick up the
+    mangled form.  The defPos check identifies these by comparing
+    the decl's source file to this TU's main filename.
+
     Cost: O(changed-this-parse + orphans-this-parse).  No state-wide
     scans, no AST walk.
     """
     changed = state._tu_changed_decls
     if not changed:
         return
+
+    main_basename = os.path.basename(source_filename)
+
+    def _from_main_tu(obj):
+        """True iff obj was first declared in this TU's main .c file.
+
+        Header-defined statics are NOT renamed.  The reason is the
+        cross-TU header dedup: cparser's macro state is global, so
+        a C-level ``#ifndef Py_FOO_H / #define Py_FOO_H`` guard set
+        during the first including TU's parse suppresses the header
+        body on every later TU's ``#include`` -- and CPythonState
+        adds a filename-keyed dedup on top of that, with explicit
+        opt-outs for template headers (stringlib, graminit.h).
+        So when TU-B references a static defined in such a header,
+        the second include doesn't re-add anything to ``state.*``;
+        TU-B's name resolution falls through to the global dict
+        entry that TU-A's parse populated.  If we'd renamed that
+        entry at the end of TU-A's parse, TU-B can't find it.
+        Skipping the rename keeps the bare name available for
+        whichever later TUs reach for it.  Within-TU collisions
+        with a TU's own same-named decl are still handled correctly
+        by the per-TU local lookup in ``getObjInBody``.
+        Template headers (re-included per TU, opted out of the
+        dedup) DO add fresh decls each parse and would benefit from
+        per-TU rename, but the same-name same-type collisions they
+        produce are caught by ``_addToParent``'s checks -- we can
+        revisit if that turns out to bite in practice.
+        """
+        pos = getattr(obj, "defPos", None)
+        if not pos or pos in ("<out-of-scope>", "<unknown>"):
+            return True  # be permissive when we can't tell
+        # defPos looks like "/abs/path/file.ext:LINE:COL"
+        path = pos.rsplit(":", 2)[0]
+        return os.path.basename(path) == main_basename
 
     seen = set()
     rename_map = {}  # (dict_name, bare_name) -> mangled
@@ -5692,8 +5767,11 @@ def _rename_tu_statics(state, scope_prefix):
         obj = d.get(name)
         if obj is None:
             continue
-        if "static" in getattr(obj, "attribs", ()):
-            rename_map[entry] = "_static_%s_%s" % (scope_prefix, name)
+        if "static" not in getattr(obj, "attribs", ()):
+            continue
+        if not _from_main_tu(obj):
+            continue
+        rename_map[entry] = "_static_%s_%s" % (scope_prefix, name)
     if not rename_map:
         return
 
