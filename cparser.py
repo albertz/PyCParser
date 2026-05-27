@@ -26,6 +26,17 @@ OpChars = "&|=!+-*/%<>^~?:,."
 LongOps = [c+"=" for c in  "&|=+-*/%<>^~!"] + ["--","++","->","<<",">>","&&","||","<<=",">>=","::",".*","->*"]
 OpeningBrackets = "[({"
 ClosingBrackets = "})]"
+# Pre-concatenated character classes used in tokenizer hot paths.
+# Inline ``SpaceChars + "\n"`` etc. in ``cpre2_parse`` would
+# reallocate per-character (~13M times for CPython); precomputing
+# once saves a measurable chunk of parse time.  ``frozenset`` versions
+# are used for the longer classes (~50+ chars) where O(1) ``in``
+# pays off; short ones stay as strings (CPython's char-in-str is
+# already efficient for those).
+_WhitespaceChars = SpaceChars + "\n"
+_IdStartChars = LetterChars + "_"
+_IdContChars = NumberChars + LetterChars + "_"
+_LongOpsSet = frozenset(LongOps)
 
 # NOTE: most of the C++ stuff is not really supported yet
 OpPrecedences = {
@@ -1598,8 +1609,9 @@ class _CBase(object):
     def __init__(self, content=None, rawstr=None, **kwargs):
         self.content = content
         self.rawstr = rawstr
-        for k,v in kwargs.items():
-            setattr(self, k, v)
+        if kwargs:
+            for k,v in kwargs.items():
+                setattr(self, k, v)
     def __repr__(self):
         if self.content is None: return "<" + self.__class__.__name__ + ">"
         return "<" + self.__class__.__name__ + " " + repr(self.content) + ">"
@@ -1761,15 +1773,18 @@ class _Pre2ParseStream:
             return pb.pop()
         stack = self.buffer_stack
         # Fast path: no macro expansion in flight.  ``add_macro`` may
-        # have stashed leftover chars into frame 0, so we still need to
-        # honour that, but we avoid the full reverse loop.
+        # have stashed leftover chars into frame 0, so we still check
+        # the buffer -- but only after a ``buf`` truthiness test so
+        # the common "no buffered content" case skips the ``len(buf)``
+        # call entirely (saves ~5M ``len`` calls during CPython parse).
         if len(stack) == 1:
             frame = stack[0]
-            pos = frame[2]
             buf = frame[1]
-            if pos < len(buf):
-                frame[2] = pos + 1
-                return buf[pos]
+            if buf:
+                pos = frame[2]
+                if pos < len(buf):
+                    frame[2] = pos + 1
+                    return buf[pos]
             try:
                 return next(self.input)
             except StopIteration:
@@ -1843,7 +1858,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
         while not breakLoop:
             breakLoop = True
             if state == 0:
-                if c in SpaceChars + "\n": pass
+                if c in _WhitespaceChars: pass
                 elif c in NumberChars:
                     laststr = c
                     state = 10
@@ -1853,7 +1868,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 elif c == "'":
                     laststr = ""
                     state = 25
-                elif c in LetterChars + "_":
+                elif c in _IdStartChars:
                     laststr = c
                     state = 30
                 elif c in OpeningBrackets:
@@ -1880,7 +1895,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 state = 0
             elif state == 10: # number
                 if c in NumberChars: laststr += c
-                elif c in LetterChars + "_": laststr += c # error handling will be in number parsing, not here
+                elif c in _IdStartChars: laststr += c # error handling will be in number parsing, not here
                 elif c in "+-" and laststr and laststr[-1] in "eE":
                     # Scientific notation exponent sign: 1e-6, 1E+3, etc.
                     laststr += c
@@ -1994,7 +2009,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
                     laststr += simple_escape_char(c)
                 state = 27
             elif state == 30: # identifier
-                if c in NumberChars + LetterChars + "_": laststr += c
+                if c in _IdContChars: laststr += c
                 else:
                     if laststr in stateStruct.macros and laststr not in input.macro_blacklist:
                         macroname = laststr
@@ -2054,7 +2069,7 @@ def cpre2_parse(stateStruct, input, brackets=None):
                 state = 0
             elif state == 40: # op
                 if c in OpChars:
-                    if laststr != "" and laststr + c not in LongOps:
+                    if laststr != "" and laststr + c not in _LongOpsSet:
                         yield COp(laststr)
                         laststr = ""
                     laststr += c
@@ -2231,8 +2246,9 @@ class _CBaseWithOptBody(object):
         self.value = None
         self.parent = None
         self.designators = []
-        for k,v in kwargs.items():
-            setattr(self, k, v)
+        if kwargs:
+            for k,v in kwargs.items():
+                setattr(self, k, v)
 
     @classmethod
     def overtake(cls, obj):
