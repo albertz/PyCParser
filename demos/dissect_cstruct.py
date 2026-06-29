@@ -2,11 +2,12 @@
 https://github.com/fox-it/dissect.cstruct
 """
 
+import ctypes
 import cparser
 from cparser import interpreter
 
 
-def main():
+def demo_struct_and_enum():
     # language=C
     parser_def = """
     #include <stdint.h>
@@ -54,5 +55,58 @@ def main():
     print("OK")
 
 
+def demo_unions_and_anonymous():
+    # language=C
+    parser_def = """
+    #include <stdint.h>
+
+    struct test_union {
+        char magic[4];
+        union {
+            struct {
+                uint32_t a;
+                uint32_t b;
+            } a;
+            struct {
+                char b[8];
+            } b;
+        } c;
+    };
+
+    struct test_anonymous {
+        char magic[4];
+        struct {
+            uint32_t a;
+            uint32_t b;
+        };
+        struct {
+            char c[8];
+        };
+    };
+    """
+
+    state = cparser.parse_code(parser_def)
+    intp = interpreter.Interpreter()
+    intp.register(state)
+
+    test_union = intp.getCType(state.structs["test_union"])
+    assert ctypes.sizeof(test_union) == 12
+    a = test_union.from_buffer_copy(b"ohaideadbeef")
+    assert bytes(a.magic) == b"ohai"
+    assert a.c.a.a.value == 0x64616564
+    assert a.c.a.b.value == 0x66656562
+    assert bytes(a.c.b.b) == b"deadbeef"
+    assert bytes(a) == b"ohaideadbeef"
+
+    test_anonymous = intp.getCType(state.structs["test_anonymous"])
+    b = test_anonymous.from_buffer_copy(b"ohai\x39\x05\x00\x00\x28\x23\x00\x00deadbeef")
+    assert bytes(b.magic) == b"ohai"
+    assert b.a.value == 1337
+    assert b.b.value == 9000
+    assert bytes(b.c) == b"deadbeef"
+    print("OK")
+
+
 if __name__ == "__main__":
-    main()
+    demo_struct_and_enum()
+    demo_unions_and_anonymous()
