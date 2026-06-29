@@ -107,6 +107,40 @@ def demo_unions_and_anonymous():
     print("OK")
 
 
+def demo_bitfields():
+    # language=C
+    parser_def = """
+    #include <stdint.h>
+
+    struct __attribute__((packed)) test {
+        uint16_t a:1;
+        uint16_t b:1;  // 2 bits read from a uint16
+        uint32_t c;    // next field, following the bitfield unit
+        uint16_t d:2;
+        uint16_t e:3;
+    };
+    """
+
+    state = cparser.parse_code(parser_def)
+    intp = interpreter.Interpreter()
+    intp.register(state)
+
+    test = intp.getCType(state.structs["test"])
+    assert ctypes.sizeof(test) == 8
+    d = b"\x03\x00\xff\x00\x00\x00\x1f\x00"
+    a = test.from_buffer_copy(d)
+    # Bitfields come back as plain ints (they use unwrapped ctypes);
+    # the regular field ``c`` is a wrapped ctype, hence ``.value``.
+    assert a.a == 0b1
+    assert a.b == 0b1
+    assert a.c.value == 0xFF
+    assert a.d == 0b11
+    assert a.e == 0b111
+    assert bytes(a) == d
+    print("OK")
+
+
 if __name__ == "__main__":
     demo_struct_and_enum()
     demo_unions_and_anonymous()
+    demo_bitfields()
