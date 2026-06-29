@@ -410,6 +410,25 @@ class Macro(object):
         return valueStmnt.getConstValue(stateStruct)
 
 
+class _AttributeMacro(Macro):
+    """The ``__attribute__((...))`` macro.
+
+    Like the plain empty-expansion macro it erases the attribute from the
+    token stream, but it additionally recognises ``packed`` and flags it
+    on the state so the next struct/union finalize applies ctypes
+    ``_pack_`` (see ``_finalizeBasicType``).  ``__attribute__`` attaches
+    to the immediately neighbouring declaration in both the prefix
+    (``struct __attribute__((packed)) s {...}``) and postfix
+    (``struct s {...} __attribute__((packed))``) forms.
+    """
+    _packed_re = re.compile(r"\bpacked\b")
+
+    def eval(self, state, args):
+        if state is not None and any(self._packed_re.search(a) for a in args):
+            state._pendingPackedAttr = True
+        return ""
+
+
 # either some basic type, another typedef or some complex like CStruct/CUnion/...
 class CType(object):
     def __init__(self, **kwargs):
@@ -789,6 +808,9 @@ class State(object):
         # ``_finalizeBasicType``) and applied as ctypes ``_pack_``.
         self._pragmaPackCurrent = None
         self._pragmaPackStack = []
+        # Set when ``__attribute__((packed))`` is expanded; consumed by
+        # the next struct/union finalize (see ``_finalizeBasicType``).
+        self._pendingPackedAttr = False
 
     @classmethod
     def getDictNameForType(cls, objType):
@@ -810,7 +832,7 @@ class State(object):
     def autoSetupSystemMacros(self, system_specific=False):
         import sys
         # L"..." wchar string literals are handled directly in the tokenizer (cpre2_parse)
-        self.macros["__attribute__"] = Macro(args=("x",), rightside="")
+        self.macros["__attribute__"] = _AttributeMacro(args=("x",), rightside="")
         self.macros["__GNUC__"] = Macro(rightside="4") # most headers just behave more sane with this :)
         self.macros["__GNUC_MINOR__"] = Macro(rightside="2")
         #self.macros["UINT64_C"] = Macro(args=("C"), rightside= "C##ui64") # or move to stdint.h handler?
@@ -2846,15 +2868,43 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 
     if obj.type is None:
         obj.type = make_type_from_typetokens(stateStruct, obj, obj._type_tokens)
-    # Capture the active ``#pragma pack`` alignment for definitions
-    # (those with a body); applied later as ctypes ``_pack_``.
+    # Capture the packing for definitions (those with a body); applied
+    # later as ctypes ``_pack_``.  ``__attribute__((packed))`` (pending
+    # flag) means fully packed and takes precedence over ``#pragma pack``.
     if isinstance(obj, (CStruct, CUnion)) and obj.body is not None \
             and obj.packed is None:
-        obj.packed = stateStruct._pragmaPackCurrent
+        if stateStruct._pendingPackedAttr:
+            obj.packed = 1
+        else:
+            obj.packed = stateStruct._pragmaPackCurrent
+    if isinstance(obj, (CStruct, CUnion)):
+        stateStruct._pendingPackedAttr = False
     _CBaseWithOptBody.finalize(obj, stateStruct, addToContent=None)
 
     if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
         _addToParent(obj=obj, stateStruct=stateStruct, dictName=dictName, listName=listName, allowPredec=allowPredec)
+
+
+def _consumePendingPackedAttr(stateStruct, obj):
+    """Apply a pending ``__attribute__((packed))`` to a just-defined
+    struct/union.
+
+    Handles the postfix form ``struct {...} __attribute__((packed));``,
+    where the attribute is only seen *after* the type already finalized
+    (at its ``}``).  Called at the terminating ``;``.
+
+    Only acts when ``obj`` is a struct/union, and only then clears the
+    flag.  This is important: the per-field ``;`` inside a struct body
+    must NOT clear the flag, otherwise the prefix form
+    ``struct __attribute__((packed)) s { ... }`` (whose flag is consumed
+    at the struct's own finalize) would lose it during field parsing.
+    """
+    if not isinstance(obj, (CStruct, CUnion)):
+        return
+    if obj.body is not None and obj.packed is None \
+            and stateStruct._pendingPackedAttr:
+        obj.packed = 1
+    stateStruct._pendingPackedAttr = False
 
 
 class CFunc(_CBaseWithOptBody):
@@ -4436,15 +4486,24 @@ class CArrayStatement(CStatement):
     def asCCode(self, indent=""):
         return indent + "[" + CStatement.asCCode(self) + "]"
 
-def cpre3_parse_struct(stateStruct, curCObj, input_iter):
+def _parse_struct_or_union_body(stateStruct, curCObj, input_iter):
+    # Snapshot the pending ``__attribute__((packed))`` flag.  If it was
+    # already set on entry it is a prefix attribute for THIS type and
+    # must survive to ``finalize``.  If it gets set during the body it
+    # belongs to a member declaration, not this type, so clear it before
+    # finalizing so it cannot leak onto the enclosing type.
+    pending_at_entry = stateStruct._pendingPackedAttr
     curCObj.body = CBody(parent=curCObj.parent.body)
     cpre3_parse_body(stateStruct, curCObj, input_iter)
+    if not pending_at_entry:
+        stateStruct._pendingPackedAttr = False
     curCObj.finalize(stateStruct)
 
+def cpre3_parse_struct(stateStruct, curCObj, input_iter):
+    _parse_struct_or_union_body(stateStruct, curCObj, input_iter)
+
 def cpre3_parse_union(stateStruct, curCObj, input_iter):
-    curCObj.body = CBody(parent=curCObj.parent.body)
-    cpre3_parse_body(stateStruct, curCObj, input_iter)
-    curCObj.finalize(stateStruct)
+    _parse_struct_or_union_body(stateStruct, curCObj, input_iter)
 
 def cpre3_parse_funcbody(stateStruct, curCObj, input_iter):
     curCObj.body = CBody(parent=curCObj.parent.body)
@@ -4776,6 +4835,8 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
             elif isinstance(token, CSemicolon):
                 if typeObj is not None and not typeObj._finalized:
                     typeObj.finalize(stateStruct, addToContent = typeObj.body is not None)
+                # Postfix ``typedef struct {...} __attribute__((packed)) N;``.
+                _consumePendingPackedAttr(stateStruct, typeObj)
                 curCObj.finalize(stateStruct)
                 return
             else:
@@ -5571,6 +5632,9 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                 CVarDecl.overtake(curCObj)
             if not curCObj._finalized:
                 curCObj.finalize(stateStruct)
+            # Postfix ``struct {...} __attribute__((packed));`` -- the
+            # attribute was seen after the struct finalized; apply now.
+            _consumePendingPackedAttr(stateStruct, curCObj)
             curCObj = _CBaseWithOptBody(parent=parentCObj)
         elif isinstance(token, (CStr,CChar)):
             if isinstance(curCObj, CStatement):

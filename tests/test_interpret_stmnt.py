@@ -4019,6 +4019,32 @@ def test_struct_pragma_pack():
     assert ctypes.sizeof(interpreter.getCType(state.structs["after_pop"])) == 8
 
 
+def test_struct_attribute_packed():
+    # ``__attribute__((packed))`` fully packs a struct.  Supported in the
+    # postfix (after ``}``), prefix (before the tag), and typedef-postfix
+    # forms.  An unrelated attribute (``aligned``) must NOT pack, and a
+    # packed struct must not leak its packing onto a following struct.
+    state = parse("""
+    struct postfix { unsigned char a; short b; int c; } __attribute__((packed));
+    struct __attribute__((packed)) prefix { unsigned char a; short b; int c; };
+    typedef struct { unsigned char a; int b; } TdPacked __attribute__((packed));
+    struct aligned_only { unsigned char a; int b; } __attribute__((aligned(16)));
+    struct after_packed { unsigned char a; int b; };
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert state.structs["postfix"].packed == 1
+    assert state.structs["prefix"].packed == 1
+    assert state.typedefs["TdPacked"].type.packed == 1
+    assert state.structs["aligned_only"].packed is None
+    assert state.structs["after_packed"].packed is None
+    assert ctypes.sizeof(interpreter.getCType(state.structs["postfix"])) == 7
+    assert ctypes.sizeof(interpreter.getCType(state.structs["prefix"])) == 7
+    assert ctypes.sizeof(interpreter.getCType(state.typedefs["TdPacked"].type)) == 5
+    # The packed struct must not have leaked onto the following one.
+    assert ctypes.sizeof(interpreter.getCType(state.structs["after_packed"])) == 8
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;
