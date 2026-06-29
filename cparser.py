@@ -782,6 +782,13 @@ class State(object):
         # runtime errors (e.g. ``g.structseq_new`` resolving to a
         # function from another TU instead of the local variable).
         self._tu_local_lookup = None
+        # ``#pragma pack`` state.  ``_pragmaPackCurrent`` is the active
+        # alignment (an int like 1/2/4/8, or ``None`` for the natural
+        # platform alignment); ``_pragmaPackStack`` backs push/pop.
+        # Captured onto each struct/union at finalize time (see
+        # ``_finalizeBasicType``) and applied as ctypes ``_pack_``.
+        self._pragmaPackCurrent = None
+        self._pragmaPackStack = []
 
     @classmethod
     def getDictNameForType(cls, objType):
@@ -1388,6 +1395,44 @@ def cpreprocess_handle_undef(state, arg):
     state.macros.pop(arg)
 
 
+def cpreprocess_handle_pragma(state, arg):
+    """Handle ``#pragma`` directives.  Currently only ``pragma pack``.
+
+    Supported forms (MSVC / GCC compatible)::
+
+        #pragma pack(N)            set current alignment to N
+        #pragma pack()             reset to the default (natural) alignment
+        #pragma pack(push, N)      save current, then set to N
+        #pragma pack(push)         save current (alignment unchanged)
+        #pragma pack(pop)          restore the last saved alignment
+
+    The active value is captured onto each struct/union when it is
+    finalized and later applied as the ctypes ``_pack_`` attribute.
+    Unknown pragmas are ignored.
+    """
+    arg = arg.strip()
+    if not arg.startswith("pack"):
+        return  # ignore all other pragmas
+    inner = arg[len("pack"):].strip()
+    if not (inner.startswith("(") and inner.endswith(")")):
+        state.error("preprocessor pragma pack: expected parentheses: %r" % arg)
+        return
+    parts = [p.strip() for p in inner[1:-1].split(",") if p.strip()]
+    if not parts:
+        state._pragmaPackCurrent = None
+        return
+    if parts[0] == "push":
+        state._pragmaPackStack.append(state._pragmaPackCurrent)
+        if len(parts) >= 2:
+            state._pragmaPackCurrent = int(parts[1])
+        return
+    if parts[0] == "pop":
+        state._pragmaPackCurrent = (
+            state._pragmaPackStack.pop() if state._pragmaPackStack else None)
+        return
+    state._pragmaPackCurrent = int(parts[0])
+
+
 def handle_cpreprocess_cmd(state, cmd, arg):
     #if not state._preprocessIgnoreCurrent:
     #	print "cmd", cmd, arg
@@ -1450,7 +1495,8 @@ def handle_cpreprocess_cmd(state, cmd, arg):
         cpreprocess_handle_undef(state, arg)
 
     elif cmd == "pragma":
-        pass # ignore at all right now
+        if state._preprocessIgnoreCurrent: return
+        cpreprocess_handle_pragma(state, arg)
 
     elif cmd == "error":
         if state._preprocessIgnoreCurrent: return # we don't really care
@@ -2800,6 +2846,11 @@ def _finalizeBasicType(obj, stateStruct, dictName=None, listName=None, addToCont
 
     if obj.type is None:
         obj.type = make_type_from_typetokens(stateStruct, obj, obj._type_tokens)
+    # Capture the active ``#pragma pack`` alignment for definitions
+    # (those with a body); applied later as ctypes ``_pack_``.
+    if isinstance(obj, (CStruct, CUnion)) and obj.body is not None \
+            and obj.packed is None:
+        obj.packed = stateStruct._pragmaPackCurrent
     _CBaseWithOptBody.finalize(obj, stateStruct, addToContent=None)
 
     if addToContent and hasattr(obj.parent, "body") and not getattr(obj, "_already_added", False):
@@ -2982,6 +3033,10 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
     class ctype(baseClass): pass
     ctype.__name__ = str(obj.name or "<anonymous-struct>")
     ctype._py = obj
+    # ``_pack_`` must be set before ``_fields_`` for ctypes to honor it
+    # (from ``#pragma pack``; see ``cpreprocess_handle_pragma``).
+    if getattr(obj, "packed", None):
+        ctype._pack_ = obj.packed
     obj._ctype = ctype
     obj._ctype_is_constructing = True
     obj._ctype_construct_need_now = False
@@ -3016,6 +3071,9 @@ def _resolveForwardDecl(obj, dictName, stateStruct):
 
 class CStruct(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="structs", **kwargs)
+    # ``#pragma pack`` alignment captured at finalize: an int (1/2/4/...)
+    # or ``None`` for the natural platform alignment.
+    packed = None
     def getCType(self, stateStruct):
         # Some parsed "struct X" references are represented as an anonymous
         # CStruct that points to the typedef object for X. Resolve through the
@@ -3037,6 +3095,7 @@ class CStruct(_CBaseWithOptBody):
 
 class CUnion(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="unions", **kwargs)
+    packed = None
     def getCType(self, stateStruct):
         obj = _resolveForwardDecl(self, "unions", stateStruct)
         result = _getCTypeStruct(ctypes.Union, obj, stateStruct)

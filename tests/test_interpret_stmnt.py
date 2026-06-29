@@ -3997,6 +3997,28 @@ def test_enum_fixed_underlying_type():
     assert sizes == {"head": 1, "e": 2, "col": 1}
 
 
+def test_struct_pragma_pack():
+    # ``#pragma pack(N)`` overrides the natural alignment.  Here the
+    # natural layout pads ``b`` to a 2-byte and ``c`` to a 4-byte
+    # boundary (size 8); packed to 1 there is no padding (size 7).
+    # ``pop`` must restore the natural alignment for ``t``.
+    state = parse("""
+    struct natural { unsigned char a; short b; int c; };
+    #pragma pack(push, 1)
+    struct packed1 { unsigned char a; short b; int c; };
+    #pragma pack(pop)
+    struct after_pop { unsigned char a; int b; };
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert state.structs["natural"].packed is None
+    assert state.structs["packed1"].packed == 1
+    assert state.structs["after_pop"].packed is None
+    assert ctypes.sizeof(interpreter.getCType(state.structs["natural"])) == 8
+    assert ctypes.sizeof(interpreter.getCType(state.structs["packed1"])) == 7
+    assert ctypes.sizeof(interpreter.getCType(state.structs["after_pop"])) == 8
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;
