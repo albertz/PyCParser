@@ -3969,6 +3969,34 @@ def test_interpret_enum_used_as_param_after_forward_decl():
     assert r.value == 11  # EXCEPT = 1, plus b=10.
 
 
+def test_enum_fixed_underlying_type():
+    # C23 / C++11 ``enum E : <type> { ... }`` -- the fixed underlying
+    # type determines the enum's width (and thus struct layout), instead
+    # of the value-range default.  Both the typedef'd and the file-scope
+    # named form are supported.
+    state = parse("""
+    #include <stdint.h>
+    typedef enum : uint16_t { A, B = 0x5, C } Example;
+    enum Color : uint8_t { RED, GREEN = 2, BLUE };
+    struct s {
+        unsigned char head;
+        Example       e;
+        enum Color    col;
+    };
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert state.typedefs["Example"].type.baseType.name == "uint16_t"
+    assert state.enums["Color"].baseType.name == "uint8_t"
+    example_t = interpreter.getCType(state.typedefs["Example"].type)
+    color_t = interpreter.getCType(state.enums["Color"])
+    assert ctypes.sizeof(example_t) == 2
+    assert ctypes.sizeof(color_t) == 1
+    s_t = interpreter.getCType(state.structs["s"])
+    sizes = {name: ctypes.sizeof(t) for name, t in s_t._fields_}
+    assert sizes == {"head": 1, "e": 2, "col": 1}
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;

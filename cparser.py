@@ -3134,6 +3134,9 @@ def cIntTypeForLiteral(value, rawstr):
 
 class CEnum(_CBaseWithOptBody):
     finalize = lambda *args, **kwargs: _finalizeBasicType(*args, dictName="enums", **kwargs)
+    # Fixed underlying type for C23 / C++11 ``enum E : <type> { ... }``.
+    # ``None`` means the type is derived from the value range (classic C).
+    baseType = None
     def getNumRange(self):
         a,b = 0,0
         for c in self.body.contentlist:
@@ -3151,6 +3154,8 @@ class CEnum(_CBaseWithOptBody):
             if c.value == value: return c
         return None
     def getCType(self, stateStruct):
+        if self.baseType is not None:
+            return getCType(self.baseType, stateStruct)
         t = self.getMinCIntType()
         if t is None:
             raise Exception(str(self) + " has a too high number range")
@@ -4436,6 +4441,29 @@ def cpre3_parse_funcpointername(stateStruct, curCObj, input_iter):
 
     stateStruct.error("cpre3 parse func pointer name: incomplete, missing ')' on level " + str(curCObj._bracketlevel))
 
+def cpre3_parse_enum_basetype(stateStruct, enumObj, input_iter):
+    """Parse a C23 / C++11 fixed underlying type, ``enum E : <type> { ... }``.
+
+    Called right after the ``:`` that follows the enum tag.  Consumes the
+    type tokens, stores the resolved type on ``enumObj.baseType``, then
+    parses the enum body via :func:`cpre3_parse_enum`.
+    """
+    type_tokens = []
+    for token in input_iter:
+        if isinstance(token, COpeningBracket) and token.content == "{":
+            enumObj._bracketlevel = list(token.brackets)
+            enumObj.baseType = make_type_from_typetokens(stateStruct, enumObj, type_tokens)
+            cpre3_parse_enum(stateStruct, enumObj, input_iter)
+            return
+        elif isinstance(token, CIdentifier):
+            type_tokens.append(token.content)
+        else:
+            stateStruct.error(
+                "cpre3 parse enum base type: unexpected token %s after %s" % (
+                    token, enumObj))
+            return
+
+
 def cpre3_parse_enum(stateStruct, parentCObj, input_iter):
     parentCObj.body = CEnumBody(parent=parentCObj.parent.body)
     curCObj = CEnumConst(parent=parentCObj)
@@ -4648,6 +4676,10 @@ def cpre3_parse_typedef(stateStruct, curCObj, input_iter):
                         stateStruct.error("cpre3 parse in typedef: got unexpected identifier " + token.content)
             elif token == COp("*"):
                 curCObj._type_tokens += ["*"]
+            elif token == COp(":") and isinstance(typeObj, CEnum) \
+                    and not typeObj._finalized and typeObj.body is None:
+                # C23 / C++11 ``typedef enum [tag] : <type> { ... } Name;``
+                cpre3_parse_enum_basetype(stateStruct, typeObj, input_iter)
             elif isinstance(token, COpeningBracket):
                 curCObj._bracketlevel = list(token.brackets)
                 if token.content == "(":
@@ -5306,6 +5338,11 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
                     else:
                         CVarDecl.overtake(curCObj)
         elif isinstance(token, COp):
+            if token.content == ":" and isinstance(curCObj, CEnum) \
+                    and not curCObj._finalized and curCObj.body is None:
+                # C23 / C++11 ``enum [tag] : <type> { ... };`` at file scope.
+                cpre3_parse_enum_basetype(stateStruct, curCObj, input_iter)
+                continue
             if (not curCObj.isDerived() or isinstance(curCObj, CVarDecl)) and len(curCObj._type_tokens) == 0:
                 CStatement.overtake(curCObj)
             if isinstance(curCObj, CStatement):

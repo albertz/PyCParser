@@ -336,6 +336,28 @@ def test_parse_enum_const_prev_identifier():
     assert_equal(s.enumconsts["_PyTime_ROUND_TIMEOUT"].value, 3)
 
 
+def test_parse_enum_fixed_underlying_type():
+    # C23 / C++11 ``enum E : <type> { ... }``: the explicit underlying
+    # type is stored on ``CEnum.baseType`` (classic enums leave it None).
+    s = parse("""
+    #include <stdint.h>
+    typedef enum : uint16_t { A, B = 0x5, C } Example;
+    enum Color : uint8_t { RED, GREEN = 2, BLUE };
+    """)
+    example = s.typedefs["Example"].type
+    assert isinstance(example, CEnum)
+    assert example.baseType is not None
+    assert example.baseType.name == "uint16_t"
+    assert_equal(s.enumconsts["B"].value, 5)
+    assert_equal(s.enumconsts["C"].value, 6)
+
+    color = s.enums["Color"]
+    assert isinstance(color, CEnum)
+    assert color.baseType.name == "uint8_t"
+    assert_equal(s.enumconsts["GREEN"].value, 2)
+    assert_equal(s.enumconsts["BLUE"].value, 3)
+
+
 def test_struct_pad_unnamed():
     s = parse("""
     struct {
