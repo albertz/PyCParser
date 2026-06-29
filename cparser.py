@@ -2999,8 +2999,18 @@ def _getCTypeStruct(baseClass, obj, stateStruct):
     def _construct(obj):
         fields = []
         anonymous = []
+        # A named member defined inline (``struct {...} field;``) puts BOTH
+        # the anonymous type definition AND its CVarDecl in the body.  Only
+        # a member with no declarator (``struct {...};``) is a true
+        # anonymous member; skip the standalone definition when a CVarDecl
+        # references it as its type.
+        referenced_types = set(
+            id(c.type) for c in obj.body.contentlist
+            if isinstance(c, CVarDecl))
         for c in obj.body.contentlist:
             if isinstance(c, (CStruct, CUnion)) and c.name is None:
+                if id(c) in referenced_types:
+                    continue
                 t = getCType(c, stateStruct)
                 name = "__anon_" + str(len(fields))
                 fields += [(name, t)]

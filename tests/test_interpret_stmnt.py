@@ -4045,6 +4045,42 @@ def test_struct_attribute_packed():
     assert ctypes.sizeof(interpreter.getCType(state.structs["after_packed"])) == 8
 
 
+def test_struct_inline_named_and_anonymous_members():
+    # A named member defined inline (``struct {...} c;``) and a true
+    # anonymous member (``struct {...};``) must not be double-counted:
+    # the parser keeps both the anonymous type definition and the
+    # declarator in the body, but only the declarator is a field.
+    state = parse("""
+    struct with_union {
+        char magic[4];
+        union {
+            struct { unsigned int a; unsigned int b; } a;
+            struct { char b[8]; } b;
+        } c;
+    };
+    struct with_anon {
+        char magic[4];
+        struct { unsigned int a; unsigned int b; };
+        struct { char c[8]; };
+    };
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    # 4 (magic) + max(8, 8) union overlay = 12, not 4 + 8 + 8.
+    wu = interpreter.getCType(state.structs["with_union"])
+    assert ctypes.sizeof(wu) == 12
+    a = wu.from_buffer_copy(b"ohaideadbeef")
+    assert a.c.a.a.value == 0x64616564
+    assert bytes(a.c.b.b) == b"deadbeef"
+    # Anonymous members promote their fields into the parent.
+    wa = interpreter.getCType(state.structs["with_anon"])
+    assert ctypes.sizeof(wa) == 20
+    b = wa.from_buffer_copy(b"ohai\x39\x05\x00\x00\x28\x23\x00\x00deadbeef")
+    assert b.a.value == 1337
+    assert b.b.value == 9000
+    assert bytes(b.c) == b"deadbeef"
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;
