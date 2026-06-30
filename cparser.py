@@ -4757,9 +4757,21 @@ def cpre3_parse_arrayargs(stateStruct, curCObj, input_iter):
     valueStmnt._cpre3_parse_brackets(stateStruct, COpeningBracket("[", brackets=curCObj._bracketlevel), input_iter)
     assert isinstance(valueStmnt._leftexpr, CArrayStatement)
     if isinstance(curCObj, (CVarDecl, CFuncArgDecl, CFuncPointerDecl)):
-        arrayType = make_type_from_typetokens(stateStruct, curCObj, curCObj._type_tokens)
         arrayLen = valueStmnt._leftexpr
-        curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
+        if isinstance(curCObj.type, CArrayType):
+            # Subsequent dimension of a multi-dimensional array, e.g. the
+            # ``[3]`` in ``int16_t mat[2][3]``.  In C this is an *inner*
+            # dimension: ``mat`` is an array of 2 elements, each an array
+            # of 3 int16_t.  So descend to the innermost element type and
+            # wrap it, giving ``CArrayType(CArrayType(int16_t, 3), 2)``
+            # -> ctypes ``(c_int16 * 3) * 2``.
+            outer = curCObj.type
+            while isinstance(outer.arrayOf, CArrayType):
+                outer = outer.arrayOf
+            outer.arrayOf = CArrayType(arrayOf=outer.arrayOf, arrayLen=arrayLen)
+        else:
+            arrayType = make_type_from_typetokens(stateStruct, curCObj, curCObj._type_tokens)
+            curCObj.type = CArrayType(arrayOf=arrayType, arrayLen=arrayLen)
     else:
         stateStruct.error("cpre3_parse_arrayargs: unexpected: %r" % curCObj)
 

@@ -4081,6 +4081,36 @@ def test_struct_inline_named_and_anonymous_members():
     assert bytes(b.c) == b"deadbeef"
 
 
+def test_struct_multidim_array():
+    # ``int16_t mat[2][3]`` is an array of 2 elements, each an array of 3
+    # int16_t (row-major).  The parser used to keep only the last
+    # dimension, giving the wrong size (6 instead of 12) and dropping the
+    # outer dimension entirely.
+    state = parse("""
+    #include <stdint.h>
+    struct S {
+        int16_t mat[2][3];
+        int16_t cube[2][3][4];
+        int16_t vec[5];
+    };
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    s_t = interpreter.getCType(state.structs["S"])
+    fields = dict(s_t._fields_)
+    assert ctypes.sizeof(fields["mat"]) == 2 * 3 * ctypes.sizeof(ctypes.c_int16)
+    assert ctypes.sizeof(fields["cube"]) == 2 * 3 * 4 * ctypes.sizeof(ctypes.c_int16)
+    assert ctypes.sizeof(fields["vec"]) == 5 * ctypes.sizeof(ctypes.c_int16)
+    # Row-major element order: mat[0] then mat[1], each 3 wide.
+    inst = s_t()
+    inst.mat[0][0] = 11
+    inst.mat[0][2] = 13
+    inst.mat[1][0] = 21
+    import struct as _struct
+    raw = bytes(inst)[:2 * 3 * 2]
+    assert _struct.unpack("<6h", raw) == (11, 0, 13, 21, 0, 0)
+
+
 def test_interpret_attrib_access_after_cast_in_iif():
     state = parse("""
     struct _typeobj;
