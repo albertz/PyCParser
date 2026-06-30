@@ -691,43 +691,70 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
             elif isinstance(objType, CUnion):
                 objType = interpreter.globalScope.stateStruct.unions[objType.name]
 
-        fields = []
+        # Build the member list mirroring ``_getCTypeStruct`` exactly:
+        # named ``CVarDecl`` fields plus *true* anonymous struct/union
+        # members (``struct {...};`` with no declarator).  Anonymous
+        # members occupy a positional slot too -- skipping them (the old
+        # behaviour) shifted every following initializer onto the wrong
+        # field.  Their ctypes field name is ``__anon_<index>``, matching
+        # the name ``_getCTypeStruct`` assigns.
+        referenced_types = set(
+            id(c.type) for c in objType.body.contentlist
+            if isinstance(c, CVarDecl))
+        members = []  # each: (orig_name, ctype_field_name, type, is_anon)
         for c in objType.body.contentlist:
-            if not isinstance(c, CVarDecl): continue
-            fields.append(c)
+            if isinstance(c, (CStruct, CUnion)) and c.name is None:
+                if id(c) in referenced_types:
+                    continue
+                members.append((None, "__anon_%d" % len(members), c, True))
+            elif isinstance(c, CVarDecl):
+                members.append(
+                    (c.name, py_safe_identifier(str(c.name)), c.type, False))
+
+        def _member_value(member, s_arg_ast, s_arg_type):
+            orig_name, ctype_name, mem_type, is_anon = member
+            if is_anon:
+                # Anonymous struct/union: a braced initializer recurses;
+                # a bare scalar initializes the member's first sub-member
+                # (e.g. ``3`` for an anonymous ``union { int c; int d; }``
+                # sets ``c``).
+                if isinstance(s_arg_type, (tuple, list)):
+                    return getAstNode_curlyArrayArgsInit(
+                        funcEnv, mem_type, s_arg_ast, s_arg_type)
+                wrapped_ast = ast.Tuple(elts=[s_arg_ast], ctx=ast.Load())
+                wrapped_type = [(None, s_arg_type)]
+                return getAstNode_curlyArrayArgsInit(
+                    funcEnv, mem_type, wrapped_ast, wrapped_type)
+            return _makeVal(funcEnv, mem_type, s_arg_ast, s_arg_type)
+
+        def _find_named_member(designator):
+            for idx, member in enumerate(members):
+                if not member[3] and member[0] == designator:
+                    return idx
+            return None
 
         if isinstance(objType, CUnion):
-            # Only use the first field or the designated field
+            # Only use the first member or the designated one.
             idx = 0
             s_arg_ast = None
             s_arg_type = None
             if argType:
-                designators, s_arg_type = argType[-1] # last one wins
+                designators, s_arg_type = argType[-1]  # last one wins
                 s_arg_ast = argAst.elts[-1]
-                if designators:
-                    # TODO: support multiple designators
-                    designator = designators[0]
-                    if isinstance(designator, str):
-                        for i, field in enumerate(fields):
-                            if field.name == designator:
-                                idx = i
-                                break
-                else:
-                    idx = 0
-            
-            if s_arg_ast is not None:
-                field = fields[idx]
-                _s_arg_ast = _makeVal(funcEnv, field.type, s_arg_ast, s_arg_type)
-                # Match the rename done at struct ``_fields_`` time
-                # (in ``_getCTypeStruct``) so the kwarg name is a
-                # valid Python identifier.
-                field_name = py_safe_identifier(str(field.name))
-                return makeAstNodeCall(typeAst, **{field_name: _s_arg_ast})
+                if designators and isinstance(designators[0], str):
+                    found = _find_named_member(designators[0])
+                    if found is not None:
+                        idx = found
+
+            if s_arg_ast is not None and members:
+                member = members[idx]
+                _s_arg_ast = _member_value(member, s_arg_ast, s_arg_type)
+                return makeAstNodeCall(typeAst, **{member[1]: _s_arg_ast})
             else:
                 return makeAstNodeCall(typeAst)
 
         # CStruct
-        s_args_map = {} # field idx -> (ast, type)
+        s_args_map = {} # member idx -> (ast, type)
         cur_field_idx = 0
         for i, (designators, s_arg_type) in enumerate(argType):
             s_arg_ast = argAst.elts[i]
@@ -735,14 +762,11 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
                 # TODO: support multiple designators
                 designator = designators[0]
                 if isinstance(designator, str):
-                    found = False
-                    for idx, field in enumerate(fields):
-                        if field.name == designator:
-                            cur_field_idx = idx
-                            found = True
-                            break
-                    if not found:
+                    found = _find_named_member(designator)
+                    if found is None:
                         stateStruct.error("field %r not found in %r" % (designator, objType))
+                    else:
+                        cur_field_idx = found
                 else:
                     # [index] designator or similar
                     stateStruct.error("invalid designator %r for struct" % designator)
@@ -759,12 +783,11 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
         # constructor would mismatch.  Replace ``typeAst`` with a
         # specialized subclass (FAM resized to N) for this one
         # initializer.
-        if fields:
-            last_field = fields[-1]
-            last_field_type = last_field.type
+        if members and not members[-1][3]:
+            last_field_type = members[-1][2]
             while isinstance(last_field_type, CTypedef):
                 last_field_type = last_field_type.type
-            last_idx = len(fields) - 1
+            last_idx = len(members) - 1
             if isinstance(last_field_type, CArrayType) \
                     and not last_field_type.arrayLen \
                     and last_idx in s_args_map:
@@ -778,12 +801,10 @@ def getAstNode_curlyArrayArgsInit(funcEnv, objType, argAst, argType):
                         typeAst, fam_elem_ast, ast.Num(n=fam_count))
 
         s_args_kwargs = {}
-        for idx, field in enumerate(fields):
+        for idx, member in enumerate(members):
             if idx in s_args_map:
                 _s_arg_ast, _s_arg_type = s_args_map[idx]
-                _s_arg_ast = _makeVal(funcEnv, field.type, _s_arg_ast, _s_arg_type)
-                # Rename to match ``_fields_`` (see ``py_safe_identifier``).
-                s_args_kwargs[py_safe_identifier(str(field.name))] = _s_arg_ast
+                s_args_kwargs[member[1]] = _member_value(member, _s_arg_ast, _s_arg_type)
         return makeAstNodeCall(typeAst, **s_args_kwargs)
 
     elif isinstance(objType, CArrayType):

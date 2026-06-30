@@ -4081,6 +4081,34 @@ def test_struct_inline_named_and_anonymous_members():
     assert bytes(b.c) == b"deadbeef"
 
 
+def test_struct_aggregate_init_with_anonymous_union():
+    # C99 aggregate initializer for a struct with an anonymous union and a
+    # nested struct (c-testsuite 00050.c).  The anonymous union takes one
+    # positional slot, initializing its first member; the parser used to
+    # skip it, shifting every following value onto the wrong field.
+    state = parse("""
+    struct S1 { int a; int b; };
+    struct S2 {
+        int a;
+        int b;
+        union { int c; int d; };
+        struct S1 s;
+    };
+    struct S2 v = {1, 2, 3, {4, 5}};
+    int f() {
+        if (v.a != 1) return 1;
+        if (v.b != 2) return 2;
+        if (v.c != 3 || v.d != 3) return 3;
+        if (v.s.a != 4) return 4;
+        if (v.s.b != 5) return 5;
+        return 0;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert interpreter.runFunc("f").value == 0
+
+
 def test_struct_multidim_array():
     # ``int16_t mat[2][3]`` is an array of 2 elements, each an array of 3
     # int16_t (row-major).  The parser used to keep only the last
