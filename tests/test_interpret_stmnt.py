@@ -4109,6 +4109,54 @@ def test_struct_aggregate_init_with_anonymous_union():
     assert interpreter.runFunc("f").value == 0
 
 
+def test_block_scoped_struct_shadowing():
+    # Block-scoped struct definitions that shadow an outer same-named tag
+    # (c-testsuite 00053.c).  ``struct T { int y; } s2;`` in a nested
+    # block is a NEW definition, not a reference to the outer ``struct T``.
+    # The parser used to eagerly resolve the tag to the outer definition
+    # on the name token, then choke on the inner ``{``.
+    state = parse("""
+    int main() {
+        struct T { int x; } s1;
+        s1.x = 1;
+        {
+            struct T { int y; } s2;
+            s2.y = 1;
+            if (s1.x - s2.y != 0)
+                return 1;
+        }
+        return 0;
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert interpreter.runFunc("main").value == 0
+
+
+def test_array_param_decays_to_pointer():
+    # ISO C 6.7.6.3/7: an array-typed function parameter is adjusted to a
+    # pointer (c-testsuite 00077.c).  ``sizeof(x)`` for ``int x[100]`` is
+    # ``sizeof(int*)``, not 100*sizeof(int); and assigning the parameter
+    # to an ``int *`` is valid.
+    state = parse("""
+    int foo(int x[100]) {
+        int *p;
+        p = x;
+        if (p[0] != 1000) return 2;
+        if (sizeof(x) != sizeof(void*)) return 4;
+        return 0;
+    }
+    int main() {
+        int a[100];
+        a[0] = 1000;
+        return foo(a);
+    }
+    """)
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert interpreter.runFunc("main").value == 0
+
+
 def test_struct_multidim_array():
     # ``int16_t mat[2][3]`` is an array of 2 elements, each an array of 3
     # int16_t (row-major).  The parser used to keep only the last

@@ -1234,7 +1234,18 @@ def cpreprocess_evaluate_cond(stateStruct, condstr):
                             stateStruct.error("preprocessor eval: expected op but got '" + c + "' in '" + condstr + "' in state 18")
                             return
                     else:
-                        if opstr == "&&":
+                        if opstr in ("+", "-") and lasteval is None and op is None:
+                            # Leading unary ``+``/``-`` (e.g. ``#if (-2) != -2``).
+                            # Both are also in ``OpBinFuncs`` (checked below),
+                            # so without this they'd be taken as a binary op
+                            # with no left operand -> ``None - 2``.
+                            newprefixop = OpPrefixFuncs[opstr]
+                            if prefixOp is not None:
+                                _prev = prefixOp
+                                prefixOp = lambda x, _p=_prev, _n=newprefixop: _p(_n(x))
+                            else:
+                                prefixOp = newprefixop
+                        elif opstr == "&&":
                             op = lambda x,y: x and y
                             # short path check
                             if not lasteval: return lasteval
@@ -3335,6 +3346,12 @@ class CFuncArgDecl(_CBaseWithOptBody):
 
         if not self.type:
             self.type = make_type_from_typetokens(stateStruct, self, self._type_tokens)
+        # C parameter adjustment (ISO C 6.7.6.3/7): a parameter declared
+        # with array type ``T x[N]`` (or ``T x[]``) is adjusted to a
+        # pointer ``T *x``.  This affects its type and, crucially,
+        # ``sizeof(x)`` -- which is ``sizeof(T*)``, not the array size.
+        if isinstance(self.type, CArrayType):
+            self.type = CPointerType(self.type.arrayOf)
         _CBaseWithOptBody.finalize(self, stateStruct, addToContent=False)
 
         if self.type != CBuiltinType(("void",)):
@@ -5455,15 +5472,31 @@ def cpre3_parse_body(stateStruct, parentCObj, input_iter):
 
                 if curCObj.name is None:
                     curCObj.name = token.content
-                    DictName = None
+                    # NOTE: for a tagged type (``struct`` / ``union`` /
+                    # ``enum`` <name>) we deliberately do NOT resolve to
+                    # an existing same-named tag here.  A following ``{``
+                    # means this is a NEW (possibly shadowing) definition
+                    # -- e.g. ``struct T { int y; } s2;`` in a nested
+                    # block where an outer ``struct T`` exists.  The
+                    # reference case (tag NOT followed by ``{``) is
+                    # resolved when the next identifier arrives (the
+                    # ``elif`` below) or by the ``*`` / ``;`` handlers.
+                elif isinstance(curCObj, (CStruct, CUnion, CEnum)) \
+                        and not curCObj._finalized and curCObj.body is None:
+                    # ``struct T <name>``: tag followed by an identifier
+                    # (no body) -- a reference to tag T declaring a
+                    # variable.  Resolve T to its in-scope definition
+                    # (or keep the tag object itself as a forward
+                    # reference) and turn this into a CVarDecl whose type
+                    # is it; the current token is the variable name.
                     if isinstance(curCObj, CStruct): DictName = "structs"
                     elif isinstance(curCObj, CUnion): DictName = "unions"
-                    elif isinstance(curCObj, CEnum): DictName = "enums"
-                    if DictName is not None:
-                        typeObj = findCObjTypeInNamespace(stateStruct, parentCObj, DictName, curCObj.name)
-                        if typeObj is not None and typeObj.body is not None: # if body is None, we still wait for another decl
-                            curCObj = CVarDecl(parent=parentCObj)
-                            curCObj._type_tokens += [typeObj]
+                    else: DictName = "enums"
+                    resolved = findCObjTypeInNamespace(stateStruct, parentCObj, DictName, curCObj.name)
+                    typeObj = resolved if resolved is not None else curCObj
+                    curCObj = CVarDecl(parent=parentCObj)
+                    curCObj._type_tokens += [typeObj]
+                    curCObj.name = token.content
                 else:
                     stateStruct.error("cpre3 parse: second identifier name " + token.content + ", first was " + curCObj.name + ", first might be an unknwon type")
                     typeObj = CUnknownType(name=curCObj.name)

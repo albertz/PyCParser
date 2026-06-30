@@ -958,6 +958,35 @@ def test_preprocessor_if_decimal_with_suffix():
     assert not state._errors, "unexpected errors: %r" % state._errors
 
 
+def test_preprocessor_if_unary_and_logical_ops():
+    """#if constant expressions with a leading unary +/- and logical ops
+    (c-testsuite 00075.c).  ``-`` and ``+`` are both binary and unary; a
+    leading one (e.g. ``(-2)``) used to be taken as a binary op with no
+    left operand -> ``None - 2`` TypeError.  ``#error`` fires only if the
+    condition is true, so clean parsing means the conditions are false.
+    """
+    state = parse("""
+    #if (-2) != -2
+    #error unary minus broken
+    #endif
+    #if (+2) != 2
+    #error unary plus broken
+    #endif
+    #if (1 || 0) != 1
+    #error logical or broken
+    #endif
+    #if (1 && 1) != 1
+    #error logical and broken
+    #endif
+    #if (5 - 2) != 3
+    #error binary minus broken
+    #endif
+    int ok = 1;
+    """)
+    assert not state._errors, "unexpected errors: %r" % state._errors
+    assert "ok" in state.vars
+
+
 def test_for_init_pointer_decl():
     """C99 for-init with a pointer declaration must not produce 'identifier unknown' errors.
 
