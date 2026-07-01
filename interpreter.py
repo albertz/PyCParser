@@ -3155,6 +3155,21 @@ class Interpreter:
         stateStruct._global_include_wrapper.add_all_to_state(stateStruct)
         self.register(stateStruct)
 
+    @property
+    def pointer_size(self):
+        """Override for the size of pointer ctypes; see ``State.PointerSize``.
+
+        ``None`` (default) uses host-sized pointers.  Set to ``32`` / ``64``
+        for a fixed-width unsigned int, or to a ctypes class to use directly
+        -- useful for parsing structs meant for a foreign target (e.g. a
+        32-bit console) via :meth:`getCType`.
+        """
+        return getattr(self._cStateWrapper, "PointerSize", None)
+
+    @pointer_size.setter
+    def pointer_size(self, value):
+        self._cStateWrapper.PointerSize = value
+
     def getCType(self, obj):
         wrappedStateStruct = self._cStateWrapper
         return getCType(obj, wrappedStateStruct)

@@ -4157,6 +4157,54 @@ def test_array_param_decays_to_pointer():
     assert interpreter.runFunc("main").value == 0
 
 
+def test_pointer_size_override():
+    # ``State.PointerSize`` lets pointers lower to a fixed width instead
+    # of the host pointer size -- for parsing structs meant for a foreign
+    # target.  Covers data pointers, ``void*`` and function pointers; real
+    # inline arrays are unaffected.  Default (None) keeps host sizes.
+    src = """
+    struct Node {
+        int val;
+        struct Node *next;
+        void *opaque;
+        void (*cb)(int);
+        int arr[4];
+    };
+    """
+
+    def field_sizes(pointer_size):
+        state = parse(src)
+        if pointer_size is not None:
+            state.PointerSize = pointer_size
+        interpreter = Interpreter()
+        interpreter.register(state)
+        ct = interpreter.getCType(state.structs["Node"])
+        return {name: ctypes.sizeof(t) for name, t in ct._fields_}
+
+    host_ptr = ctypes.sizeof(ctypes.c_void_p)
+    assert field_sizes(None) == {
+        "val": 4, "next": host_ptr, "opaque": host_ptr,
+        "cb": host_ptr, "arr": 16}
+    assert field_sizes(32) == {
+        "val": 4, "next": 4, "opaque": 4, "cb": 4, "arr": 16}
+    assert field_sizes(64) == {
+        "val": 4, "next": 8, "opaque": 8, "cb": 8, "arr": 16}
+    # A ctypes class can be passed directly.
+    assert field_sizes(ctypes.c_uint16)["next"] == 2
+
+    # A void* field reads back as an integer address from raw bytes.
+    # Set the override via the ``Interpreter`` convenience property here.
+    state = parse("struct S { unsigned int id; void *ptr; };")
+    interpreter = Interpreter()
+    interpreter.register(state)
+    assert interpreter.pointer_size is None
+    interpreter.pointer_size = 32
+    s_t = interpreter.getCType(state.structs["S"])
+    assert ctypes.sizeof(s_t) == 8
+    inst = s_t.from_buffer_copy(b"\x01\x00\x00\x00\xef\xbe\xad\xde")
+    assert inst.ptr.value == 0xDEADBEEF
+
+
 def test_struct_multidim_array():
     # ``int16_t mat[2][3]`` is an array of 2 elements, each an array of 3
     # int16_t (row-major).  The parser used to keep only the last

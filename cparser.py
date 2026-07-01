@@ -541,7 +541,49 @@ class CArrayType(CType):
     def asCCode(self, indent=""): return "%s%s[%s]" % (indent, asCCode(self.arrayOf), asCCode(self.arrayLen))
 
 
+def _isPointerCType(t):
+    """True for a ctypes pointer-like type (data pointer, ``void*`` or
+    function pointer), including the ``wrapCTypeClass_*`` wrappers."""
+    if not isinstance(t, type):
+        return False
+    return issubclass(t, (ctypes.c_void_p, ctypes._Pointer, ctypes._CFuncPtr))
+
+
+def _foreignPointerCType(stateStruct):
+    """The ctype to use for pointers when ``State.PointerSize`` is set."""
+    ps = stateStruct.PointerSize
+    if isinstance(ps, type):
+        base = ps
+    elif ps == 32:
+        base = ctypes.c_uint32
+    elif ps == 64:
+        base = ctypes.c_uint64
+    else:
+        raise Exception(
+            "State.PointerSize %r invalid: expected 32, 64 or a ctypes type"
+            % (ps,))
+    if stateStruct.IndirectSimpleCTypes:
+        base = wrapCTypeClassIfNeeded(base)
+    return base
+
+
 def getCType(t, stateStruct):
+    """
+    :type stateStruct: State
+    """
+    result = _getCType(t, stateStruct)
+    # Foreign pointer-size override (opt-in; see ``State.PointerSize``).
+    # A single chokepoint: every pointer field flows through here, so
+    # data pointers, ``void*``, decayed arrays and function pointers are
+    # all covered.  No-op (and zero cost beyond one ``is None`` check)
+    # in the default host-sized configuration.
+    if getattr(stateStruct, "PointerSize", None) is not None \
+            and _isPointerCType(result):
+        return _foreignPointerCType(stateStruct)
+    return result
+
+
+def _getCType(t, stateStruct):
     """
     :type stateStruct: State
     """
@@ -690,6 +732,26 @@ def getSizeOf(t, stateStruct):
 class State(object):
     # See _getCTypeStruct for details.
     IndirectSimpleCTypes = False
+
+    # Opt-in override for the size of *pointer* ctypes.  By default
+    # (``None``) pointers lower to host-sized ctypes (``ctypes.POINTER``
+    # / ``c_void_p`` / function pointers -- 8 bytes on a 64-bit host).
+    # For parsing structs meant for a foreign target (e.g. a 32-bit
+    # console), set this to make every pointer field a fixed width
+    # instead.  Accepted values:
+    #   None        -- host-sized real pointers (default; unchanged).
+    #   32 / 64     -- an unsigned integer of that many bits
+    #                  (``c_uint32`` / ``c_uint64``).
+    #   <ctype>     -- a ctypes class to use directly for pointers.
+    # This affects data pointers, ``void*``, decayed array parameters
+    # and function pointers.  It is meant for layout/serialization
+    # (``getCType`` + ``from_buffer_copy``); the resulting field reads
+    # back as an integer address, so the pointer can no longer be
+    # dereferenced -- do not enable it when actually interpreting code.
+    # Integer widths that also vary by ABI (``long``, ``size_t`` ...)
+    # are independent; override ``CBuiltinTypes`` / ``StdIntTypes`` for
+    # those.
+    PointerSize = None
 
     EmptyMacro = Macro(None, None, (), "")
     CBuiltinTypes = {
